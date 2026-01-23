@@ -208,20 +208,20 @@ public function driverasignment($from_date = null, $to_date = null)
 	    return $builder->get()->getResult();
 	}
 	function doregistration_dtls1($from_date = null, $to_date = null)
-{
-    $builder = $this->db->table('do_registration');
-    $builder->select('*');
-    $builder->join('route', 'route.id = do_registration.route_id', 'left');
+    {
+        $builder = $this->db->table('do_registration');
+        $builder->select('*');
+        $builder->join('route', 'route.id = do_registration.route_id', 'left');
+        
+        // Condition: Select records where either from_date or to_date is within the given range
+        $builder->groupStart()
+                ->where("do_registration.from_date BETWEEN '$from_date' AND '$to_date'")
+                ->orWhere("do_registration.to_date BETWEEN '$from_date' AND '$to_date'")
+                ->orWhere("(do_registration.from_date <= '$from_date' AND do_registration.to_date >= '$to_date')") // Covers cases where the range fully overlaps
+                ->groupEnd();
 
-    // Condition: Select records where either from_date or to_date is within the given range
-    $builder->groupStart()
-            ->where("do_registration.from_date BETWEEN '$from_date' AND '$to_date'")
-            ->orWhere("do_registration.to_date BETWEEN '$from_date' AND '$to_date'")
-            ->orWhere("(do_registration.from_date <= '$from_date' AND do_registration.to_date >= '$to_date')") // Covers cases where the range fully overlaps
-            ->groupEnd();
-
-    return $builder->get()->getResult();
-}
+        return $builder->get()->getResult();
+    }
 
 	function bank(){
 	    $builder = $this->db->table('bank');
@@ -253,6 +253,73 @@ public function driverasignment($from_date = null, $to_date = null)
         $builder = $this->db->table('tonnage');
         $builder->select('*');
         $builder->where('id', $id);
+        return $builder->get()->getRow();
+    }
+
+    // Set Master Functions
+    function set_dtls()
+    {
+        $builder = $this->db->table('set_master');
+        $builder->select('set_master.*, created_by_user.full_name AS created_by_name, updated_by_user.full_name AS updated_by_name');
+        $builder->join('user AS created_by_user', 'created_by_user.id = set_master.created_by', 'left');
+        $builder->join('user AS updated_by_user', 'updated_by_user.id = set_master.updated_by', 'left');
+        $builder->where('set_master.deleted_by', null);
+        $builder->orderBy('set_master.created_at', 'DESC');
+        return $builder->get()->getResult();
+    }
+
+    function single_set($id)
+    {
+        $builder = $this->db->table('set_master');
+        $builder->select('*');
+        $builder->where('id', $id);
+        return $builder->get()->getRow();
+    }
+
+    function tonnage_by_set($set_id)
+    {
+        $builder = $this->db->table('tonnage');
+        $builder->select('tonnage.*, created_by_user.full_name AS created_by_name, updated_by_user.full_name AS updated_by_name, set_master.set_name');
+        $builder->join('user AS created_by_user', 'created_by_user.id = tonnage.created_by', 'left');
+        $builder->join('user AS updated_by_user', 'updated_by_user.id = tonnage.updated_by', 'left');
+        $builder->join('set_master', 'set_master.id = tonnage.set_id', 'left');
+        $builder->where('tonnage.set_id', $set_id);
+        $builder->where('tonnage.deleted_by', null);
+        $builder->orderBy('tonnage.min', 'ASC');
+        return $builder->get()->getResult();
+    }
+
+    function all_tonnage()
+    {
+        $builder = $this->db->table('tonnage');
+        $builder->select('tonnage.*, created_by_user.full_name AS created_by_name, updated_by_user.full_name AS updated_by_name, set_master.set_name');
+        $builder->join('user AS created_by_user', 'created_by_user.id = tonnage.created_by', 'left');
+        $builder->join('user AS updated_by_user', 'updated_by_user.id = tonnage.updated_by', 'left');
+        $builder->join('set_master', 'set_master.id = tonnage.set_id', 'left');
+        $builder->where('tonnage.deleted_by', null);
+        $builder->where('set_master.deleted_by', null);
+        $builder->orderBy('set_master.set_name', 'ASC');
+        $builder->orderBy('tonnage.min', 'ASC');
+        return $builder->get()->getResult();
+    }
+
+    function all_sets()
+    {
+        $builder = $this->db->table('set_master');
+        $builder->select('*');
+        $builder->where('deleted_by', null);
+        $builder->orderBy('set_name', 'ASC');
+        return $builder->get()->getResult();
+    }
+
+    function sets_with_range_count()
+    {
+        $builder = $this->db->table('set_master');
+        $builder->select('set_master.*, COUNT(tonnage.id) AS range_count');
+        $builder->join('tonnage', 'tonnage.set_id = set_master.id AND tonnage.deleted_by IS NULL', 'left');
+        $builder->where('set_master.deleted_by', null);
+        $builder->groupBy('set_master.id');
+        $builder->orderBy('set_master.set_name', 'ASC');
         return $builder->get()->getResult();
     }
 	

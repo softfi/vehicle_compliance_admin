@@ -66,7 +66,17 @@
                     <li class="sidebar-list"><a class="sidebar-link sidebar-title link-nav " href="<?php echo base_url();?>/admin/despatch_entry"><span>Despatch Entry</span></a></li> 
                     <?php } ?>
                     <?php if(in_array(36,$jobAssign)){ ?>
-                    <li class="sidebar-list"><a class="sidebar-link sidebar-title link-nav " href="<?php echo base_url();?>/admin/voucher_entry"><span>Voucher Entry</span></a></li> 
+                    <li class="sidebar-list">
+                      <a class="sidebar-link sidebar-title" href="#">
+                        <span>Voucher Entry</span>
+                      </a>
+                      <ul class="sidebar-submenu">
+                        <li><a href="<?php echo base_url();?>/admin/voucher_entry">Voucher Entry</a></li>
+                        <li><a href="<?php echo base_url(); ?>/admin/Collection">Collection</a></li>
+                        <li><a href="<?php echo base_url(); ?>/admin/Deposit">Deposit</a></li>
+                        <li><a href="<?php echo base_url(); ?>/admin/Payment">Payment</a></li>
+                      </ul>
+                    </li>
                     <?php } ?>
                     <?php if(in_array(4,$jobAssign)){ ?>
                     <li class="sidebar-list"><a class="sidebar-link sidebar-title link-nav " href="<?php echo base_url();?>/admin/diesel_entry"><span>Diesel Entry</span></a></li>

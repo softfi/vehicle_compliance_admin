@@ -83,9 +83,16 @@
                                 <?php if (isset($validation)) { ?><span class="text-danger"><?= $validation->getError('party'); ?></span><?php } ?>
                             </div>
                             
-
-                            
-
+                                <div class="" id="load_tonnage_group">
+                                    <label>Tonnage Set</label>
+                                    <select class="js-states form-control uk-padding-reove uk-margin-remove" name="load_tonnage" id="load_tonnage">
+                                        <option value="">Select Set</option>
+                                        <?php if(isset($sets)){ foreach ($sets as $s) { ?>
+                                        <option value="<?= $s->id ?>" <?= set_select('load_tonnage', $s->id) ?>><?= $s->set_name ?></option>
+                                        <?php } } ?>
+                                    </select>
+                                </div>
+                                
                                 <div class="trip_expenses_field">
                                     <label>1=Trip Expenses</label>
                                     <input type="text"  placeholder="enter 1Trip Expenses" id="trip_expenses1" class="uk-input" name="1trip_expenses" value="<?= set_value('1trip_expenses') ?>" />
@@ -121,20 +128,6 @@
                                     <input type="text"  placeholder="enter 6 Trip Expenses" id="trip_expenses6" class="uk-input" name="6trip_expenses" value="<?= set_value('6trip_expenses') ?>" />
                                     <?php if (isset($validation)) { ?><span class="text-danger"><?= $validation->getError('6trip_expenses'); ?></span><?php } ?>
                                 </div>
-                                <div class="" id="load_tonnage_group">
-                                <label>Load Tonnage</label>
-                                <select class="js-states form-control uk-padding-reove uk-margin-remove" name="load_tonnage" id="load_tonnage">
-                                    <option value="">Select Tonnage</option>
-                                    <?php if(isset($tonnage_list)){ foreach ($tonnage_list as $t) { ?>
-                                    <option value="<?= $t->id ?>" data-price="<?= $t->price ?>" <?= set_select('load_tonnage', $t->id) ?>><?= $t->weight ?></option>
-                                    <?php } } ?>
-                                </select>
-                            </div>
-                            
-                            <div class="" id="load_tonnage_amount_group">
-                                <label>Tonnage Amount</label>
-                                <input type="text" class="uk-input" id="tonnage_amount" name="tonnage_amount" value="<?= set_value('tonnage_amount') ?>" readonly />
-                            </div>
                            
                             <div class="">
                                 <label>Cash</label>
@@ -204,7 +197,7 @@
                                         <th>Diesel/Trip OR Km</th>
                                         <th>Trip Expenses</th>
                                         <th>Load Tonnage</th>
-                                        <th>Amount</th>
+                                        <!-- <th>Amount</th> -->
                                         <th>Cash</th>
                                         <th>Diesel</th>
                                         <th>Shortage Qty</th>
@@ -217,7 +210,7 @@
                                         <th>Diesel Rate</th>
                                         <!-- <th>Add Shortage</th> -->
                                         <th>Change</th>
-                                        <th>Edit</th>
+                                        <th>Edit Price</th>
                                         <th>Delete</th>
                                     </tr>
                                 </thead>
@@ -236,14 +229,7 @@
                                             5<sup>th</sup>=Rs. <?=$doreg->trip_expenses5;?>, 6<sup>th</sup>=Rs. <?=$doreg->trip_expenses6;?>
                                         </td>
                                         <td>
-                                            <?= $doreg->load_tonnage_weight ?? '-'; ?>
-                                        </td>
-                                        <td>
-                                            <?php if(isset($doreg->tonnage_amount) && $doreg->tonnage_amount > 0) { ?>
-                                                Rs. <?= $doreg->tonnage_amount; ?>
-                                            <?php } else { ?>
-                                                -
-                                            <?php } ?>
+                                            <?= $doreg->tonnage_set_name ?? '-'; ?>
                                         </td>
                                         <td><?= isset($doreg->cash_type) ? $doreg->cash_type : '-'; ?></td>
                                         <td><?= isset($doreg->diesel_payment_type) ? $doreg->diesel_payment_type : '-'; ?></td>
@@ -286,7 +272,7 @@
                                         <th>Diesel/Trip OR Km</th>
                                         <th>Trip Expenses</th>
                                         <th>Load Tonnage</th>
-                                        <th>Amount</th>
+                                        <!-- <th>Amount</th> -->
                                         <th>Cash</th>
                                         <th>Diesel</th>
                                         <th>Shortage Qty</th>
@@ -429,18 +415,7 @@ document.getElementById('download_excel').addEventListener('click', function(e) 
 
 <script>
     $(document).ready(function() {
-        // Load Tonnage Price logic
-        function updateTonnageAmount() {
-             var price = $('#load_tonnage option:selected').attr('data-price');
-             if(price) {
-                $('#tonnage_amount').val(price);
-             }
-        }
-
-        $('#load_tonnage').change(updateTonnageAmount);
-        
-        // Run on load if tonnage is selected
-        updateTonnageAmount();
+        // Tonnage Set selection logic (if needed in future)
     });
 </script>
 <?php include("footer.php"); ?>
