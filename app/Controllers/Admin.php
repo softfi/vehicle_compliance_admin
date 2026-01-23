@@ -6198,10 +6198,10 @@ class Admin extends BaseController
             SELECT 
                 do_registration.*,
                 route.location_shortname,
-                tonnage.weight AS load_tonnage_weight
+                set_master.set_name AS tonnage_set_name
             FROM do_registration
             LEFT JOIN route ON route.id = do_registration.route_id
-            LEFT JOIN tonnage ON tonnage.id = do_registration.load_tonnage_id
+            LEFT JOIN set_master ON set_master.id = do_registration.load_tonnage_id
             WHERE do_registration.deleted_at IS NULL
             ORDER BY do_registration.do_registration_id DESC
         ")->getResult();
@@ -6217,8 +6217,8 @@ class Admin extends BaseController
 
 
 
-        // Add Tonnage Data
-        $data['tonnage_list'] = $this->AdminModel->tonnage_dtls();
+        // Add Sets Data (replacing tonnage_list)
+        $data['sets'] = $this->AdminModel->all_sets();
 
         return view('admin/do_registration_vw', $data);
     }
@@ -6307,7 +6307,7 @@ class Admin extends BaseController
                             JOIN location ON location.location_id = route.location_id
                         ")->getResult();
         
-        $data['tonnage_list'] = $this->AdminModel->tonnage_dtls();
+        $data['sets'] = $this->AdminModel->all_sets();
 
 
 
@@ -6351,7 +6351,6 @@ class Admin extends BaseController
                 'trip_expenses6' => $this->request->getPost('6trip_expenses'),
                 
                 'load_tonnage_id' => $this->request->getPost('load_tonnage'),
-                'tonnage_amount' => $this->request->getPost('tonnage_amount'),
             ];
 
             $this->db->table('do_registration')->insert($data);
@@ -6420,18 +6419,13 @@ class Admin extends BaseController
             </div>
             
             <div class="uk-margin-bottom" id="edit_load_tonnage_group">
-                <label>Load Tonnage</label>
+                <label>Tonnage Set</label>
                 <select class="form-control" name="load_tonnage" id="edit_load_tonnage">
-                    <option value="">Select Tonnage</option>
-                    <?php if(isset($tonnage_list)){ foreach ($tonnage_list as $t) { ?>
-                    <option value="<?= $t->id ?>" data-price="<?= $t->price ?>" <?= ($doreg->load_tonnage_id == $t->id) ? 'selected' : '' ?>><?= $t->weight ?></option>
+                    <option value="">Select Set</option>
+                    <?php if(isset($sets)){ foreach ($sets as $s) { ?>
+                    <option value="<?= $s->id ?>" <?= ($doreg->load_tonnage_id == $s->id) ? 'selected' : '' ?>><?= $s->set_name ?></option>
                     <?php } } ?>
                 </select>
-            </div>
-            
-            <div class="uk-margin-bottom" id="edit_load_tonnage_amount_group">
-                <label>Amount</label>
-                <input type="text" class="form-control" id="edit_tonnage_amount" name="tonnage_amount" value="<?= $doreg->tonnage_amount ?>" readonly />
             </div>
 
             <div class="uk-child-width-1-2@m uk-grid-small edit_trip_expenses_field" uk-grid>
@@ -6550,12 +6544,7 @@ class Admin extends BaseController
                 allowClear: true
             });
 
-            $('#edit_load_tonnage').change(function() {
-                var price = $('option:selected', this).attr('data-price');
-                if(price) {
-                     $('#edit_tonnage_amount').val(price);
-                }
-            });
+            // Tonnage Set selection (no amount calculation needed)
         });
         </script>
     <?php
@@ -6588,7 +6577,6 @@ class Admin extends BaseController
             'max_trip' => $this->request->getPost('max_trip'),
             
             'load_tonnage_id' => $this->request->getPost('load_tonnage'),
-            'tonnage_amount' => $this->request->getPost('tonnage_amount'),
             'cash_type' => $this->request->getPost('cash_type'),
             'diesel_payment_type' => $this->request->getPost('diesel_payment_type'),
             'diesel_rate' => $this->request->getPost('diesel_rate'),
@@ -7069,6 +7057,105 @@ class Admin extends BaseController
         $data['records_per_page'] = $records_per_page;
 
         return view('admin/voucher_vw', $data);
+    }
+
+    public function Collection()
+    {
+        if ($this->session->get('user_id') == '') {
+            return redirect()->to('Admin/');
+        }
+
+        $records_per_page = $this->request->getVar('per_page') ? (int)$this->request->getVar('per_page') : 10;
+        $current_page = $this->request->getVar('page') ? (int)$this->request->getVar('page') : 1;
+        $offset = ($current_page - 1) * $records_per_page;
+
+        $from_date = $this->request->getVar('from_date') ?? date('Y-m-01');
+        $to_date = $this->request->getVar('to_date') ?? date('Y-m-t');
+        $do_no = $this->request->getVar('do_no');
+        $chalan_status = $this->request->getVar('chalan_status');
+        $payment_status = $this->request->getVar('payment_status');
+        $deposited_status = $this->request->getVar('deposited_status');
+
+        $user_id = $this->session->get('user_id');
+        $data['setting'] = $this->AdminModel->Settingdata();
+        $data['singleuser'] = $this->AdminModel->userdata($user_id);
+        $data['vehicle'] = $this->AdminModel->Getvehicle();
+        $data['doregistration'] = $this->AdminModel->doregistration_dtls1($from_date, $to_date);
+
+        $data['total_count'] = $this->AdminModel->despatch_count($from_date, $to_date, $do_no, $chalan_status, $payment_status, $deposited_status);
+        $data['despatch'] = $this->AdminModel->despatch_dtls1_paginated($from_date, $to_date, $do_no, $chalan_status, $payment_status, $deposited_status, $records_per_page, $offset);
+
+        $data['date'] = ['from_date' => $from_date, 'to_date' => $to_date, 'do_no' => $do_no, 'chalan_status' => $chalan_status, 'payment_status' => $payment_status, 'deposited_status' => $deposited_status];
+        $data['current_page'] = $current_page;
+        $data['records_per_page'] = $records_per_page;
+
+        return view('admin/collection_vw', $data);
+    }
+
+    public function Deposit()
+    {
+        if ($this->session->get('user_id') == '') {
+            return redirect()->to('Admin/');
+        }
+
+        $records_per_page = $this->request->getVar('per_page') ? (int)$this->request->getVar('per_page') : 10;
+        $current_page = $this->request->getVar('page') ? (int)$this->request->getVar('page') : 1;
+        $offset = ($current_page - 1) * $records_per_page;
+
+        $from_date = $this->request->getVar('from_date') ?? date('Y-m-01');
+        $to_date = $this->request->getVar('to_date') ?? date('Y-m-t');
+        $do_no = $this->request->getVar('do_no');
+        $chalan_status = $this->request->getVar('chalan_status');
+        $payment_status = $this->request->getVar('payment_status');
+        $deposited_status = $this->request->getVar('deposited_status');
+
+        $user_id = $this->session->get('user_id');
+        $data['setting'] = $this->AdminModel->Settingdata();
+        $data['singleuser'] = $this->AdminModel->userdata($user_id);
+        $data['vehicle'] = $this->AdminModel->Getvehicle();
+        $data['doregistration'] = $this->AdminModel->doregistration_dtls1($from_date, $to_date);
+
+        $data['total_count'] = $this->AdminModel->despatch_count($from_date, $to_date, $do_no, $chalan_status, $payment_status, $deposited_status);
+        $data['despatch'] = $this->AdminModel->despatch_dtls1_paginated($from_date, $to_date, $do_no, $chalan_status, $payment_status, $deposited_status, $records_per_page, $offset);
+
+        $data['date'] = ['from_date' => $from_date, 'to_date' => $to_date, 'do_no' => $do_no, 'chalan_status' => $chalan_status, 'payment_status' => $payment_status, 'deposited_status' => $deposited_status];
+        $data['current_page'] = $current_page;
+        $data['records_per_page'] = $records_per_page;
+
+        return view('admin/deposit_vw', $data);
+    }
+
+    public function Payment()
+    {
+        if ($this->session->get('user_id') == '') {
+            return redirect()->to('Admin/');
+        }
+
+        $records_per_page = $this->request->getVar('per_page') ? (int)$this->request->getVar('per_page') : 10;
+        $current_page = $this->request->getVar('page') ? (int)$this->request->getVar('page') : 1;
+        $offset = ($current_page - 1) * $records_per_page;
+
+        $from_date = $this->request->getVar('from_date') ?? date('Y-m-01');
+        $to_date = $this->request->getVar('to_date') ?? date('Y-m-t');
+        $do_no = $this->request->getVar('do_no');
+        $chalan_status = $this->request->getVar('chalan_status');
+        $payment_status = $this->request->getVar('payment_status');
+        $deposited_status = $this->request->getVar('deposited_status');
+
+        $user_id = $this->session->get('user_id');
+        $data['setting'] = $this->AdminModel->Settingdata();
+        $data['singleuser'] = $this->AdminModel->userdata($user_id);
+        $data['vehicle'] = $this->AdminModel->Getvehicle();
+        $data['doregistration'] = $this->AdminModel->doregistration_dtls1($from_date, $to_date);
+
+        $data['total_count'] = $this->AdminModel->despatch_count($from_date, $to_date, $do_no, $chalan_status, $payment_status, $deposited_status);
+        $data['despatch'] = $this->AdminModel->despatch_dtls1_paginated($from_date, $to_date, $do_no, $chalan_status, $payment_status, $deposited_status, $records_per_page, $offset);
+
+        $data['date'] = ['from_date' => $from_date, 'to_date' => $to_date, 'do_no' => $do_no, 'chalan_status' => $chalan_status, 'payment_status' => $payment_status, 'deposited_status' => $deposited_status];
+        $data['current_page'] = $current_page;
+        $data['records_per_page'] = $records_per_page;
+
+        return view('admin/payment_vw', $data);
     }
 
 
@@ -11421,6 +11508,81 @@ class Admin extends BaseController
         return view('admin/tyre_details_vw', $data);
     }
 
+    // Set Master Functions
+    // View Tonnage Set (separate page)
+    public function view_tonnage_set()
+    {
+        if(($this->session->get('user_id')=='')){
+            return redirect()->to('Admin/');
+        }
+        
+        $user_id = $this->session->get('user_id');
+        $set_id = $this->request->getGet('set_id');
+        
+        if(empty($set_id)) {
+            return redirect()->to('admin/tonnage')->with('error', 'Set ID is required');
+        }
+        
+        // Get basic data
+        $data['setting'] = $this->AdminModel->Settingdata();
+        $data['singleuser'] = $this->AdminModel->userdata($user_id);
+        
+        // Get set details
+        $data['set'] = $this->AdminModel->single_set($set_id);
+        
+        if(empty($data['set'])) {
+            return redirect()->to('admin/tonnage')->with('error', 'Set not found');
+        }
+        
+        // Get all ranges for this set
+        $data['tonnage'] = $this->AdminModel->tonnage_by_set($set_id);
+        
+        return view('admin/view_tonnage_set_vw', $data);
+    }
+
+    // Delete Set (with all ranges)
+    public function delete_set()
+    {
+        if(($this->session->get('user_id')=='')){
+            return redirect()->to('Admin/');
+        }
+        $user_id = $this->session->get('user_id');
+        $id = $this->request->getPost('id');
+
+        // Start transaction
+        $this->db->transStart();
+
+        try {
+            // Soft delete all ranges for this set
+            $this->db->table('tonnage')
+                    ->where('set_id', $id)
+                    ->where('deleted_by', null)
+                    ->update([
+                        'deleted_by' => $user_id,
+                        'deleted_at' => date('Y-m-d H:i:s')
+                    ]);
+
+            // Soft delete the set
+            $data = [
+                'deleted_by' => $user_id,
+                'deleted_at' => date('Y-m-d H:i:s'),
+            ];
+            $this->db->table('set_master')->where('id', $id)->update($data);
+
+            $this->db->transComplete();
+
+            if($this->db->transStatus() === false) {
+                return redirect()->back()->with('error', 'Error deleting set. Please try again.');
+            }
+
+            return redirect()->to('admin/tonnage')->with('success', 'Set and all ranges deleted successfully!');
+
+        } catch(\Exception $e) {
+            $this->db->transRollback();
+            return redirect()->back()->with('error', 'Error: ' . $e->getMessage());
+        }
+    }
+
     public function tonnage()
     {
         if(($this->session->get('user_id')=='')){
@@ -11429,7 +11591,11 @@ class Admin extends BaseController
         $user_id = $this->session->get('user_id');
         $data['setting'] = $this->AdminModel->Settingdata();
         $data['singleuser'] = $this->AdminModel->userdata($user_id);
-        $data['tonnage'] = $this->AdminModel->tonnage_dtls();
+        $data['sets'] = $this->AdminModel->all_sets();
+        
+        // Load sets with range count for listing
+        $data['sets_with_count'] = $this->AdminModel->sets_with_range_count();
+        
         return view('admin/tonnage_vw', $data);
     }
 
@@ -11442,23 +11608,32 @@ class Admin extends BaseController
 
         $validation = \Config\Services::validation();
         $validation->setRules([
-            'weight' => 'required',
-            'price' => 'required',
+            'set_id' => 'required',
+            'min' => 'required|numeric',
+            'max' => 'permit_empty|numeric',
         ]);
 
         if (!$this->validate($validation->getRules())) {
             return redirect()->back()->withInput();
         }
 
+        $max_value = $this->request->getPost('max');
+        $max_value = ($max_value === '' || $max_value === null) ? null : $max_value;
+        
         $data = [
-            'weight' => $this->request->getPost('weight'),
-            'price' => $this->request->getPost('price'),
+            'set_id' => $this->request->getPost('set_id'),
+            'min' => $this->request->getPost('min'),
+            'max' => $max_value, // NULL means unlimited/above this value
+            'penalty_value' => $this->request->getPost('penalty_value') ?: 0,
+            'weight' => null,
+            'price' => 0.00, // NOT NULL field, must have default value
             'created_by' => $user_id,
             'created_at' => date('Y-m-d H:i:s'),
         ];
 
         $this->db->table('tonnage')->insert($data);
-        return redirect()->to('admin/tonnage');
+        $set_id = $this->request->getPost('set_id');
+        return redirect()->to('admin/tonnage?set_id=' . $set_id);
     }
 
     public function edit_tonnage()
@@ -11483,15 +11658,21 @@ class Admin extends BaseController
         $user_id = $this->session->get('user_id');
         $id = $this->request->getPost('id');
 
+        $max_value = $this->request->getPost('max');
+        $max_value = ($max_value === '' || $max_value === null) ? null : $max_value;
+        
         $data = [
-            'weight' => $this->request->getPost('weight'),
-            'price' => $this->request->getPost('price'),
+            'set_id' => $this->request->getPost('set_id'),
+            'min' => $this->request->getPost('min'),
+            'max' => $max_value, // NULL means unlimited/above this value
+            'penalty_value' => $this->request->getPost('penalty_value') ?: 0,
             'updated_by' => $user_id,
             'updated_at' => date('Y-m-d H:i:s'),
         ];
 
         $this->db->table('tonnage')->where('id', $id)->update($data);
-        return redirect()->to('admin/tonnage');
+        $set_id = $this->request->getPost('set_id');
+        return redirect()->to('admin/tonnage?set_id=' . $set_id);
     }
 
     public function delete_tonnage()
@@ -11500,7 +11681,8 @@ class Admin extends BaseController
             return redirect()->to('Admin/');
         }
         $user_id = $this->session->get('user_id');
-        $id = $this->request->getPost('id'); // Assuming delete is posted via form with 'id' or 'user_id' based on existing code style
+        $id = $this->request->getPost('id');
+        $set_id = $this->request->getPost('set_id');
 
         $data = [
             'deleted_by' => $user_id,
@@ -11508,6 +11690,326 @@ class Admin extends BaseController
         ];
         // Soft delete
         $this->db->table('tonnage')->where('id', $id)->update($data);
+        
         return redirect()->to('admin/tonnage');
+    }
+
+    // Insert Set with Multiple Ranges (New Set)
+    public function insert_set_with_ranges()
+    {
+        if(($this->session->get('user_id')=='')){
+            return redirect()->to('Admin/');
+        }
+        $user_id = $this->session->get('user_id');
+
+        $validation = \Config\Services::validation();
+        $validation->setRules([
+            'set_name' => 'required',
+        ]);
+
+        if (!$this->validate($validation->getRules())) {
+            return redirect()->back()->withInput()->with('error', 'Set Name is required');
+        }
+
+        $set_name = $this->request->getPost('set_name');
+        $ranges = $this->request->getPost('ranges');
+
+        // Check if set name already exists
+        $existing_set = $this->db->table('set_master')
+                                ->where('set_name', $set_name)
+                                ->where('deleted_by', null)
+                                ->get()
+                                ->getRow();
+        
+        if($existing_set) {
+            return redirect()->back()->withInput()->with('error', 'Set Name already exists!');
+        }
+
+        // Validate ranges
+        if(empty($ranges) || !is_array($ranges)) {
+            return redirect()->back()->withInput()->with('error', 'Please add at least one range');
+        }
+
+        // Validate that at least one range has min value before starting transaction
+        $hasValidRange = false;
+        foreach($ranges as $range) {
+            if(isset($range['min']) && $range['min'] !== '' && $range['min'] !== null) {
+                $hasValidRange = true;
+                break;
+            }
+        }
+
+        if(!$hasValidRange) {
+            return redirect()->back()->withInput()->with('error', 'Please add at least one range with Min value');
+        }
+
+        // Start transaction
+        $this->db->transStart();
+
+        try {
+            // Insert Set
+            $set_data = [
+                'set_name' => $set_name,
+                'created_by' => $user_id,
+                'created_at' => date('Y-m-d H:i:s'),
+            ];
+            
+            if(!$this->db->table('set_master')->insert($set_data)) {
+                throw new \Exception('Failed to insert set');
+            }
+            
+            $set_id = $this->db->insertID();
+            
+            if(empty($set_id)) {
+                throw new \Exception('Failed to get set ID after insertion');
+            }
+
+            // Insert Ranges
+            $ranges_data = [];
+            foreach($ranges as $range) {
+                // Check if range has min value (required field)
+                if(isset($range['min']) && $range['min'] !== '' && $range['min'] !== null) {
+                    $max_value = (!empty($range['max']) && $range['max'] !== '' && $range['max'] !== null) ? $range['max'] : null;
+                    $ranges_data[] = [
+                        'set_id' => $set_id,
+                        'min' => $range['min'],
+                        'max' => $max_value,
+                        'penalty_value' => (!empty($range['penalty_value']) && $range['penalty_value'] !== '') ? $range['penalty_value'] : 0,
+                        'weight' => null, // VARCHAR field, can be null
+                        'price' => 0.00,  // NOT NULL field, must have default value
+                        'created_by' => $user_id,
+                        'created_at' => date('Y-m-d H:i:s'),
+                    ];
+                }
+            }
+
+            if(empty($ranges_data)) {
+                throw new \Exception('No valid ranges to insert. Please add at least one range with Min value');
+            }
+
+            if(!$this->db->table('tonnage')->insertBatch($ranges_data)) {
+                throw new \Exception('Failed to insert ranges');
+            }
+
+            $this->db->transComplete();
+
+            if($this->db->transStatus() === false) {
+                $error = $this->db->error();
+                $errorMessage = 'Database transaction failed';
+                if(!empty($error) && is_array($error)) {
+                    if(isset($error['message'])) {
+                        $errorMessage = $error['message'];
+                    } elseif(isset($error['code'])) {
+                        $errorMessage = 'Error Code: ' . $error['code'];
+                    }
+                }
+                // Log error for debugging
+                log_message('error', 'Set insert failed: ' . json_encode($error));
+                return redirect()->back()->withInput()->with('error', 'Error saving data: ' . $errorMessage);
+            }
+
+            return redirect()->to('admin/tonnage')->with('success', 'Set and ranges created successfully!');
+
+        } catch(\Exception $e) {
+            $this->db->transRollback();
+            $error = $this->db->error();
+            $errorMessage = $e->getMessage();
+            if(!empty($error) && is_array($error) && isset($error['message'])) {
+                $errorMessage .= ' | DB Error: ' . $error['message'];
+            }
+            // Log error for debugging
+            log_message('error', 'Set insert exception: ' . $errorMessage);
+            return redirect()->back()->withInput()->with('error', 'Error: ' . $errorMessage);
+        }
+    }
+
+    // Insert Multiple Ranges to Existing Set
+    public function insert_ranges_to_set()
+    {
+        if(($this->session->get('user_id')=='')){
+            return redirect()->to('Admin/');
+        }
+        $user_id = $this->session->get('user_id');
+
+        $set_id = $this->request->getPost('existing_set_id');
+        $ranges = $this->request->getPost('ranges');
+
+        if(empty($set_id)) {
+            return redirect()->back()->withInput()->with('error', 'Please select a Set');
+        }
+
+        // Validate ranges
+        if(empty($ranges) || !is_array($ranges)) {
+            return redirect()->back()->withInput()->with('error', 'Please add at least one range');
+        }
+
+        // Insert Ranges
+        $ranges_data = [];
+        foreach($ranges as $range) {
+            if(!empty($range['min'])) {
+                $max_value = (!empty($range['max']) && $range['max'] != '') ? $range['max'] : null;
+                $ranges_data[] = [
+                    'set_id' => $set_id,
+                    'min' => $range['min'],
+                    'max' => $max_value,
+                    'penalty_value' => !empty($range['penalty_value']) ? $range['penalty_value'] : 0,
+                    'weight' => null, // VARCHAR field, can be null
+                    'price' => 0.00,  // NOT NULL field, must have default value
+                    'created_by' => $user_id,
+                    'created_at' => date('Y-m-d H:i:s'),
+                ];
+            }
+        }
+
+        if(!empty($ranges_data)) {
+            $this->db->table('tonnage')->insertBatch($ranges_data);
+            return redirect()->to('admin/tonnage')->with('success', 'Ranges added successfully!');
+        } else {
+            return redirect()->back()->withInput()->with('error', 'Please add at least one valid range');
+        }
+    }
+
+    // Update Single Range
+    public function update_tonnage_range()
+    {
+        if(($this->session->get('user_id')=='')){
+            return redirect()->to('Admin/');
+        }
+        $user_id = $this->session->get('user_id');
+        $id = $this->request->getPost('id');
+        $ranges = $this->request->getPost('ranges');
+
+        if(empty($id)) {
+            return redirect()->back()->withInput()->with('error', 'Invalid range ID');
+        }
+
+        // Get first range (since we're updating single range in edit mode)
+        $range = !empty($ranges) && is_array($ranges) ? reset($ranges) : null;
+
+        if(empty($range) || empty($range['min'])) {
+            return redirect()->back()->withInput()->with('error', 'Invalid range data');
+        }
+
+        $max_value = (!empty($range['max']) && $range['max'] != '') ? $range['max'] : null;
+        
+        $data = [
+            'min' => $range['min'],
+            'max' => $max_value,
+            'penalty_type' => 'percentage',
+            'penalty_value' => !empty($range['penalty_value']) ? $range['penalty_value'] : 0,
+            'updated_by' => $user_id,
+            'updated_at' => date('Y-m-d H:i:s'),
+        ];
+
+        $this->db->table('tonnage')->where('id', $id)->update($data);
+        return redirect()->to('admin/tonnage')->with('success', 'Range updated successfully!');
+    }
+
+    // Edit Set with all ranges
+    public function edit_set_with_ranges()
+    {
+        $set_id = $this->request->getPost('set_id');
+        
+        if(empty($set_id)) {
+            return $this->response->setJSON(['status' => 'error', 'message' => 'Set ID required']);
+        }
+
+        // Get set details
+        $set = $this->AdminModel->single_set($set_id);
+        
+        // Get all ranges for this set
+        $ranges = $this->AdminModel->tonnage_by_set($set_id);
+        
+        return $this->response->setJSON([
+            'status' => 'success',
+            'set' => $set,
+            'ranges' => $ranges
+        ]);
+    }
+
+    // Update Set with Ranges
+    public function update_set_with_ranges()
+    {
+        if(($this->session->get('user_id')=='')){
+            return redirect()->to('Admin/');
+        }
+        $user_id = $this->session->get('user_id');
+        
+        $set_id = $this->request->getPost('set_id');
+        $set_name = $this->request->getPost('set_name');
+        $ranges = $this->request->getPost('ranges');
+
+        if(empty($set_id)) {
+            return redirect()->back()->withInput()->with('error', 'Set ID is required');
+        }
+
+        if(empty($set_name)) {
+            return redirect()->back()->withInput()->with('error', 'Set Name is required');
+        }
+
+        // Validate ranges
+        if(empty($ranges) || !is_array($ranges)) {
+            return redirect()->back()->withInput()->with('error', 'Please add at least one range');
+        }
+
+        // Start transaction
+        $this->db->transStart();
+
+        try {
+            // Update Set Name
+            $set_data = [
+                'set_name' => $set_name,
+                'updated_by' => $user_id,
+                'updated_at' => date('Y-m-d H:i:s'),
+            ];
+            $this->db->table('set_master')->where('id', $set_id)->update($set_data);
+
+            // Delete existing ranges for this set
+            $this->db->table('tonnage')
+                    ->where('set_id', $set_id)
+                    ->where('deleted_by', null)
+                    ->update([
+                        'deleted_by' => $user_id,
+                        'deleted_at' => date('Y-m-d H:i:s')
+                    ]);
+
+            // Insert new ranges
+            $ranges_data = [];
+            foreach($ranges as $range) {
+                // Check if range has min value (required field)
+                if(isset($range['min']) && $range['min'] !== '' && $range['min'] !== null) {
+                    $max_value = (!empty($range['max']) && $range['max'] !== '' && $range['max'] !== null) ? $range['max'] : null;
+                    $ranges_data[] = [
+                        'set_id' => $set_id,
+                        'min' => $range['min'],
+                        'max' => $max_value,
+                        'penalty_value' => (!empty($range['penalty_value']) && $range['penalty_value'] !== '') ? $range['penalty_value'] : 0,
+                        'weight' => null, // VARCHAR field, can be null
+                        'price' => 0.00,  // NOT NULL field, must have default value
+                        'created_by' => $user_id,
+                        'created_at' => date('Y-m-d H:i:s'),
+                    ];
+                }
+            }
+
+            if(empty($ranges_data)) {
+                $this->db->transRollback();
+                return redirect()->back()->withInput()->with('error', 'Please add at least one valid range with Min value');
+            }
+
+            $this->db->table('tonnage')->insertBatch($ranges_data);
+
+            $this->db->transComplete();
+
+            if($this->db->transStatus() === false) {
+                return redirect()->back()->withInput()->with('error', 'Error updating data. Please try again.');
+            }
+
+            return redirect()->to('admin/tonnage')->with('success', 'Set and ranges updated successfully!');
+
+        } catch(\Exception $e) {
+            $this->db->transRollback();
+            return redirect()->back()->withInput()->with('error', 'Error: ' . $e->getMessage());
+        }
     }
 }
