@@ -157,7 +157,8 @@
                             </div>
                             <div class="">
                                 <label>TDS Rate (%)</label>
-                                <input type="text" class="uk-input" value="2" disabled />
+                                <input type="number" step="0.01" name="tds_percentage" id="tds_percentage" placeholder="Enter TDS Percentage" class="uk-input" value="<?= set_value('tds_percentage', '2.00'); ?>" />
+                                <?php if (isset($validation)) { ?><span class="text-danger"><?= $validation->getError('tds_percentage'); ?></span><?php } ?>
                             </div>
                             <div class="">
                                 <label>Shortage Qty</label>
@@ -208,6 +209,7 @@
                                         <th>To Date</th>
                                         <th>Party Rate</th>
                                         <th>Diesel Rate</th>
+                                        <th>TDS (%)</th>
                                         <!-- <th>Add Shortage</th> -->
                                         <th>Change</th>
                                         <th>Edit Price</th>
@@ -241,6 +243,7 @@
                                         <td><?=$doreg->to_date;?></td>
                                         <td><?=$doreg->rate;?></td>
                                         <td><?=$doreg->diesel_rate ?? '-';?></td>
+                                        <td><?= isset($doreg->tds_percentage) ? number_format($doreg->tds_percentage, 2) . '%' : '2.00%'; ?></td>
                                         
                                         <!-- <td>
                                             <a style="white-space:nowrap" class="btn btn-primary" href="javascript:void(0);" onClick="addshortage('<?=$doreg->do_registration_id;?>');">Add Shortage</a>
@@ -282,7 +285,8 @@
                                         <th>From Date</th>
                                         <th>To Date</th>
                                         <th>Party Rate</th>
-                                        <th>Diesel Rate</th>    
+                                        <th>Diesel Rate</th>
+                                        <th>TDS (%)</th>
                                         <!-- <th>Add Shortage</th> -->
                                         <th>Change</th>
                                         <th>Edit</th>

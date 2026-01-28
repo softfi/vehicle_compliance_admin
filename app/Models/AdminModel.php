@@ -745,9 +745,12 @@ public function despatch_count($from_date = null, $to_date = null, $do_no = null
 public function despatch_dtls1_paginated($from_date = null, $to_date = null, $do_no = null, $chalan_status = null, $payment_status = null, $deposited_status = null, $limit = 10, $offset = 0)
 {
     $builder = $this->db->table('despatch');
-    $builder->select('despatch.*, vehicle.vehicle_no as vehicle_number, do_registration.do_no as doreg_no, do_registration.rate');
-    $builder->join('vehicle', 'vehicle.id = despatch.vehicle_no');
-    $builder->join('do_registration', 'do_registration.do_registration_id = despatch.do_no');
+        $builder->select('despatch.*, vehicle.vehicle_no as vehicle_number, do_registration.do_no as doreg_no, do_registration.rate, do_registration.shortage_qty as min_qty, do_registration.shortage_rate, do_registration.diesel_rate, do_registration.diesel_payment_type, creator.full_name as made_by, COALESCE(do_registration.tds_percentage, 2.00) as tds_percentage, collection_groups.group_code');
+        $builder->join('vehicle', 'vehicle.id = despatch.vehicle_no');
+        $builder->join('do_registration', 'do_registration.do_registration_id = despatch.do_no');
+        $builder->join('collection_groups', 'collection_groups.id = despatch.collection_group_id', 'left');
+    $builder->join('activity_logs', "activity_logs.model_id = despatch.despatch_id AND activity_logs.action = 'create' AND activity_logs.menu = 'despatch_entry'", 'left');
+    $builder->join('user as creator', 'creator.id = activity_logs.user_id', 'left');
     $builder->where('despatch.deleted_by IS NULL');
 
     if (!empty($from_date)) {
@@ -791,9 +794,10 @@ public function despatch_dtls1_paginated($from_date = null, $to_date = null, $do
 public function despatch_dtls1($from_date = null, $to_date = null, $do_no = null, $chalan_status = null, $payment_status = null, $deposited_status = null, $limit = 10, $offset = 0)
 {
     $builder = $this->db->table('despatch');
-    $builder->select('despatch.*, vehicle.vehicle_no as vehicle_number, do_registration.do_no as doreg_no, do_registration.rate');
-    $builder->join('vehicle', 'vehicle.id = despatch.vehicle_no');
-    $builder->join('do_registration', 'do_registration.do_registration_id = despatch.do_no');
+        $builder->select('despatch.*, vehicle.vehicle_no as vehicle_number, do_registration.do_no as doreg_no, do_registration.rate, do_registration.shortage_qty as min_qty, do_registration.shortage_rate, do_registration.diesel_rate, COALESCE(do_registration.tds_percentage, 2.00) as tds_percentage, collection_groups.group_code');
+        $builder->join('vehicle', 'vehicle.id = despatch.vehicle_no');
+        $builder->join('do_registration', 'do_registration.do_registration_id = despatch.do_no');
+        $builder->join('collection_groups', 'collection_groups.id = despatch.collection_group_id', 'left');
     $builder->where('despatch.deleted_by IS NULL');
 
     if (!empty($from_date)) {

@@ -6339,6 +6339,7 @@ class Admin extends BaseController
                 'cash_type'    => $this->request->getPost('cash_type'),
                 'diesel_payment_type' => $this->request->getPost('diesel_payment_type'),
                 'diesel_rate' => $this->request->getPost('diesel_rate'),
+                'tds_percentage' => $this->request->getPost('tds_percentage') ?? 2.00,
                 'shortage_qty' => $this->request->getPost('shortage_qty'),
                 'shortage_rate' => $this->request->getPost('shortage_rate'),
                 'special_shortage' => $this->request->getPost('special_shortage') ? 1 : 0,
@@ -6511,6 +6512,10 @@ class Admin extends BaseController
             </div>
             
             <div class="uk-margin-bottom">
+                <label>TDS Rate (%)</label>
+                <input type="number" step="0.01" name="tds_percentage" id="edit_tds_percentage" class="form-control" value="<?= $doreg->tds_percentage ?? 2.00; ?>" />
+            </div>
+            <div class="uk-margin-bottom">
                 <label>Shortage Qty</label>
                 <input type="number" step="0.01" name="shortage_qty" id="edit_shortage_qty" class="form-control" value="<?= $doreg->shortage_qty ?>" />
             </div>
@@ -6580,6 +6585,7 @@ class Admin extends BaseController
             'cash_type' => $this->request->getPost('cash_type'),
             'diesel_payment_type' => $this->request->getPost('diesel_payment_type'),
             'diesel_rate' => $this->request->getPost('diesel_rate'),
+            'tds_percentage' => $this->request->getPost('tds_percentage') ?? 2.00,
             'shortage_qty' => $this->request->getPost('shortage_qty'),
             'shortage_rate' => $this->request->getPost('shortage_rate'),
             'special_shortage' => $this->request->getPost('special_shortage') ? 1 : 0,
@@ -7210,9 +7216,9 @@ class Admin extends BaseController
                 'P1' => 'Driver Expense',
                 'Q1' => 'Total Deduction',
                 'R1' => 'Net Amount',
-                'S1' => 'Deposited',
-                'T1' => 'Deposit By',
-                'U1' => 'Deposit Date',
+                'S1' => 'Added',
+                'T1' => 'Added By',
+                'U1' => 'Added Date',
                 'V1' => 'TDS',
                 'W1' => 'Other Deduction',
                 'X1' => 'Payment Status',
@@ -7309,9 +7315,9 @@ class Admin extends BaseController
             ->setCellValue('M1', 'Driver Exp')
             ->setCellValue('N1', 'Total Deduction')
             ->setCellValue('O1', 'Net Amount')
-            ->setCellValue('P1', 'Challan Deposited')
-            ->setCellValue('Q1', 'Deposited By')
-            ->setCellValue('R1', 'Deposited Date')
+            ->setCellValue('P1', 'Challan Added')
+            ->setCellValue('Q1', 'Added By')
+            ->setCellValue('R1', 'Added Date')
             ->setCellValue('S1', 'Commission');
 
         // Populate data
@@ -7387,94 +7393,373 @@ class Admin extends BaseController
     }
 
 
+    // public function updateDispatch()
+    // {
+    //     $allPostData = $this->request->getPost();
+    //         log_message('debug', '========== UPDATE DISPATCH REQUEST DATA ==========');
+    //         log_message('debug', json_encode($allPostData, JSON_PRETTY_PRINT));
+    //         echo "<pre style='background: #f4f4f4; padding: 20px; border: 2px solid #333;'>";
+    //         echo "========== INCOMING POST DATA ==========\n";
+    //         print_r($allPostData);
+    //         echo "\n========================================\n";
+    //         echo "</pre>";
+    //         // ============================================================
+    //     $id = $this->request->getPost('id');
+    //     $rest_amount = (float)($this->request->getPost('rest_amount') ?? 0);
+
+    //     $shortage = (float)($this->request->getPost('shortage') ?? 0);
+    //     $freight = (float)($this->request->getPost('freight') ?? 0);
+    //     $dieselQty = (float)($this->request->getPost('dieselQty') ?? 0);
+    //     $totaldieselRate = (float)($this->request->getPost('totaldieselRate') ?? 0);
+    //     $cash = (float)($this->request->getPost('cash') ?? 0);
+    //     $bilty_commission = (float)($this->request->getPost('bilty_commission') ?? 0);
+    //     $deposited = (int)($this->request->getPost('deposited') ?? 0);
+    //     $deposit_by = $this->request->getPost('deposit_by');
+    //     $deposit_date = $this->request->getPost('deposit_date');
+    //     $net_amount = $this->request->getPost('net_amount');
+    //     // TDS will be calculated from DO registration, not from manual input
+    //     $tds = $this->request->getPost('tds'); // Will be calculated below
+    //     $otherDeduction = (float)($this->request->getPost('otherDeduction') ?? 0);
+    //     $paymentStatus = (int)($this->request->getPost('paymentStatus') ?? 0);
+    //     $received_date = $this->request->getPost('received_date');
+
+    //     if (empty($id)) {
+    //         return $this->response->setJSON(['status' => 'error', 'message' => 'Invalid dispatch ID!']);
+    //     }
+
+    //     // Fetch dispatch and DO registration details
+    //     $despatch = $this->db->query("
+    //         SELECT d.*, dr.rate, dr.shortage_qty as min_qty, dr.shortage_rate, dr.diesel_rate, dr.diesel_payment_type, COALESCE(dr.tds_percentage, 2.00) as tds_percentage 
+    //         FROM despatch d 
+    //         LEFT JOIN do_registration dr ON dr.do_registration_id = d.do_no 
+    //         WHERE d.despatch_id = ?
+    //     ", [$id])->getRow();
+
+    //     if (!$despatch) {
+    //         return $this->response->setJSON(['status' => 'error', 'message' => 'Dispatch record not found']);
+    //     }
+
+    //     $rate = (float)($despatch->rate ?? 0);
+    //     $min_qty = (float)($despatch->min_qty ?? 0);
+    //     $shortage_rate_from_do = (float)($despatch->shortage_rate ?? 0);
+    //     $diesel_rate = (float)($despatch->diesel_rate ?? 0);
+    //     $tds_percentage = (float)($despatch->tds_percentage ?? 2.00);
+    //     $d_type = !empty($despatch->diesel_payment_type) ? $despatch->diesel_payment_type : 'Party';
+        
+    //     // Calculate diesel amount if not provided
+    //     if ($totaldieselRate == 0 && $dieselQty > 0 && $diesel_rate > 0) {
+    //         $totaldieselRate = $dieselQty * $diesel_rate;
+    //     }
+        
+    //     // Fetch shortage details based on do_no (if exists)
+    //     $shortage_dtls = $this->db->query("SELECT * FROM shortage_details WHERE do_id = ?", [$despatch->do_no])->getResult();
+
+    //     $shortage_price = 0;
+
+    //     // Calculate shortage price - Priority: shortage_details table > do_registration.min_qty > simple calculation
+    //     if (!empty($shortage_dtls)) {
+    //         // Use shortage_details table rules
+    //         foreach ($shortage_dtls as $detail) {
+    //             if ($shortage > $detail->qty) {
+    //                 $shortage_rate = (float)$detail->greater_than;
+    //             } elseif ($shortage == $detail->qty) {
+    //                 $shortage_rate = (float)$detail->equal_to;
+    //             } elseif ($shortage < $detail->qty) {
+    //                 $shortage_rate = (float)$detail->less_than;
+    //             } else {
+    //                 $shortage_rate = 0;
+    //             }
+    //             $shortage_price = $shortage * $shortage_rate;
+    //             break; // Use first matching rule
+    //         }
+    //     } elseif ($min_qty > 0 && $rest_amount < $min_qty) {
+    //         // Use min_qty based calculation from do_registration
+    //         $shortage_qty = $min_qty - $rest_amount;
+    //         if ($shortage_rate_from_do > 0) {
+    //             $shortage_price = $shortage_qty * $shortage_rate_from_do;
+    //         } else {
+    //             $shortage_price = $shortage_qty * $rate;
+    //         }
+    //     } elseif ($shortage > 0) {
+    //         // Simple calculation: shortage * rate
+    //         $shortage_price = $shortage * $rate;
+    //     }
+
+    //     // Calculate TDS from DO registration (Freight × TDS Percentage)
+    //     // $tds = ($freight * $tds_percentage) / 100;
+
+    //     // Total deduction should represent all factors reducing the freight amount relative to the net formula.
+    //     $total_deduction = $shortage_price + (strcasecmp($d_type, 'Own') == 0 ? -$totaldieselRate : $totaldieselRate) + $cash - $bilty_commission - $tds;
+        
+    //     // Calculate Net Amount matching frontend: Net = Freight - ShortagePrice + (Diesel if Own else -Diesel) - Cash + Bilty + TDS
+    //     // $net_amount = $freight - $shortage_price + (strcasecmp($d_type, 'Own') == 0 ? $totaldieselRate : -$totaldieselRate) - $cash + $bilty_commission + $tds;
+
+    //     // Prepare data for update
+    //     $data = [
+    //         'rest_amount' => $rest_amount,
+    //         'shortage' => $shortage,
+    //         'freight' => $freight,
+    //         'shortage_price' => $shortage_price,
+    //         'dieselPrice' => $diesel_rate, // Store diesel rate from DO registration
+    //         'dieselQty' => $dieselQty,
+    //         'totaldieselRate' => $totaldieselRate,
+    //         'driver_expence' => 0, // Removed from UI but keeping in DB for backward compatibility
+    //         'cash' => $cash,
+    //         'bilty_commission' => $bilty_commission,
+    //         'deposited' => $deposited,
+    //         'deposit_by' => $deposit_by,
+    //         'deposit_date' => $deposit_date,
+    //         'total_deduction' => $total_deduction,
+    //         'net_amount' => $net_amount,
+    //         'tds' => $tds,
+    //         'other_deduction' => $otherDeduction,
+    //         'payment_status' => $paymentStatus,
+    //         'received_date' => $received_date,
+    //     ];
+
+    //     // Update despatch table
+    //     $builder = $this->db->table('despatch');
+    //     $updated = $builder->where('despatch_id', $id)->update($data);
+
+    //     if ($updated) {
+    //         return $this->response->setJSON([
+    //             'status' => 'success',
+    //             'message' => 'Updated successfully',
+    //             'calculations' => [
+    //                 'shortage' => number_format($shortage, 2, '.', ''),
+    //                 'shortage_price' => number_format($shortage_price, 2, '.', ''),
+    //                 'freight' => number_format($freight, 2, '.', ''),
+    //                 'tds' => number_format($tds, 2, '.', ''),
+    //                 'total_deduction' => number_format($total_deduction, 2, '.', ''),
+    //                 'net_amount' => number_format($net_amount, 2, '.', '')
+    //             ]
+    //         ]);
+    //     } else {
+    //         return $this->response->setJSON(['status' => 'error', 'message' => 'Failed to update']);
+    //     }
+    // }
+
     public function updateDispatch()
     {
         $id = $this->request->getPost('id');
-        $rest_amount = $this->request->getPost('rest_amount');
-
-        $shortage = $this->request->getPost('shortage');
-        $freight = $this->request->getPost('freight');
-        $dieselPrice = $this->request->getPost('dieselPrice');
-        $dieselQty = $this->request->getPost('dieselQty');
-        $totaldieselRate = $this->request->getPost('totaldieselRate');
-        $driver_expence = $this->request->getPost('driver_expence');
-        $deposited = $this->request->getPost('deposited');
+        $rest_amount = (float)($this->request->getPost('rest_amount') ?? 0);
+        $shortage = (float)($this->request->getPost('shortage') ?? 0);
+        $freight = (float)($this->request->getPost('freight') ?? 0);
+        $dieselQty = (float)($this->request->getPost('dieselQty') ?? 0);
+        $totaldieselRate = (float)($this->request->getPost('totaldieselRate') ?? 0);
+        $cash = (float)($this->request->getPost('cash') ?? 0);
+        $bilty_commission = (float)($this->request->getPost('bilty_commission') ?? 0);
+        $deposited = (int)($this->request->getPost('deposited') ?? 0);
         $deposit_by = $this->request->getPost('deposit_by');
         $deposit_date = $this->request->getPost('deposit_date');
-        $tds = $this->request->getPost('tds');
-        $otherDeduction = $this -> request -> getPost('otherDeduction');
-        $paymentStatus = $this -> request ->getPost('paymentStatus');
-        $received_date = $this -> request ->getPost('received_date');
+        $net_amount = (float)($this->request->getPost('net_amount') ?? 0);
+        $tds = (float)($this->request->getPost('tds') ?? 0);
+        $otherDeduction = (float)($this->request->getPost('otherDeduction') ?? 0);
+        $paymentStatus = (int)($this->request->getPost('paymentStatus') ?? 0);
+        $received_date = $this->request->getPost('received_date');
 
         if (empty($id)) {
-            return $this->response->setJSON(['status' => 'error', 'message' => 'Invalid dispatch ID!']);
+            return $this->response->setJSON([
+                'status' => 'error',
+                'message' => 'Invalid dispatch ID!'
+            ]);
         }
 
-        // Fetch do_no from despatch table
-        $despatch = $this->db->query("SELECT do_no FROM despatch WHERE despatch_id = ?", [$id])->getRow();
+        // Fetch dispatch & DO details
+        $despatch = $this->db->query("
+            SELECT d.*, dr.rate, dr.shortage_qty AS min_qty, dr.shortage_rate, dr.diesel_rate,
+                COALESCE(dr.tds_percentage, 2.00) AS tds_percentage
+            FROM despatch d
+            LEFT JOIN do_registration dr ON dr.do_registration_id = d.do_no
+            WHERE d.despatch_id = ?
+        ", [$id])->getRow();
 
         if (!$despatch) {
-            return $this->response->setJSON(['status' => 'error', 'message' => 'Dispatch record not found']);
+            return $this->response->setJSON([
+                'status' => 'error',
+                'message' => 'Dispatch record not found'
+            ]);
         }
 
-        // Fetch shortage details based on do_no
-        $shortage_dtls = $this->db->query("SELECT * FROM shortage_details WHERE do_id = ?", [$despatch->do_no])->getResult();
+        $rate = (float)($despatch->rate ?? 0);
+        $shortage_rate_from_do = (float)($despatch->shortage_rate ?? 0);
+        $diesel_rate = (float)($despatch->diesel_rate ?? 0);
 
-        $shortage_rate = 0;
+        // Diesel calculation
+        if ($totaldieselRate == 0 && $dieselQty > 0 && $diesel_rate > 0) {
+            $totaldieselRate = $dieselQty * $diesel_rate;
+        }
+
+        // Shortage price
         $shortage_price = 0;
-
-        if (!empty($shortage_dtls)) {
-            foreach ($shortage_dtls as $detail) {
-                if ($shortage > $detail->qty) {
-                    $shortage_rate = $detail->greater_than;  // FIXED: Use amount column
-                } elseif ($shortage == $detail->qty) {
-                    $shortage_rate = $detail->equal_to;
-                } elseif ($shortage < $detail->qty) {
-                    $shortage_rate = $detail->less_than;
-                }
-
-                // Calculate shortage price correctly
-                $shortage_price = $shortage * $shortage_rate;
-            }
+        if ($shortage > 0) {
+            $shortage_price = ($shortage_rate_from_do > 0)
+                ? $shortage * $shortage_rate_from_do
+                : $shortage * $rate;
         }
-        $total_deduction = $shortage_price + $totaldieselRate + $driver_expence;
-        $net_amount = $freight - $total_deduction;
 
-        // Prepare data for update
+        // Total deduction
+        $total_deduction = $shortage_price + $totaldieselRate + $cash + $bilty_commission + $tds;
+
+        // Net amount
+        // $net_amount = $freight - $total_deduction;
+
+        $user_id = $this->session->get('user_id');
+        
+        // Update data
         $data = [
-            'rest_amount' => $rest_amount,
-            'shortage' => $shortage,
-            'freight' => $freight,
-            'shortage_price' => $shortage_price, // Ensure correct calculation
-            'dieselPrice' => $dieselPrice,
-            'dieselQty' => $dieselQty,
-            'totaldieselRate' => $totaldieselRate,
-            'driver_expence' => $driver_expence,
-            'deposited' => $deposited,
-            'deposit_by' => $deposit_by,
-            'deposit_date' => $deposit_date,
-            'total_deduction' => $total_deduction,
-            'net_amount' => $net_amount,
-            'tds' => $tds,
-            'other_deduction' => $otherDeduction,
-            'payment_status' => $paymentStatus,
-            'received_date' => $received_date,
+            'rest_amount'       => $rest_amount,
+            'shortage'          => $shortage,
+            'freight'           => $freight,
+            'shortage_price'    => $shortage_price,
+            'dieselPrice'       => $diesel_rate,
+            'dieselQty'         => $dieselQty,
+            'totaldieselRate'   => $totaldieselRate,
+            'cash'              => $cash,
+            'bilty_commission'  => $bilty_commission,
+            'deposited'         => $deposited,
+            'deposit_by'        => $deposit_by,
+            'deposit_date'      => $deposit_date,
+            'total_deduction'   => $total_deduction,
+            'net_amount'        => $net_amount,
+            'tds'               => $tds,
+            'other_deduction'   => $otherDeduction,
+            'payment_status'    => $paymentStatus,
+            'received_date'     => $received_date,
+            'updated_by'        => $user_id,
+            'updated_at'        => date('Y-m-d H:i:s'),
         ];
 
-        // Update despatch table
-        $builder = $this->db->table('despatch');
-        $updated = $builder->where('despatch_id', $id)->update($data);
+        $updated = $this->db->table('despatch')
+            ->where('despatch_id', $id)
+            ->update($data);
 
         if ($updated) {
             return $this->response->setJSON([
                 'status' => 'success',
                 'message' => 'Updated successfully',
-                'shortage_price' => $shortage_price // Send shortage_price back to AJAX
+                'calculations' => [
+                    'shortage' => number_format($shortage, 2, '.', ''),
+                    'shortage_price' => number_format($shortage_price, 2, '.', ''),
+                    'freight' => number_format($freight, 2, '.', ''),
+                    'tds' => number_format($tds, 2, '.', ''),
+                    'total_deduction' => number_format($total_deduction, 2, '.', ''),
+                    'net_amount' => number_format($net_amount, 2, '.', '')
+                ]
             ]);
-        } else {
-            return $this->response->setJSON(['status' => 'error', 'message' => 'Failed to update']);
         }
+
+        return $this->response->setJSON([
+            'status' => 'error',
+            'message' => 'Failed to update'
+        ]);
     }
+
+    public function create_collection_group()
+    {
+        $ids = $this->request->getPost('ids');
+        if (empty($ids) || !is_array($ids)) {
+            return $this->response->setJSON(['status' => 'error', 'message' => 'No records selected']);
+        }
+
+        $user_id = $this->session->get('user_id');
+        $group_code = 'GRP-' . date('Ymd') . '-' . strtoupper(substr(uniqid(), -4));
+
+        $this->db->transStart();
+
+        // 1. Create group entry
+        $this->db->table('collection_groups')->insert([
+            'group_code' => $group_code,
+            'created_at' => date('Y-m-d H:i:s'),
+            'created_by' => $user_id,
+            'status' => 1
+        ]);
+
+        $group_id = $this->db->insertID();
+
+        // 2. Update despatch records
+        $this->db->table('despatch')
+            ->whereIn('despatch_id', $ids)
+            ->update(['collection_group_id' => $group_id]);
+
+        $this->db->transComplete();
+
+        if ($this->db->transStatus() === FALSE) {
+            return $this->response->setJSON(['status' => 'error', 'message' => 'Transaction failed']);
+        }
+
+        return $this->response->setJSON([
+            'status' => 'success', 
+            'group_code' => $group_code
+        ]);
+    }
+
+    public function get_active_groups()
+    {
+        // Fetch last 50 active groups ordered by creation date
+        $groups = $this->db->table('collection_groups')
+            ->select('id, group_code, created_at')
+            ->where('status', 1)
+            ->orderBy('created_at', 'DESC')
+            ->limit(50)
+            ->get()
+            ->getResult();
+
+        return $this->response->setJSON(['status' => 'success', 'groups' => $groups]);
+    }
+
+    public function manage_collection_group()
+    {
+        $ids = $this->request->getPost('ids');
+        $action = $this->request->getPost('action'); // 'add' or 'remove'
+        $group_id = $this->request->getPost('group_id'); // Required for 'add'
+
+        if (empty($ids) || !is_array($ids)) {
+            return $this->response->setJSON(['status' => 'error', 'message' => 'No records selected']);
+        }
+
+        $user_id = $this->session->get('user_id');
+        
+        $this->db->transStart();
+
+        if ($action === 'remove') {
+            // Ungroup selected records
+            $this->db->table('despatch')
+                ->whereIn('despatch_id', $ids)
+                ->update(['collection_group_id' => null, 'updated_by' => $user_id, 'updated_at' => date('Y-m-d H:i:s')]);
+                
+            $message = 'Records ungrouped successfully';
+
+        } elseif ($action === 'add') {
+            if (empty($group_id)) {
+                return $this->response->setJSON(['status' => 'error', 'message' => 'Group ID is required for adding']);
+            }
+
+            // Check if group exists
+            $group = $this->db->table('collection_groups')->where('id', $group_id)->countAllResults();
+            if ($group == 0) {
+                return $this->response->setJSON(['status' => 'error', 'message' => 'Invalid Group ID']);
+            }
+
+            // Add records to group
+            $this->db->table('despatch')
+                ->whereIn('despatch_id', $ids)
+                ->update(['collection_group_id' => $group_id, 'updated_by' => $user_id, 'updated_at' => date('Y-m-d H:i:s')]);
+                
+            $message = 'Records added to group successfully';
+        } else {
+            return $this->response->setJSON(['status' => 'error', 'message' => 'Invalid action']);
+        }
+
+        $this->db->transComplete();
+
+        if ($this->db->transStatus() === FALSE) {
+            return $this->response->setJSON(['status' => 'error', 'message' => 'Transaction failed']);
+        }
+
+        return $this->response->setJSON(['status' => 'success', 'message' => $message]);
+    }
+
 
 
 

@@ -47,6 +47,8 @@
     <link id="color" rel="stylesheet" href="<?php echo base_url();?>/assets/admin/css/color-1.css" media="screen">
     <!-- Responsive css-->
     <link rel="stylesheet" type="text/css" href="<?php echo base_url();?>/assets/admin/css/responsive.css">
+    <!-- Custom Voucher css-->
+    <link rel="stylesheet" type="text/css" href="<?php echo base_url();?>/assets/admin/css/custom_voucher.css">
     <!--<link rel="stylesheet" type="text/css" href="https://cdn.datatables.net/1.13.6/css/jquery.dataTables.min.css">-->
 
     <!-- jQuery -->
