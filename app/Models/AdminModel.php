@@ -207,21 +207,7 @@ public function driverasignment($from_date = null, $to_date = null)
 	    $builder->select('*');
 	    return $builder->get()->getResult();
 	}
-	function doregistration_dtls1($from_date = null, $to_date = null)
-    {
-        $builder = $this->db->table('do_registration');
-        $builder->select('*');
-        $builder->join('route', 'route.id = do_registration.route_id', 'left');
-        
-        // Condition: Select records where either from_date or to_date is within the given range
-        $builder->groupStart()
-                ->where("do_registration.from_date BETWEEN '$from_date' AND '$to_date'")
-                ->orWhere("do_registration.to_date BETWEEN '$from_date' AND '$to_date'")
-                ->orWhere("(do_registration.from_date <= '$from_date' AND do_registration.to_date >= '$to_date')") // Covers cases where the range fully overlaps
-                ->groupEnd();
 
-        return $builder->get()->getResult();
-    }
 
 	function bank(){
 	    $builder = $this->db->table('bank');
@@ -697,7 +683,31 @@ public function itemdtls()
         return $builder->get()->getResult();
     }
 
-public function despatch_count($from_date = null, $to_date = null, $do_no = null, $chalan_status = null, $payment_status = null, $deposited_status = null)
+    function doregistration_dtls1($from_date = null, $to_date = null, $voucher_id = null)
+    {
+        $builder = $this->db->table('do_registration');
+        $builder->select('do_registration.*, vendor.name as party_name');
+        $builder->join('vendor', 'vendor.id = do_registration.party', 'left');
+        
+        if (!empty($voucher_id)) {
+            $builder->join('despatch', 'despatch.do_no = do_registration.do_registration_id');
+            $builder->where('despatch.voucher_id', $voucher_id);
+            $builder->groupBy('do_registration.do_registration_id'); // Ensure unique DOs
+        } else {
+             // Only apply date filter if NO voucher is selected
+            if (!empty($from_date) && !empty($to_date)) {
+                $builder->groupStart()
+                        ->where("do_registration.from_date BETWEEN '$from_date' AND '$to_date'")
+                        ->orWhere("do_registration.to_date BETWEEN '$from_date' AND '$to_date'")
+                        ->orWhere("(do_registration.from_date <= '$from_date' AND do_registration.to_date >= '$to_date')")
+                        ->groupEnd();
+            }
+        }
+
+        $builder->orderBy('do_registration_id', 'DESC');
+        return $builder->get()->getResult();
+    }
+public function despatch_count($from_date = null, $to_date = null, $do_no = null, $chalan_status = null, $payment_status = null, $deposited_status = null, $voucher_id = null)
 {
     $builder = $this->db->table('despatch');
     $builder->select('COUNT(*) as total');
@@ -705,12 +715,17 @@ public function despatch_count($from_date = null, $to_date = null, $do_no = null
     $builder->join('do_registration', 'do_registration.do_registration_id = despatch.do_no');
     $builder->where('despatch.deleted_by IS NULL');
 
-    if (!empty($from_date)) {
-        $builder->where('des_date >=', $from_date);
+    if (!empty($voucher_id)) {
+        $builder->where('despatch.voucher_id', $voucher_id);
+    } else {
+        if (!empty($from_date)) {
+            $builder->where('des_date >=', $from_date);
+        }
+        if (!empty($to_date)) {
+            $builder->where('des_date <=', $to_date);
+        }
     }
-    if (!empty($to_date)) {
-        $builder->where('des_date <=', $to_date);
-    }
+
     if (!empty($do_no)) {
         $builder->where('despatch.do_no', $do_no);
     }
@@ -742,23 +757,28 @@ public function despatch_count($from_date = null, $to_date = null, $do_no = null
     return $query->getRow()->total;
 }
 
-public function despatch_dtls1_paginated($from_date = null, $to_date = null, $do_no = null, $chalan_status = null, $payment_status = null, $deposited_status = null, $limit = 10, $offset = 0)
+public function despatch_dtls1_paginated($from_date = null, $to_date = null, $do_no = null, $chalan_status = null, $payment_status = null, $deposited_status = null, $limit = 10, $offset = 0, $voucher_id = null)
 {
     $builder = $this->db->table('despatch');
-        $builder->select('despatch.*, vehicle.vehicle_no as vehicle_number, do_registration.do_no as doreg_no, do_registration.rate, do_registration.shortage_qty as min_qty, do_registration.shortage_rate, do_registration.diesel_rate, do_registration.diesel_payment_type, creator.full_name as made_by, COALESCE(do_registration.tds_percentage, 2.00) as tds_percentage, collection_groups.group_code');
+        $builder->select('despatch.*, vehicle.vehicle_no as vehicle_number, do_registration.do_no as doreg_no, do_registration.rate, do_registration.shortage_qty as min_qty, do_registration.shortage_rate, do_registration.diesel_rate, do_registration.diesel_payment_type, creator.full_name as made_by, COALESCE(do_registration.tds_percentage, 2.00) as tds_percentage, voucher.group_code');
         $builder->join('vehicle', 'vehicle.id = despatch.vehicle_no');
         $builder->join('do_registration', 'do_registration.do_registration_id = despatch.do_no');
-        $builder->join('collection_groups', 'collection_groups.id = despatch.collection_group_id', 'left');
+        $builder->join('voucher', 'voucher.id = despatch.voucher_id', 'left');
     $builder->join('activity_logs', "activity_logs.model_id = despatch.despatch_id AND activity_logs.action = 'create' AND activity_logs.menu = 'despatch_entry'", 'left');
     $builder->join('user as creator', 'creator.id = activity_logs.user_id', 'left');
     $builder->where('despatch.deleted_by IS NULL');
 
-    if (!empty($from_date)) {
-        $builder->where('des_date >=', $from_date);
+    if (!empty($voucher_id)) {
+        $builder->where('despatch.voucher_id', $voucher_id);
+    } else {
+        if (!empty($from_date)) {
+            $builder->where('des_date >=', $from_date);
+        }
+        if (!empty($to_date)) {
+            $builder->where('des_date <=', $to_date);
+        }
     }
-    if (!empty($to_date)) {
-        $builder->where('des_date <=', $to_date);
-    }
+
     if (!empty($do_no)) {
         $builder->where('despatch.do_no', $do_no);
     }
@@ -791,21 +811,26 @@ public function despatch_dtls1_paginated($from_date = null, $to_date = null, $do
     $results = $builder->get()->getResult();
     return $results ?? []; // ✅ Always return array, never null
 }
-public function despatch_dtls1($from_date = null, $to_date = null, $do_no = null, $chalan_status = null, $payment_status = null, $deposited_status = null, $limit = 10, $offset = 0)
+public function despatch_dtls1($from_date = null, $to_date = null, $do_no = null, $chalan_status = null, $payment_status = null, $deposited_status = null, $limit = 10, $offset = 0, $voucher_id = null)
 {
     $builder = $this->db->table('despatch');
-        $builder->select('despatch.*, vehicle.vehicle_no as vehicle_number, do_registration.do_no as doreg_no, do_registration.rate, do_registration.shortage_qty as min_qty, do_registration.shortage_rate, do_registration.diesel_rate, COALESCE(do_registration.tds_percentage, 2.00) as tds_percentage, collection_groups.group_code');
+        $builder->select('despatch.*, vehicle.vehicle_no as vehicle_number, do_registration.do_no as doreg_no, do_registration.rate, do_registration.shortage_qty as min_qty, do_registration.shortage_rate, do_registration.diesel_rate, COALESCE(do_registration.tds_percentage, 2.00) as tds_percentage, voucher.group_code');
         $builder->join('vehicle', 'vehicle.id = despatch.vehicle_no');
         $builder->join('do_registration', 'do_registration.do_registration_id = despatch.do_no');
-        $builder->join('collection_groups', 'collection_groups.id = despatch.collection_group_id', 'left');
+        $builder->join('voucher', 'voucher.id = despatch.voucher_id', 'left');
     $builder->where('despatch.deleted_by IS NULL');
 
-    if (!empty($from_date)) {
-        $builder->where('des_date >=', $from_date);
+    if (!empty($voucher_id)) {
+        $builder->where('despatch.voucher_id', $voucher_id);
+    } else {
+        if (!empty($from_date)) {
+            $builder->where('des_date >=', $from_date);
+        }
+        if (!empty($to_date)) {
+            $builder->where('des_date <=', $to_date);
+        }
     }
-    if (!empty($to_date)) {
-        $builder->where('des_date <=', $to_date);
-    }
+
     if (!empty($do_no)) {
         $builder->where('despatch.do_no', $do_no);
     }

@@ -7078,6 +7078,7 @@ class Admin extends BaseController
         $from_date = $this->request->getVar('from_date') ?? date('Y-m-01');
         $to_date = $this->request->getVar('to_date') ?? date('Y-m-t');
         $do_no = $this->request->getVar('do_no');
+        $voucher_id = $this->request->getVar('voucher_id');
         $chalan_status = $this->request->getVar('chalan_status');
         $payment_status = $this->request->getVar('payment_status');
         $deposited_status = $this->request->getVar('deposited_status');
@@ -7086,12 +7087,20 @@ class Admin extends BaseController
         $data['setting'] = $this->AdminModel->Settingdata();
         $data['singleuser'] = $this->AdminModel->userdata($user_id);
         $data['vehicle'] = $this->AdminModel->Getvehicle();
-        $data['doregistration'] = $this->AdminModel->doregistration_dtls1($from_date, $to_date);
+        $data['doregistration'] = $this->AdminModel->doregistration_dtls1($from_date, $to_date, $voucher_id);
+        
+        // Fetch active vouchers for the filter dropdown
+        $data['vouchers'] = $this->db->table('voucher')
+            ->select('id, group_code')
+            ->where('status', 1)
+            ->orderBy('created_at', 'DESC')
+            ->get()
+            ->getResult();
 
-        $data['total_count'] = $this->AdminModel->despatch_count($from_date, $to_date, $do_no, $chalan_status, $payment_status, $deposited_status);
-        $data['despatch'] = $this->AdminModel->despatch_dtls1_paginated($from_date, $to_date, $do_no, $chalan_status, $payment_status, $deposited_status, $records_per_page, $offset);
+        $data['total_count'] = $this->AdminModel->despatch_count($from_date, $to_date, $do_no, $chalan_status, $payment_status, $deposited_status, $voucher_id);
+        $data['despatch'] = $this->AdminModel->despatch_dtls1_paginated($from_date, $to_date, $do_no, $chalan_status, $payment_status, $deposited_status, $records_per_page, $offset, $voucher_id);
 
-        $data['date'] = ['from_date' => $from_date, 'to_date' => $to_date, 'do_no' => $do_no, 'chalan_status' => $chalan_status, 'payment_status' => $payment_status, 'deposited_status' => $deposited_status];
+        $data['date'] = ['from_date' => $from_date, 'to_date' => $to_date, 'do_no' => $do_no, 'voucher_id' => $voucher_id, 'chalan_status' => $chalan_status, 'payment_status' => $payment_status, 'deposited_status' => $deposited_status];
         $data['current_page'] = $current_page;
         $data['records_per_page'] = $records_per_page;
 
@@ -7363,9 +7372,10 @@ class Admin extends BaseController
     {
         $from_date = $this->request->getPost('from_date') ?? date('Y-m-01');
         $to_date = $this->request->getPost('to_date') ?? date('Y-m-t');
+        $voucher_id = $this->request->getPost('voucher_id');
 
-        // Fetch DO Numbers based on date range
-        $do_numbers = $this->AdminModel->doregistration_dtls1($from_date, $to_date);
+        // Fetch DO Numbers based on date range and voucher
+        $do_numbers = $this->AdminModel->doregistration_dtls1($from_date, $to_date, $voucher_id);
         // print_r($do_numbers);exit;
         // Generate HTML options for the dropdown
         $output = '<option value="">Select DO No.</option>';
@@ -7662,13 +7672,30 @@ class Admin extends BaseController
             return $this->response->setJSON(['status' => 'error', 'message' => 'No records selected']);
         }
 
+        // Check if any selected records are already in a voucher
+        $existing = $this->db->table('despatch')
+            ->select('ref_no') // Assuming ref_no is the visible Challan No
+            ->whereIn('despatch_id', $ids)
+            ->where('voucher_id IS NOT NULL', null, false)
+            ->where('voucher_id !=', 0)
+            ->get()
+            ->getResult();
+
+        if (!empty($existing)) {
+            $challans = implode(', ', array_column($existing, 'ref_no'));
+            return $this->response->setJSON([
+                'status' => 'error', 
+                'message' => "The following challans are already in a voucher: $challans. Please remove them from their current voucher first."
+            ]);
+        }
+
         $user_id = $this->session->get('user_id');
         $group_code = 'GRP-' . date('Ymd') . '-' . strtoupper(substr(uniqid(), -4));
 
         $this->db->transStart();
 
         // 1. Create group entry
-        $this->db->table('collection_groups')->insert([
+        $this->db->table('voucher')->insert([
             'group_code' => $group_code,
             'created_at' => date('Y-m-d H:i:s'),
             'created_by' => $user_id,
@@ -7680,7 +7707,7 @@ class Admin extends BaseController
         // 2. Update despatch records
         $this->db->table('despatch')
             ->whereIn('despatch_id', $ids)
-            ->update(['collection_group_id' => $group_id]);
+            ->update(['voucher_id' => $group_id]);
 
         $this->db->transComplete();
 
@@ -7697,7 +7724,7 @@ class Admin extends BaseController
     public function get_active_groups()
     {
         // Fetch last 50 active groups ordered by creation date
-        $groups = $this->db->table('collection_groups')
+        $groups = $this->db->table('voucher')
             ->select('id, group_code, created_at')
             ->where('status', 1)
             ->orderBy('created_at', 'DESC')
@@ -7726,27 +7753,44 @@ class Admin extends BaseController
             // Ungroup selected records
             $this->db->table('despatch')
                 ->whereIn('despatch_id', $ids)
-                ->update(['collection_group_id' => null, 'updated_by' => $user_id, 'updated_at' => date('Y-m-d H:i:s')]);
+                ->update(['voucher_id' => null, 'updated_by' => $user_id]);
                 
-            $message = 'Records ungrouped successfully';
+            $message = 'Records removed from voucher successfully';
 
         } elseif ($action === 'add') {
             if (empty($group_id)) {
-                return $this->response->setJSON(['status' => 'error', 'message' => 'Group ID is required for adding']);
+                return $this->response->setJSON(['status' => 'error', 'message' => 'Voucher ID is required for adding']);
+            }
+
+            // Check if any selected records are already in a voucher
+            $existing = $this->db->table('despatch')
+                ->select('ref_no')
+                ->whereIn('despatch_id', $ids)
+                ->where('voucher_id IS NOT NULL', null, false)
+                ->where('voucher_id !=', 0)
+                ->get()
+                ->getResult();
+
+            if (!empty($existing)) {
+                $challans = implode(', ', array_column($existing, 'ref_no'));
+                return $this->response->setJSON([
+                    'status' => 'error', 
+                    'message' => "The following challans are already in a voucher: $challans. Please remove them from their current voucher first."
+                ]);
             }
 
             // Check if group exists
-            $group = $this->db->table('collection_groups')->where('id', $group_id)->countAllResults();
+            $group = $this->db->table('voucher')->where('id', $group_id)->countAllResults();
             if ($group == 0) {
-                return $this->response->setJSON(['status' => 'error', 'message' => 'Invalid Group ID']);
+                return $this->response->setJSON(['status' => 'error', 'message' => 'Invalid Voucher ID']);
             }
 
             // Add records to group
             $this->db->table('despatch')
                 ->whereIn('despatch_id', $ids)
-                ->update(['collection_group_id' => $group_id, 'updated_by' => $user_id, 'updated_at' => date('Y-m-d H:i:s')]);
+                ->update(['voucher_id' => $group_id, 'updated_by' => $user_id]);
                 
-            $message = 'Records added to group successfully';
+            $message = 'Records added to voucher successfully';
         } else {
             return $this->response->setJSON(['status' => 'error', 'message' => 'Invalid action']);
         }
@@ -7754,7 +7798,8 @@ class Admin extends BaseController
         $this->db->transComplete();
 
         if ($this->db->transStatus() === FALSE) {
-            return $this->response->setJSON(['status' => 'error', 'message' => 'Transaction failed']);
+            $error = $this->db->error();
+            return $this->response->setJSON(['status' => 'error', 'message' => 'Transaction failed: ' . $error['message']]);
         }
 
         return $this->response->setJSON(['status' => 'success', 'message' => $message]);

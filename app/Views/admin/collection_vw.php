@@ -66,6 +66,19 @@ if ($records_per_page === 'all') { $total_pages = 1; $current_page = 1; } else {
                     <div class="row">
                         <div class="col-md-3"><div class="form-group-custom"><label for="from_date">From Date</label><input type="date" id="from_date" name="from_date" class="form-control-custom" value="<?= $default_from_date; ?>" onchange="updateDoRegistrations()"/></div></div>
                         <div class="col-md-3"><div class="form-group-custom"><label for="to_date">To Date</label><input type="date" id="to_date" name="to_date" class="form-control-custom" value="<?= $default_to_date; ?>" onchange="updateDoRegistrations()"/></div></div>
+                        <div class="col-md-3">
+                            <div class="form-group-custom">
+                                <label for="voucher_id">Voucher</label>
+                                <select class="form-control-custom" name="voucher_id" id="single2" onchange="updateDoRegistrations()">
+                                    <option value="">All Vouchers</option>
+                                    <?php if(isset($vouchers) && !empty($vouchers)): foreach ($vouchers as $v): ?>
+                                    <option value="<?= $v->id; ?>" <?= isset($date['voucher_id']) && $date['voucher_id'] == $v->id ? 'selected' : '' ?>>
+                                        <?= $v->group_code; ?>
+                                    </option>
+                                    <?php endforeach; endif; ?>
+                                </select>
+                            </div>
+                        </div>
                         <div class="col-md-3"><div class="form-group-custom"><label for="do_no">DO No.</label><select class="form-control-custom" name="do_no" id="single"><option value="">Select DO No.</option><?php foreach ($doregistration as $do): ?><option value="<?= $do->do_registration_id; ?>" <?= isset($date['do_no']) && $date['do_no'] == $do->do_registration_id ? 'selected' : '' ?>><?= $do->do_no; ?></option><?php endforeach; ?></select></div></div>
                         <div class="col-md-3"><div class="form-group-custom"><label for="chalan_status">Chalan Status</label><select class="form-control-custom" name="chalan_status" id="chalan_status"><option value="" <?= !isset($date['chalan_status']) || $date['chalan_status'] === '' ? 'selected' : '' ?>>All</option><option value="1" <?= isset($date['chalan_status']) && $date['chalan_status'] == '1' ? 'selected' : '' ?>>Received</option><option value="2" <?= isset($date['chalan_status']) && $date['chalan_status'] == '2' ? 'selected' : '' ?>>Not Received</option></select></div></div>
                         <div class="col-md-3"><div class="form-group-custom"><label for="payment_status">Payment Status</label><select class="form-control-custom" name="payment_status" id="payment_status"><option value="" <?= !isset($date['payment_status']) || $date['payment_status'] === '' ? 'selected' : '' ?>>All</option><option value="1" <?= isset($date['payment_status']) && $date['payment_status'] == '1' ? 'selected' : '' ?>>Paid</option><option value="0" <?= isset($date['payment_status']) && $date['payment_status'] == '0' ? 'selected' : '' ?>>Unpaid</option></select></div></div>
@@ -88,14 +101,14 @@ if ($records_per_page === 'all') { $total_pages = 1; $current_page = 1; } else {
 
                     <div class="btn-group" role="group" aria-label="Group Tools" style="display: flex; gap: 5px;">
                         <button type="button" class="btn-custom btn-primary-custom" style="padding: 8px 16px; display: flex; align-items: center; gap: 8px;" onclick="createCollectionGroup()">
-                            <i class="fa fa-plus-circle"></i> Create
+                            <i class="fa fa-plus-circle"></i> Create Voucher
                         </button>
-                        <!-- <button type="button" class="btn-custom" style="background-color: #17a2b8; color: white; padding: 8px 16px; display: flex; align-items: center; gap: 8px;" onclick="openAddToGroupModal()">
-                            <i class="fa fa-folder-open"></i> Add
+                        <button type="button" class="btn-custom" style="background-color: #17a2b8; color: white; padding: 8px 16px; display: flex; align-items: center; gap: 8px;" onclick="openAddToGroupModal()">
+                            <i class="fa fa-folder-open"></i> Add to Voucher
                         </button>
                         <button type="button" class="btn-custom" style="background-color: #dc3545; color: white; padding: 8px 16px; display: flex; align-items: center; gap: 8px;" onclick="removeFromGroup()">
-                            <i class="fa fa-unlink"></i> Ungroup
-                        </button> -->
+                            <i class="fa fa-unlink"></i> Remove from Voucher
+                        </button>
                     </div>
                 </div>
                 
@@ -149,7 +162,7 @@ if ($records_per_page === 'all') { $total_pages = 1; $current_page = 1; } else {
                         <th>TDS</th>
                         <th>Net Amount</th>
                         <th>Added By</th>
-                        <th>Group ID</th>
+                        <th>Voucher ID</th>
                         <th>Action</th>
                     </tr>
                     </thead>
@@ -224,17 +237,17 @@ if ($records_per_page === 'all') { $total_pages = 1; $current_page = 1; } else {
   <div class="modal-dialog" role="document" style="margin: 10% auto; max-width: 500px;">
     <div class="modal-content" style="background-color: #fefefe; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
       <div class="modal-header" style="padding: 15px; border-bottom: 1px solid #e5e7eb; display: flex; justify-content: space-between; align-items: center;">
-        <h5 class="modal-title" style="margin: 0; font-size: 1.25rem;">Select Existing Group</h5>
+        <h5 class="modal-title" style="margin: 0; font-size: 1.25rem;">Select Existing Voucher</h5>
         <button type="button" class="close" onclick="closeAddToGroupModal()" style="background: none; border: none; font-size: 1.5rem; cursor: pointer;">&times;</button>
       </div>
       <div class="modal-body" style="padding: 20px;">
-        <p>Select a group to add the selected records to:</p>
+        <p>Select a voucher to add the selected records to:</p>
         <select id="groupSelect" class="form-control-custom" style="width: 100%;">
-            <option value="">Loading groups...</option>
+            <option value="">Loading vouchers...</option>
         </select>
       </div>
       <div class="modal-footer" style="padding: 15px; border-top: 1px solid #e5e7eb; display: flex; justify-content: flex-end; gap: 10px;">
-        <button type="button" class="btn-custom" onclick="addToGroup()" style="background-color: #3b82f6; color: white;">Add to Group</button>
+        <button type="button" class="btn-custom" onclick="addToGroup()" style="background-color: #3b82f6; color: white;">Add to Voucher</button>
         <button type="button" class="btn-custom" onclick="closeAddToGroupModal()" style="background-color: #6c757d; color: white;">Cancel</button>
       </div>
     </div>
@@ -252,7 +265,7 @@ if ($records_per_page === 'all') { $total_pages = 1; $current_page = 1; } else {
     function openAddToGroupModal() {
         const selected = document.querySelectorAll(".row-checkbox:checked");
         if (selected.length === 0) {
-            alert('Please select records to add to a group!');
+            alert('Please select records to add to a voucher!');
             return;
         }
         
@@ -281,20 +294,20 @@ if ($records_per_page === 'all') { $total_pages = 1; $current_page = 1; } else {
             success: function(r) {
                 if(r.status === 'success') {
                     if(r.groups.length > 0) {
-                        let html = '<option value="">-- Select Group --</option>';
+                        let html = '<option value="">-- Select Voucher --</option>';
                         r.groups.forEach(g => {
                             html += `<option value="${g.id}">${g.group_code} (${new Date(g.created_at).toLocaleDateString()})</option>`;
                         });
                         select.innerHTML = html;
                     } else {
-                        select.innerHTML = '<option value="">No active groups found</option>';
+                        select.innerHTML = '<option value="">No active vouchers found</option>';
                     }
                 } else {
-                    select.innerHTML = '<option value="">Error loading groups</option>';
+                    select.innerHTML = '<option value="">Error loading vouchers</option>';
                 }
             },
             error: function() {
-                select.innerHTML = '<option value="">Error loading groups</option>';
+                select.innerHTML = '<option value="">Error loading vouchers</option>';
             }
         });
     }
@@ -304,7 +317,7 @@ if ($records_per_page === 'all') { $total_pages = 1; $current_page = 1; } else {
         const groupId = document.getElementById('groupSelect').value;
         
         if (!groupId) {
-            alert('Please select a group!');
+            alert('Please select a voucher!');
             return;
         }
 
@@ -345,11 +358,11 @@ if ($records_per_page === 'all') { $total_pages = 1; $current_page = 1; } else {
     function removeFromGroup() {
         const selected = document.querySelectorAll(".row-checkbox:checked");
         if (selected.length === 0) {
-            alert('Please select records to ungroup!');
+            alert('Please select records to remove from voucher!');
             return;
         }
 
-        if (!confirm(`Are you sure you want to remove ${selected.length} records from their groups?`)) return;
+        if (!confirm(`Are you sure you want to remove ${selected.length} records from their vouchers?`)) return;
 
         const ids = Array.from(selected).map(cb => cb.closest('tr').getAttribute('data-id'));
         
@@ -377,8 +390,24 @@ if ($records_per_page === 'all') { $total_pages = 1; $current_page = 1; } else {
     }
 
     function updateDoRegistrations() {
-        var from = $("#from_date").val(); var to = $("#to_date").val();
-        if (from && to) $.ajax({ url: "<?= base_url('Admin/getDoNumbers') ?>", type: "POST", data: { from_date: from, to_date: to, <?= csrf_token() ?>: "<?= csrf_hash() ?>" }, success: function(r) { $("#single").html(r); } });
+        var from = $("#from_date").val(); 
+        var to = $("#to_date").val();
+        var voucher = $("#single2").val();
+        if (from && to) {
+            $.ajax({ 
+                url: "<?= base_url('Admin/getDoNumbers') ?>", 
+                type: "POST", 
+                data: { 
+                    from_date: from, 
+                    to_date: to, 
+                    voucher_id: voucher,
+                    <?= csrf_token() ?>: "<?= csrf_hash() ?>" 
+                }, 
+                success: function(r) { 
+                    $("#single").html(r); 
+                } 
+            });
+        }
     }
     function changePerPage() { var p = document.getElementById('per_page').value; var url = new URL(window.location.href); url.searchParams.set('per_page', p); url.searchParams.set('page', '1'); window.location.href = url.toString(); }
     
@@ -435,11 +464,11 @@ if ($records_per_page === 'all') { $total_pages = 1; $current_page = 1; } else {
     async function createCollectionGroup() {
         const selected = document.querySelectorAll(".row-checkbox:checked");
         if (selected.length === 0) {
-            alert('Please select at least one record to create a group!');
+            alert('Please select at least one record to create a voucher!');
             return;
         }
 
-        if (!confirm(`Are you sure you want to create a group for ${selected.length} selected records?`)) return;
+        if (!confirm(`Are you sure you want to create a voucher for ${selected.length} selected records?`)) return;
 
         const btn = event.target.closest('button');
         const originalText = btn.innerHTML;
@@ -459,7 +488,7 @@ if ($records_per_page === 'all') { $total_pages = 1; $current_page = 1; } else {
                 btn.disabled = false;
                 btn.innerHTML = originalText;
                 if (r.status === 'success') {
-                    alert('Group created successfully! ID: ' + r.group_code);
+                    alert('Voucher created successfully! ID: ' + r.group_code);
                     location.reload();
                 } else {
                     alert('Error: ' + r.message);
@@ -469,7 +498,7 @@ if ($records_per_page === 'all') { $total_pages = 1; $current_page = 1; } else {
                 btn.disabled = false;
                 btn.innerHTML = originalText;
                 console.error('AJAX Error:', error);
-                alert('Error creating group. Check console for details.');
+                alert('Error creating voucher. Check console for details.');
             }
         });
     }
