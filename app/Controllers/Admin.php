@@ -7637,7 +7637,6 @@ class Admin extends BaseController
             'payment_status'    => $paymentStatus,
             'received_date'     => $received_date,
             'updated_by'        => $user_id,
-            'updated_at'        => date('Y-m-d H:i:s'),
         ];
 
         $updated = $this->db->table('despatch')
