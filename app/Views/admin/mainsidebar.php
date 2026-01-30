@@ -71,7 +71,7 @@
                         <span>Voucher Entry</span>
                       </a>
                       <ul class="sidebar-submenu">
-                        <li><a href="<?php echo base_url();?>/admin/voucher_entry">Voucher Entry</a></li>
+                        <!-- <li><a href="<?php echo base_url();?>/admin/voucher_entry">Voucher Entry</a></li> -->
                         <li><a href="<?php echo base_url(); ?>/admin/Collection">Collection</a></li>
                         <li><a href="<?php echo base_url(); ?>/admin/Deposit">Deposit</a></li>
                         <li><a href="<?php echo base_url(); ?>/admin/Payment">Payment</a></li>
@@ -156,9 +156,7 @@
                      
                     </ul> 
                   </li>
-                  
-                  
-                      
+                     
                     <li class="sidebar-list">
                         <?php if(in_array(30,$jobAssign)){ ?>
                         <a class="sidebar-link sidebar-title" href="#"><span >Master Entry </span></a>

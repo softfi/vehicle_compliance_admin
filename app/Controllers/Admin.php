@@ -6497,10 +6497,8 @@ class Admin extends BaseController
                 <label>Party</label>
                 <select class="js-states form-control" name="party" id="edit_party">
                     <option value="">Select Party</option>
-                    <?php foreach ($partyNames as $pn) { 
-                        $val = $pn->name . ' (' . $pn->id . ')';
-                    ?>
-                        <option value="<?= $val ?>" <?= $doreg->party == $val ? 'selected' : '' ?>><?= $pn->name ?></option>
+                    <?php foreach ($partyNames as $pn) { ?>
+                        <option value="<?= $pn->id ?>" <?= ($doreg->party == $pn->id || $doreg->party == $pn->name . ' (' . $pn->id . ')') ? 'selected' : '' ?>><?= $pn->name ?></option>
                     <?php } ?>
                 </select>
                 <?php if (isset($validation)) { ?><span class="text-danger"><?= $validation->getError('party'); ?></span><?php } ?>
@@ -6942,6 +6940,59 @@ class Admin extends BaseController
     }
 
 
+    public function Payment()
+    {
+        if ($this->session->get('user_id') == '') {
+            return redirect()->to('admin/');
+        }
+
+        $user_id = $this->session->get('user_id');
+        $from_date = $this->request->getVar('from_date');
+        $to_date = $this->request->getVar('to_date');
+        $party = $this->request->getVar('party');
+        $voucher_no = $this->request->getVar('voucher_no');
+
+        $data['setting'] = $this->AdminModel->Settingdata();
+        $data['singleuser'] = $this->AdminModel->userdata($user_id);
+        $data['all_party'] = $this->AdminModel->Getallvendor('Party');
+        $data['all_vouchers'] = $this->AdminModel->get_active_groups(); // For filter dropdown
+
+        $data['payment_vouchers'] = $this->AdminModel->getVouchersForPayment($from_date, $to_date, $party, $voucher_no);
+        
+        $data['filters'] = [
+            'from_date' => $from_date,
+            'to_date' => $to_date,
+            'party' => $party,
+            'voucher_no' => $voucher_no
+        ];
+
+        return view('admin/payment_vw', $data);
+    }
+
+    public function updateVoucherPayment()
+    {
+        if ($this->session->get('user_id') == '') {
+            return $this->response->setJSON(['status' => 'error', 'message' => 'Session expired']);
+        }
+
+        $id = $this->request->getPost('id');
+        $data = [
+            'received_date' => $this->request->getPost('received_date'),
+            'received_amount' => $this->request->getPost('received_amount'),
+            'adjustment_amount' => $this->request->getPost('adjustment_amount'),
+            'adjustment_remarks' => $this->request->getPost('adjustment_remarks'),
+        ];
+
+        $updated = $this->db->table('voucher')->where('id', $id)->update($data);
+
+        if ($updated) {
+            return $this->response->setJSON(['status' => 'success', 'message' => 'Payment updated successfully']);
+        } else {
+            return $this->response->setJSON(['status' => 'error', 'message' => 'Failed to update payment']);
+        }
+    }
+
+
     public function voucher_commition_entry()
     {
 
@@ -7090,10 +7141,27 @@ class Admin extends BaseController
         $data['doregistration'] = $this->AdminModel->doregistration_dtls1($from_date, $to_date, $voucher_id);
         
         // Fetch active vouchers for the filter dropdown
-        $data['vouchers'] = $this->db->table('voucher')
-            ->select('id, group_code')
-            ->where('status', 1)
-            ->orderBy('created_at', 'DESC')
+        $voucher_builder = $this->db->table('voucher')
+            ->select('voucher.id, voucher.group_code')
+            ->where('voucher.status', 1);
+            
+        if ($do_no) {
+            // Join to despatch only to find vouchers that have challans from this DO
+            $voucher_builder->join('despatch', 'despatch.voucher_id = voucher.id');
+            $voucher_builder->where('despatch.do_no', $do_no);
+            $voucher_builder->distinct();
+        }
+        
+        // If there's a voucher_id selected, we MUST make sure it's in the list even if it's NOT in the filtered list
+        // (to avoid the dropdown losing the selection)
+        if ($voucher_id && $do_no) {
+             $voucher_builder->groupStart()
+                 ->where('voucher.status', 1) // redundant but safe
+                 ->orWhere('voucher.id', $voucher_id)
+             ->groupEnd();
+        }
+        
+        $data['vouchers'] = $voucher_builder->orderBy('voucher.created_at', 'DESC')
             ->get()
             ->getResult();
 
@@ -7107,7 +7175,7 @@ class Admin extends BaseController
         return view('admin/collection_vw', $data);
     }
 
-    public function Deposit()
+        public function Deposit()
     {
         if ($this->session->get('user_id') == '') {
             return redirect()->to('Admin/');
@@ -7119,59 +7187,116 @@ class Admin extends BaseController
 
         $from_date = $this->request->getVar('from_date') ?? date('Y-m-01');
         $to_date = $this->request->getVar('to_date') ?? date('Y-m-t');
-        $do_no = $this->request->getVar('do_no');
-        $chalan_status = $this->request->getVar('chalan_status');
-        $payment_status = $this->request->getVar('payment_status');
-        $deposited_status = $this->request->getVar('deposited_status');
+        $party = $this->request->getVar('party');
+        $voucher_no = $this->request->getVar('voucher_no');
 
         $user_id = $this->session->get('user_id');
         $data['setting'] = $this->AdminModel->Settingdata();
         $data['singleuser'] = $this->AdminModel->userdata($user_id);
-        $data['vehicle'] = $this->AdminModel->Getvehicle();
-        $data['doregistration'] = $this->AdminModel->doregistration_dtls1($from_date, $to_date);
+        $data['all_users'] = $this->AdminModel->Customerdata();
+        $data['vendors'] = $this->AdminModel->Get_vendor(); // Fetch vendors for filter
 
-        $data['total_count'] = $this->AdminModel->despatch_count($from_date, $to_date, $do_no, $chalan_status, $payment_status, $deposited_status);
-        $data['despatch'] = $this->AdminModel->despatch_dtls1_paginated($from_date, $to_date, $do_no, $chalan_status, $payment_status, $deposited_status, $records_per_page, $offset);
+        // Fetch active vouchers for the filter dropdown
+        $data['voucher_list'] = $this->db->table('voucher')
+            ->select('id, group_code')
+            ->where('status', 1)
+            ->orderBy('created_at', 'DESC')
+            ->get()
+            ->getResult();
 
-        $data['date'] = ['from_date' => $from_date, 'to_date' => $to_date, 'do_no' => $do_no, 'chalan_status' => $chalan_status, 'payment_status' => $payment_status, 'deposited_status' => $deposited_status];
+        // $data['vouchers'] replaced by vouchers
+        $data['vouchers'] = $this->AdminModel->getVouchersForDeposit($from_date, $to_date, $party, $voucher_no);
+
+        $data['date'] = ['from_date' => $from_date, 'to_date' => $to_date, 'party' => $party, 'voucher_no' => $voucher_no];
         $data['current_page'] = $current_page;
         $data['records_per_page'] = $records_per_page;
 
         return view('admin/deposit_vw', $data);
     }
 
-    public function Payment()
+    public function updateVoucherDeposit()
     {
-        if ($this->session->get('user_id') == '') {
-            return redirect()->to('Admin/');
+        $id = $this->request->getPost('voucher_id');
+        
+        $data = [
+            'deposited_by' => $this->request->getPost('deposited_by'),
+            'deposit_date' => $this->request->getPost('deposit_date'),
+            'deposit_place' => $this->request->getPost('deposit_place'),
+        ];
+
+        // Fetch existing voucher data to get current images
+        $existingVoucher = $this->db->table('voucher')->where('id', $id)->get()->getRow();
+        $images = [];
+        if (!empty($existingVoucher->receipt_image)) {
+            $images = json_decode($existingVoucher->receipt_image, true);
+            if (!is_array($images)) {
+                // Handle legacy single image string
+                $images = [$existingVoucher->receipt_image];
+            }
+        }
+        
+        $files = $this->request->getFileMultiple('challan_receipt');
+        if ($files) {
+            foreach ($files as $file) {
+                if ($file->isValid() && !$file->hasMoved()) {
+                    $newName = $file->getRandomName();
+                    $file->move(ROOTPATH . 'public/assets/uploads/receipts', $newName);
+                    $images[] = $newName;
+                }
+            }
+        }
+        
+        $data['receipt_image'] = json_encode($images);
+
+        if ($this->AdminModel->updateVoucher($id, $data)) {
+            return $this->response->setJSON(['status' => 'success', 'message' => 'Voucher updated successfully']);
+        } else {
+             return $this->response->setJSON(['status' => 'error', 'message' => 'Failed to update voucher']);
+        }
+    }
+
+    public function deleteChallanImage()
+    {
+        $id = $this->request->getPost('voucher_id');
+        $imageName = $this->request->getPost('image_name');
+
+        $existingVoucher = $this->db->table('voucher')->where('id', $id)->get()->getRow();
+        if (!$existingVoucher || empty($existingVoucher->receipt_image)) {
+            return $this->response->setJSON(['status' => 'error', 'message' => 'Voucher or image not found']);
         }
 
-        $records_per_page = $this->request->getVar('per_page') ? (int)$this->request->getVar('per_page') : 10;
-        $current_page = $this->request->getVar('page') ? (int)$this->request->getVar('page') : 1;
-        $offset = ($current_page - 1) * $records_per_page;
+        $images = json_decode($existingVoucher->receipt_image, true);
+        if (!is_array($images)) {
+            $images = [$existingVoucher->receipt_image];
+        }
 
-        $from_date = $this->request->getVar('from_date') ?? date('Y-m-01');
-        $to_date = $this->request->getVar('to_date') ?? date('Y-m-t');
-        $do_no = $this->request->getVar('do_no');
-        $chalan_status = $this->request->getVar('chalan_status');
-        $payment_status = $this->request->getVar('payment_status');
-        $deposited_status = $this->request->getVar('deposited_status');
+        // Find and remove the image
+        if (($key = array_search($imageName, $images)) !== false) {
+            unset($images[$key]);
+            
+            // Delete physical file
+            $filePath = ROOTPATH . 'public/assets/uploads/receipts/' . $imageName;
+            if (file_exists($filePath)) {
+                @unlink($filePath);
+            }
+        }
 
-        $user_id = $this->session->get('user_id');
-        $data['setting'] = $this->AdminModel->Settingdata();
-        $data['singleuser'] = $this->AdminModel->userdata($user_id);
-        $data['vehicle'] = $this->AdminModel->Getvehicle();
-        $data['doregistration'] = $this->AdminModel->doregistration_dtls1($from_date, $to_date);
+        $updatedImages = array_values($images);
+        $updatedData = [
+            'receipt_image' => empty($updatedImages) ? '' : json_encode($updatedImages)
+        ];
 
-        $data['total_count'] = $this->AdminModel->despatch_count($from_date, $to_date, $do_no, $chalan_status, $payment_status, $deposited_status);
-        $data['despatch'] = $this->AdminModel->despatch_dtls1_paginated($from_date, $to_date, $do_no, $chalan_status, $payment_status, $deposited_status, $records_per_page, $offset);
-
-        $data['date'] = ['from_date' => $from_date, 'to_date' => $to_date, 'do_no' => $do_no, 'chalan_status' => $chalan_status, 'payment_status' => $payment_status, 'deposited_status' => $deposited_status];
-        $data['current_page'] = $current_page;
-        $data['records_per_page'] = $records_per_page;
-
-        return view('admin/payment_vw', $data);
+        if ($this->AdminModel->updateVoucher($id, $updatedData)) {
+            return $this->response->setJSON([
+                'status' => 'success', 
+                'message' => 'Image deleted successfully',
+                'new_data' => $updatedData['receipt_image']
+            ]);
+        } else {
+            return $this->response->setJSON(['status' => 'error', 'message' => 'Failed to update database']);
+        }
     }
+
 
 
 
@@ -7370,19 +7495,36 @@ class Admin extends BaseController
 
     public function getDoNumbers()
     {
-        $from_date = $this->request->getPost('from_date') ?? date('Y-m-01');
-        $to_date = $this->request->getPost('to_date') ?? date('Y-m-t');
-        $voucher_id = $this->request->getPost('voucher_id');
+        $from_date = $this->request->getPost('from_date');
+        $to_date = $this->request->getPost('to_date');
 
-        // Fetch DO Numbers based on date range and voucher
-        $do_numbers = $this->AdminModel->doregistration_dtls1($from_date, $to_date, $voucher_id);
-        // print_r($do_numbers);exit;
-        // Generate HTML options for the dropdown
+        $do_numbers = $this->AdminModel->doregistration_dtls1($from_date, $to_date);
+
         $output = '<option value="">Select DO No.</option>';
         foreach ($do_numbers as $do) {
             $output .= '<option value="' . $do->do_registration_id . '">' . $do->do_no . '</option>';
         }
+        return $this->response->setBody($output);
+    }
 
+    public function getVouchersByByDo()
+    {
+        // Renamed to fix possible collision or just be safe
+        $do_id = $this->request->getPost('do_id');
+        
+        $builder = $this->db->table('voucher');
+        $builder->select('voucher.id, voucher.group_code');
+        $builder->join('despatch', 'despatch.voucher_id = voucher.id');
+        $builder->where('despatch.do_no', $do_id);
+        $builder->distinct();
+        $builder->where('voucher.status', 1);
+        $builder->orderBy('voucher.created_at', 'DESC');
+        $vouchers = $builder->get()->getResult();
+
+        $output = '<option value="">All Vouchers</option>';
+        foreach ($vouchers as $v) {
+            $output .= '<option value="' . $v->id . '">' . $v->group_code . '</option>';
+        }
         return $this->response->setBody($output);
     }
     public function getDoNumbers1()
@@ -7401,153 +7543,6 @@ class Admin extends BaseController
 
         return $this->response->setBody($output);
     }
-
-
-    // public function updateDispatch()
-    // {
-    //     $allPostData = $this->request->getPost();
-    //         log_message('debug', '========== UPDATE DISPATCH REQUEST DATA ==========');
-    //         log_message('debug', json_encode($allPostData, JSON_PRETTY_PRINT));
-    //         echo "<pre style='background: #f4f4f4; padding: 20px; border: 2px solid #333;'>";
-    //         echo "========== INCOMING POST DATA ==========\n";
-    //         print_r($allPostData);
-    //         echo "\n========================================\n";
-    //         echo "</pre>";
-    //         // ============================================================
-    //     $id = $this->request->getPost('id');
-    //     $rest_amount = (float)($this->request->getPost('rest_amount') ?? 0);
-
-    //     $shortage = (float)($this->request->getPost('shortage') ?? 0);
-    //     $freight = (float)($this->request->getPost('freight') ?? 0);
-    //     $dieselQty = (float)($this->request->getPost('dieselQty') ?? 0);
-    //     $totaldieselRate = (float)($this->request->getPost('totaldieselRate') ?? 0);
-    //     $cash = (float)($this->request->getPost('cash') ?? 0);
-    //     $bilty_commission = (float)($this->request->getPost('bilty_commission') ?? 0);
-    //     $deposited = (int)($this->request->getPost('deposited') ?? 0);
-    //     $deposit_by = $this->request->getPost('deposit_by');
-    //     $deposit_date = $this->request->getPost('deposit_date');
-    //     $net_amount = $this->request->getPost('net_amount');
-    //     // TDS will be calculated from DO registration, not from manual input
-    //     $tds = $this->request->getPost('tds'); // Will be calculated below
-    //     $otherDeduction = (float)($this->request->getPost('otherDeduction') ?? 0);
-    //     $paymentStatus = (int)($this->request->getPost('paymentStatus') ?? 0);
-    //     $received_date = $this->request->getPost('received_date');
-
-    //     if (empty($id)) {
-    //         return $this->response->setJSON(['status' => 'error', 'message' => 'Invalid dispatch ID!']);
-    //     }
-
-    //     // Fetch dispatch and DO registration details
-    //     $despatch = $this->db->query("
-    //         SELECT d.*, dr.rate, dr.shortage_qty as min_qty, dr.shortage_rate, dr.diesel_rate, dr.diesel_payment_type, COALESCE(dr.tds_percentage, 2.00) as tds_percentage 
-    //         FROM despatch d 
-    //         LEFT JOIN do_registration dr ON dr.do_registration_id = d.do_no 
-    //         WHERE d.despatch_id = ?
-    //     ", [$id])->getRow();
-
-    //     if (!$despatch) {
-    //         return $this->response->setJSON(['status' => 'error', 'message' => 'Dispatch record not found']);
-    //     }
-
-    //     $rate = (float)($despatch->rate ?? 0);
-    //     $min_qty = (float)($despatch->min_qty ?? 0);
-    //     $shortage_rate_from_do = (float)($despatch->shortage_rate ?? 0);
-    //     $diesel_rate = (float)($despatch->diesel_rate ?? 0);
-    //     $tds_percentage = (float)($despatch->tds_percentage ?? 2.00);
-    //     $d_type = !empty($despatch->diesel_payment_type) ? $despatch->diesel_payment_type : 'Party';
-        
-    //     // Calculate diesel amount if not provided
-    //     if ($totaldieselRate == 0 && $dieselQty > 0 && $diesel_rate > 0) {
-    //         $totaldieselRate = $dieselQty * $diesel_rate;
-    //     }
-        
-    //     // Fetch shortage details based on do_no (if exists)
-    //     $shortage_dtls = $this->db->query("SELECT * FROM shortage_details WHERE do_id = ?", [$despatch->do_no])->getResult();
-
-    //     $shortage_price = 0;
-
-    //     // Calculate shortage price - Priority: shortage_details table > do_registration.min_qty > simple calculation
-    //     if (!empty($shortage_dtls)) {
-    //         // Use shortage_details table rules
-    //         foreach ($shortage_dtls as $detail) {
-    //             if ($shortage > $detail->qty) {
-    //                 $shortage_rate = (float)$detail->greater_than;
-    //             } elseif ($shortage == $detail->qty) {
-    //                 $shortage_rate = (float)$detail->equal_to;
-    //             } elseif ($shortage < $detail->qty) {
-    //                 $shortage_rate = (float)$detail->less_than;
-    //             } else {
-    //                 $shortage_rate = 0;
-    //             }
-    //             $shortage_price = $shortage * $shortage_rate;
-    //             break; // Use first matching rule
-    //         }
-    //     } elseif ($min_qty > 0 && $rest_amount < $min_qty) {
-    //         // Use min_qty based calculation from do_registration
-    //         $shortage_qty = $min_qty - $rest_amount;
-    //         if ($shortage_rate_from_do > 0) {
-    //             $shortage_price = $shortage_qty * $shortage_rate_from_do;
-    //         } else {
-    //             $shortage_price = $shortage_qty * $rate;
-    //         }
-    //     } elseif ($shortage > 0) {
-    //         // Simple calculation: shortage * rate
-    //         $shortage_price = $shortage * $rate;
-    //     }
-
-    //     // Calculate TDS from DO registration (Freight × TDS Percentage)
-    //     // $tds = ($freight * $tds_percentage) / 100;
-
-    //     // Total deduction should represent all factors reducing the freight amount relative to the net formula.
-    //     $total_deduction = $shortage_price + (strcasecmp($d_type, 'Own') == 0 ? -$totaldieselRate : $totaldieselRate) + $cash - $bilty_commission - $tds;
-        
-    //     // Calculate Net Amount matching frontend: Net = Freight - ShortagePrice + (Diesel if Own else -Diesel) - Cash + Bilty + TDS
-    //     // $net_amount = $freight - $shortage_price + (strcasecmp($d_type, 'Own') == 0 ? $totaldieselRate : -$totaldieselRate) - $cash + $bilty_commission + $tds;
-
-    //     // Prepare data for update
-    //     $data = [
-    //         'rest_amount' => $rest_amount,
-    //         'shortage' => $shortage,
-    //         'freight' => $freight,
-    //         'shortage_price' => $shortage_price,
-    //         'dieselPrice' => $diesel_rate, // Store diesel rate from DO registration
-    //         'dieselQty' => $dieselQty,
-    //         'totaldieselRate' => $totaldieselRate,
-    //         'driver_expence' => 0, // Removed from UI but keeping in DB for backward compatibility
-    //         'cash' => $cash,
-    //         'bilty_commission' => $bilty_commission,
-    //         'deposited' => $deposited,
-    //         'deposit_by' => $deposit_by,
-    //         'deposit_date' => $deposit_date,
-    //         'total_deduction' => $total_deduction,
-    //         'net_amount' => $net_amount,
-    //         'tds' => $tds,
-    //         'other_deduction' => $otherDeduction,
-    //         'payment_status' => $paymentStatus,
-    //         'received_date' => $received_date,
-    //     ];
-
-    //     // Update despatch table
-    //     $builder = $this->db->table('despatch');
-    //     $updated = $builder->where('despatch_id', $id)->update($data);
-
-    //     if ($updated) {
-    //         return $this->response->setJSON([
-    //             'status' => 'success',
-    //             'message' => 'Updated successfully',
-    //             'calculations' => [
-    //                 'shortage' => number_format($shortage, 2, '.', ''),
-    //                 'shortage_price' => number_format($shortage_price, 2, '.', ''),
-    //                 'freight' => number_format($freight, 2, '.', ''),
-    //                 'tds' => number_format($tds, 2, '.', ''),
-    //                 'total_deduction' => number_format($total_deduction, 2, '.', ''),
-    //                 'net_amount' => number_format($net_amount, 2, '.', '')
-    //             ]
-    //         ]);
-    //     } else {
-    //         return $this->response->setJSON(['status' => 'error', 'message' => 'Failed to update']);
-    //     }
-    // }
 
     public function updateDispatch()
     {
@@ -7577,7 +7572,7 @@ class Admin extends BaseController
 
         // Fetch dispatch & DO details
         $despatch = $this->db->query("
-            SELECT d.*, dr.rate, dr.shortage_qty AS min_qty, dr.shortage_rate, dr.diesel_rate,
+            SELECT d.*, dr.rate, dr.shortage_qty AS min_qty, dr.shortage_rate, dr.diesel_rate, dr.diesel_payment_type, dr.cash_type, dr.special_shortage,
                 COALESCE(dr.tds_percentage, 2.00) AS tds_percentage
             FROM despatch d
             LEFT JOIN do_registration dr ON dr.do_registration_id = d.do_no
@@ -7600,16 +7595,32 @@ class Admin extends BaseController
             $totaldieselRate = $dieselQty * $diesel_rate;
         }
 
-        // Shortage price
+        // Shortage calculation flow
         $shortage_price = 0;
         if ($shortage > 0) {
-            $shortage_price = ($shortage_rate_from_do > 0)
-                ? $shortage * $shortage_rate_from_do
-                : $shortage * $rate;
+            $chargeable_shortage = 0;
+            if (($despatch->special_shortage ?? 0) == 1) {
+                $chargeable_shortage = max(0, $shortage - ($despatch->min_qty ?? 0));
+            } else {
+                $chargeable_shortage = $shortage;
+            }
+            $apply_s_rate = ($shortage_rate_from_do > 0) ? $shortage_rate_from_do : $rate;
+            $shortage_price = $chargeable_shortage * $apply_s_rate;
         }
 
-        // Total deduction
-        $total_deduction = $shortage_price + $totaldieselRate + $cash + $bilty_commission + $tds;
+        // Total deduction logic matching user's view: 
+        // net = freight - shortage_price + (Own_Diesel ? diesel : -diesel) + (Own_Cash ? cash : -cash) + bilty + tds
+        // Net = freight - Total_Deduction
+        // So: Total_Deduction = shortage_price - (Own_Diesel ? diesel : -diesel) - (Own_Cash ? cash : -cash) - bilty - tds
+        
+        $d_type = strtoupper($despatch->diesel_payment_type ?? 'Party');
+        $c_type = strtoupper($despatch->cash_type ?? 'Party');
+        
+        $diesel_effect = ($d_type === 'OWN') ? $totaldieselRate : -$totaldieselRate;
+        $cash_effect = ($c_type === 'OWN') ? $cash : -$cash;
+        
+        // Total deduction = shortage - diesel_effect - cash_effect + bilty + tds
+        $total_deduction = $shortage_price - $diesel_effect - $cash_effect + $bilty_commission + $tds;
 
         // Net amount
         // $net_amount = $freight - $total_deduction;
@@ -7671,9 +7682,21 @@ class Admin extends BaseController
             return $this->response->setJSON(['status' => 'error', 'message' => 'No records selected']);
         }
 
+        // Check if all selected records belong to the SAME DO
+        $do_counts = $this->db->table('despatch')
+            ->select('do_no, COUNT(*) as count')
+            ->whereIn('despatch_id', $ids)
+            ->groupBy('do_no')
+            ->get()
+            ->getResult();
+
+        if (count($do_counts) > 1) {
+            return $this->response->setJSON(['status' => 'error', 'message' => 'Error: Selected challans must belong to the SAME DO Number.']);
+        }
+
         // Check if any selected records are already in a voucher
         $existing = $this->db->table('despatch')
-            ->select('ref_no') // Assuming ref_no is the visible Challan No
+            ->select('ref_no')
             ->whereIn('despatch_id', $ids)
             ->where('voucher_id IS NOT NULL', null, false)
             ->where('voucher_id !=', 0)
@@ -7693,9 +7716,10 @@ class Admin extends BaseController
 
         $this->db->transStart();
 
-        // 1. Create group entry
+        // 1. Create group entry with challan IDs stored as JSON
         $this->db->table('voucher')->insert([
             'group_code' => $group_code,
+            'challan_ids' => json_encode($ids), // Store all challan IDs
             'created_at' => date('Y-m-d H:i:s'),
             'created_by' => $user_id,
             'status' => 1
@@ -7722,16 +7746,44 @@ class Admin extends BaseController
 
     public function get_active_groups()
     {
-        // Fetch last 50 active groups ordered by creation date
-        $groups = $this->db->table('voucher')
-            ->select('id, group_code, created_at')
-            ->where('status', 1)
-            ->orderBy('created_at', 'DESC')
-            ->limit(50)
-            ->get()
-            ->getResult();
+        try {
+            $do_id = $this->request->getVar('do_id');
+            
+            $builder = $this->db->table('voucher');
+            $builder->distinct();
+            $builder->select('voucher.id, voucher.group_code, voucher.challan_ids, voucher.created_at');
+            
+            // If DO ID provided, filter by it
+            if ($do_id) {
+                // Join to despatch to find vouchers that:
+                // 1. Have challans matching this DO
+                // 2. Or have NO challans at all (available for any DO)
+                $builder->join('despatch', 'despatch.voucher_id = voucher.id', 'left');
+                $builder->groupStart();
+                $builder->where('despatch.do_no', $do_id);
+                $builder->orWhere('despatch.despatch_id IS NULL');
+                $builder->groupEnd();
+            }
+            
+            $groups = $builder->where('voucher.status', 1)
+                ->orderBy('voucher.created_at', 'DESC')
+                ->limit(50)
+                ->get()
+                ->getResult();
 
-        return $this->response->setJSON(['status' => 'success', 'groups' => $groups]);
+            // Decode challan_ids for each group
+            foreach ($groups as $group) {
+                $group->challan_ids = json_decode($group->challan_ids, true);
+            }
+
+            return $this->response->setJSON(['status' => 'success', 'groups' => $groups]);
+        } catch (\Exception $e) {
+            // Return actual error message to help debugging
+            return $this->response->setJSON([
+                'status' => 'error', 
+                'message' => 'Query error: ' . $e->getMessage()
+            ]);
+        }
     }
 
     public function manage_collection_group()
@@ -7749,6 +7801,34 @@ class Admin extends BaseController
         $this->db->transStart();
 
         if ($action === 'remove') {
+            // Get current challan_ids from voucher
+            $voucher = $this->db->table('despatch')
+                ->select('voucher_id')
+                ->where('despatch_id', $ids[0])
+                ->get()
+                ->getRow();
+
+            if ($voucher && $voucher->voucher_id) {
+                $voucherData = $this->db->table('voucher')
+                    ->select('challan_ids')
+                    ->where('id', $voucher->voucher_id)
+                    ->get()
+                    ->getRow();
+
+                if ($voucherData && !empty($voucherData->challan_ids)) {
+                    $existingIds = json_decode($voucherData->challan_ids, true);
+                    // NULL check add karo
+                    if (is_array($existingIds)) {
+                        $updatedIds = array_values(array_diff($existingIds, $ids));
+                        
+                        // Update voucher with remaining challan IDs
+                        $this->db->table('voucher')
+                            ->where('id', $voucher->voucher_id)
+                            ->update(['challan_ids' => json_encode($updatedIds)]);
+                    }
+                }
+            }
+
             // Ungroup selected records
             $this->db->table('despatch')
                 ->whereIn('despatch_id', $ids)
@@ -7759,6 +7839,31 @@ class Admin extends BaseController
         } elseif ($action === 'add') {
             if (empty($group_id)) {
                 return $this->response->setJSON(['status' => 'error', 'message' => 'Voucher ID is required for adding']);
+            }
+
+            // Check if all selected records belong to the SAME DO
+            $do_counts = $this->db->table('despatch')
+                ->select('do_no, COUNT(*) as count')
+                ->whereIn('despatch_id', $ids)
+                ->groupBy('do_no')
+                ->get()
+                ->getResult();
+
+            if (count($do_counts) > 1) {
+                return $this->response->setJSON(['status' => 'error', 'message' => 'Error: Selected challans must belong to the SAME DO Number.']);
+            }
+            $selected_do = $do_counts[0]->do_no;
+
+            // Check compatibility with existing voucher items (if any)
+            $existing_voucher_items = $this->db->table('despatch')
+                ->select('do_no')
+                ->where('voucher_id', $group_id)
+                ->limit(1)
+                ->get()
+                ->getRow();
+
+            if ($existing_voucher_items && $existing_voucher_items->do_no != $selected_do) {
+                return $this->response->setJSON(['status' => 'error', 'message' => 'Error: This voucher contains challans from a different DO Number.']);
             }
 
             // Check if any selected records are already in a voucher
@@ -7778,11 +7883,33 @@ class Admin extends BaseController
                 ]);
             }
 
-            // Check if group exists
-            $group = $this->db->table('voucher')->where('id', $group_id)->countAllResults();
-            if ($group == 0) {
+            // Check if group exists and get current challan_ids
+            $voucherData = $this->db->table('voucher')
+                ->select('challan_ids')
+                ->where('id', $group_id)
+                ->get()
+                ->getRow();
+
+            if (!$voucherData) {
                 return $this->response->setJSON(['status' => 'error', 'message' => 'Invalid Voucher ID']);
             }
+
+            // Merge new IDs with existing IDs
+            // NULL check aur empty check dono karo
+            $existingIds = [];
+            if (!empty($voucherData->challan_ids)) {
+                $decoded = json_decode($voucherData->challan_ids, true);
+                if (is_array($decoded)) {
+                    $existingIds = $decoded;
+                }
+            }
+            
+            $updatedIds = array_unique(array_merge($existingIds, $ids));
+
+            // Update voucher with new challan IDs
+            $this->db->table('voucher')
+                ->where('id', $group_id)
+                ->update(['challan_ids' => json_encode($updatedIds)]);
 
             // Add records to group
             $this->db->table('despatch')
@@ -7803,12 +7930,6 @@ class Admin extends BaseController
 
         return $this->response->setJSON(['status' => 'success', 'message' => $message]);
     }
-
-
-
-
-
-
 
     public function updateDispatch1()
     {
@@ -7899,7 +8020,6 @@ class Admin extends BaseController
             return redirect()->to('admin/');
         }
     }
-
 
     public function delete_multiple_despatch()
     {

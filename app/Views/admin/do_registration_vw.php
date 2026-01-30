@@ -77,7 +77,7 @@
                                 <select class="js-states form-control uk-padding-reove uk-margin-remove" name="party" id="single1">
                                     <option value="">Select Party</option>
                                     <?php foreach ($partyNames as $pn) { ?>
-                                    <option value="<?= $pn->name . ' (' . $pn->id . ')' ?>"><?= $pn->name ?></option>
+                                    <option value="<?= $pn->id ?>"><?= $pn->name ?></option>
                                     <?php } ?>
                                 </select>
                                 <?php if (isset($validation)) { ?><span class="text-danger"><?= $validation->getError('party'); ?></span><?php } ?>

@@ -717,7 +717,8 @@ public function despatch_count($from_date = null, $to_date = null, $do_no = null
 
     if (!empty($voucher_id)) {
         $builder->where('despatch.voucher_id', $voucher_id);
-    } else {
+    } 
+    if (empty($voucher_id)) {
         if (!empty($from_date)) {
             $builder->where('des_date >=', $from_date);
         }
@@ -760,7 +761,7 @@ public function despatch_count($from_date = null, $to_date = null, $do_no = null
 public function despatch_dtls1_paginated($from_date = null, $to_date = null, $do_no = null, $chalan_status = null, $payment_status = null, $deposited_status = null, $limit = 10, $offset = 0, $voucher_id = null)
 {
     $builder = $this->db->table('despatch');
-        $builder->select('despatch.*, vehicle.vehicle_no as vehicle_number, do_registration.do_no as doreg_no, do_registration.rate, do_registration.shortage_qty as min_qty, do_registration.shortage_rate, do_registration.diesel_rate, do_registration.diesel_payment_type, creator.full_name as made_by, COALESCE(do_registration.tds_percentage, 2.00) as tds_percentage, voucher.group_code');
+        $builder->select('despatch.*, vehicle.vehicle_no as vehicle_number, do_registration.do_no as doreg_no, do_registration.rate, do_registration.shortage_qty as min_qty, do_registration.shortage_rate, do_registration.diesel_rate, do_registration.diesel_payment_type, do_registration.cash_type, do_registration.special_shortage, creator.full_name as made_by, COALESCE(do_registration.tds_percentage, 2.00) as tds_percentage, voucher.group_code');
         $builder->join('vehicle', 'vehicle.id = despatch.vehicle_no');
         $builder->join('do_registration', 'do_registration.do_registration_id = despatch.do_no');
         $builder->join('voucher', 'voucher.id = despatch.voucher_id', 'left');
@@ -770,7 +771,8 @@ public function despatch_dtls1_paginated($from_date = null, $to_date = null, $do
 
     if (!empty($voucher_id)) {
         $builder->where('despatch.voucher_id', $voucher_id);
-    } else {
+    } 
+    if (empty($voucher_id)) {
         if (!empty($from_date)) {
             $builder->where('des_date >=', $from_date);
         }
@@ -814,7 +816,7 @@ public function despatch_dtls1_paginated($from_date = null, $to_date = null, $do
 public function despatch_dtls1($from_date = null, $to_date = null, $do_no = null, $chalan_status = null, $payment_status = null, $deposited_status = null, $limit = 10, $offset = 0, $voucher_id = null)
 {
     $builder = $this->db->table('despatch');
-        $builder->select('despatch.*, vehicle.vehicle_no as vehicle_number, do_registration.do_no as doreg_no, do_registration.rate, do_registration.shortage_qty as min_qty, do_registration.shortage_rate, do_registration.diesel_rate, COALESCE(do_registration.tds_percentage, 2.00) as tds_percentage, voucher.group_code');
+        $builder->select('despatch.*, vehicle.vehicle_no as vehicle_number, do_registration.do_no as doreg_no, do_registration.rate, do_registration.shortage_qty as min_qty, do_registration.shortage_rate, do_registration.diesel_rate, do_registration.diesel_payment_type, do_registration.cash_type, do_registration.special_shortage, creator.full_name as made_by, COALESCE(do_registration.tds_percentage, 2.00) as tds_percentage, voucher.group_code');
         $builder->join('vehicle', 'vehicle.id = despatch.vehicle_no');
         $builder->join('do_registration', 'do_registration.do_registration_id = despatch.do_no');
         $builder->join('voucher', 'voucher.id = despatch.voucher_id', 'left');
@@ -860,6 +862,41 @@ public function despatch_dtls1($from_date = null, $to_date = null, $do_no = null
     $results = $builder->get()->getResult();
     return $results ?? []; // ✅ Always return array, never null
 }
+
+    public function getVouchersForDeposit($from_date = null, $to_date = null, $party = null, $voucher_no = null)
+    {
+        $builder = $this->db->table('voucher');
+        // Using MAX(vendor.name) to get a party name even if multiple despatches exist (they should have the same party now)
+        $builder->select('voucher.*, SUM(despatch.net_amount) as total_net_amount, COUNT(despatch.despatch_id) as challan_count, MAX(vendor.name) as party_name');
+        
+        // Using LEFT JOINs to ensure we see the voucher even if some links are missing (though they shouldn't be)
+        $builder->join('despatch', 'despatch.voucher_id = voucher.id', 'left');
+    $builder->join('do_registration', 'despatch.do_no = do_registration.do_registration_id', 'left');
+    // Using a more robust join that handles both numeric IDs and "Name (ID)" formatted strings
+    $builder->join('vendor', 'vendor.id = do_registration.party OR vendor.id = SUBSTRING_INDEX(SUBSTRING_INDEX(do_registration.party, "(", -1), ")", 1)', 'left');
+        
+        if ($from_date && $to_date) {
+             $builder->where('despatch.des_date >=', $from_date);
+             $builder->where('despatch.des_date <=', $to_date);
+        }
+
+        if ($party) {
+            $builder->where('do_registration.party', $party);
+        }
+
+        if ($voucher_no) {
+            $builder->like('voucher.group_code', $voucher_no);
+        }
+        
+        $builder->groupBy('voucher.id');
+        $builder->orderBy('voucher.id', 'DESC');
+        return $builder->get()->getResult();
+    }
+
+    public function updateVoucher($id, $data)
+    {
+        return $this->db->table('voucher')->where('id', $id)->update($data);
+    }
 
 
 
@@ -1301,7 +1338,43 @@ public function getItemById($id)
 }
 
 
-function inhouse_orderdtls($order_id)
+	public function get_active_groups()
+	{
+		$builder = $this->db->table('voucher');
+		$builder->select('group_code');
+		$builder->groupBy('group_code');
+		$builder->orderBy('id', 'DESC');
+		return $builder->get()->getResult();
+	}
+
+	public function getVouchersForPayment($from_date = null, $to_date = null, $party = null, $voucher_no = null)
+	{
+		$builder = $this->db->table('voucher');
+		$builder->select('voucher.*, SUM(despatch.net_amount) as total_net_amount, MAX(vendor.name) as party_name');
+
+		$builder->join('despatch', 'despatch.voucher_id = voucher.id', 'left');
+		$builder->join('do_registration', 'despatch.do_no = do_registration.do_no', 'left');
+		$builder->join('vendor', 'vendor.id = do_registration.party OR vendor.id = SUBSTRING_INDEX(SUBSTRING_INDEX(do_registration.party, "(", -1), ")", 1)', 'left');
+
+		if ($from_date && $to_date) {
+			$builder->where('voucher.created_at >=', $from_date . ' 00:00:00');
+			$builder->where('voucher.created_at <=', $to_date . ' 23:59:59');
+		}
+
+		if ($party) {
+			$builder->where('do_registration.party', $party);
+		}
+
+		if ($voucher_no) {
+			$builder->like('voucher.group_code', $voucher_no);
+		}
+
+		$builder->groupBy('voucher.id');
+		$builder->orderBy('voucher.id', 'DESC');
+		return $builder->get()->getResult();
+	}
+
+ function inhouse_orderdtls($order_id)
 {
     // echo($order_id);exit;
    

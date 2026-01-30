@@ -66,10 +66,11 @@ if ($records_per_page === 'all') { $total_pages = 1; $current_page = 1; } else {
                     <div class="row">
                         <div class="col-md-3"><div class="form-group-custom"><label for="from_date">From Date</label><input type="date" id="from_date" name="from_date" class="form-control-custom" value="<?= $default_from_date; ?>" onchange="updateDoRegistrations()"/></div></div>
                         <div class="col-md-3"><div class="form-group-custom"><label for="to_date">To Date</label><input type="date" id="to_date" name="to_date" class="form-control-custom" value="<?= $default_to_date; ?>" onchange="updateDoRegistrations()"/></div></div>
-                        <div class="col-md-3">
+                        <div class="col-md-3"><div class="form-group-custom"><label for="do_no">DO No.</label><select class="form-control-custom" name="do_no" id="single" onchange="updateVouchers()"><option value="">Select DO No.</option><?php foreach ($doregistration as $do): ?><option value="<?= $do->do_registration_id; ?>" <?= isset($date['do_no']) && $date['do_no'] == $do->do_registration_id ? 'selected' : '' ?>><?= $do->do_no; ?></option><?php endforeach; ?></select></div></div>
+                        <!-- <div class="col-md-3">
                             <div class="form-group-custom">
                                 <label for="voucher_id">Voucher</label>
-                                <select class="form-control-custom" name="voucher_id" id="single2" onchange="updateDoRegistrations()">
+                                <select class="form-control-custom" name="voucher_id" id="single2">
                                     <option value="">All Vouchers</option>
                                     <?php if(isset($vouchers) && !empty($vouchers)): foreach ($vouchers as $v): ?>
                                     <option value="<?= $v->id; ?>" <?= isset($date['voucher_id']) && $date['voucher_id'] == $v->id ? 'selected' : '' ?>>
@@ -78,11 +79,10 @@ if ($records_per_page === 'all') { $total_pages = 1; $current_page = 1; } else {
                                     <?php endforeach; endif; ?>
                                 </select>
                             </div>
-                        </div>
-                        <div class="col-md-3"><div class="form-group-custom"><label for="do_no">DO No.</label><select class="form-control-custom" name="do_no" id="single"><option value="">Select DO No.</option><?php foreach ($doregistration as $do): ?><option value="<?= $do->do_registration_id; ?>" <?= isset($date['do_no']) && $date['do_no'] == $do->do_registration_id ? 'selected' : '' ?>><?= $do->do_no; ?></option><?php endforeach; ?></select></div></div>
+                        </div> -->
                         <div class="col-md-3"><div class="form-group-custom"><label for="chalan_status">Chalan Status</label><select class="form-control-custom" name="chalan_status" id="chalan_status"><option value="" <?= !isset($date['chalan_status']) || $date['chalan_status'] === '' ? 'selected' : '' ?>>All</option><option value="1" <?= isset($date['chalan_status']) && $date['chalan_status'] == '1' ? 'selected' : '' ?>>Received</option><option value="2" <?= isset($date['chalan_status']) && $date['chalan_status'] == '2' ? 'selected' : '' ?>>Not Received</option></select></div></div>
-                        <div class="col-md-3"><div class="form-group-custom"><label for="payment_status">Payment Status</label><select class="form-control-custom" name="payment_status" id="payment_status"><option value="" <?= !isset($date['payment_status']) || $date['payment_status'] === '' ? 'selected' : '' ?>>All</option><option value="1" <?= isset($date['payment_status']) && $date['payment_status'] == '1' ? 'selected' : '' ?>>Paid</option><option value="0" <?= isset($date['payment_status']) && $date['payment_status'] == '0' ? 'selected' : '' ?>>Unpaid</option></select></div></div>
-                        <div class="col-md-3"><div class="form-group-custom"><label for="deposited_status">Added Status</label><select class="form-control-custom" name="deposited_status" id="deposited_status"><option value="" <?= !isset($date['deposited_status']) || $date['deposited_status'] === '' ? 'selected' : '' ?>>All</option><option value="1" <?= isset($date['deposited_status']) && $date['deposited_status'] == '1' ? 'selected' : '' ?>>Added</option><option value="0" <?= isset($date['deposited_status']) && $date['deposited_status'] == '0' ? 'selected' : '' ?>>Not Added</option></select></div></div>
+                        <!-- <div class="col-md-3"><div class="form-group-custom"><label for="payment_status">Payment Status</label><select class="form-control-custom" name="payment_status" id="payment_status"><option value="" <?= !isset($date['payment_status']) || $date['payment_status'] === '' ? 'selected' : '' ?>>All</option><option value="1" <?= isset($date['payment_status']) && $date['payment_status'] == '1' ? 'selected' : '' ?>>Paid</option><option value="0" <?= isset($date['payment_status']) && $date['payment_status'] == '0' ? 'selected' : '' ?>>Unpaid</option></select></div></div> -->
+                        <!-- <div class="col-md-3"><div class="form-group-custom"><label for="deposited_status">Added Status</label><select class="form-control-custom" name="deposited_status" id="deposited_status"><option value="" <?= !isset($date['deposited_status']) || $date['deposited_status'] === '' ? 'selected' : '' ?>>All</option><option value="1" <?= isset($date['deposited_status']) && $date['deposited_status'] == '1' ? 'selected' : '' ?>>Added</option><option value="0" <?= isset($date['deposited_status']) && $date['deposited_status'] == '0' ? 'selected' : '' ?>>Not Added</option></select></div></div> -->
                     </div>
                     <div class="btn-group-custom">
                         <button type="submit" class="btn-custom btn-primary-custom"><i class="fa fa-filter"></i> Apply Filters</button>
@@ -103,12 +103,12 @@ if ($records_per_page === 'all') { $total_pages = 1; $current_page = 1; } else {
                         <button type="button" class="btn-custom btn-primary-custom" style="padding: 8px 16px; display: flex; align-items: center; gap: 8px;" onclick="createCollectionGroup()">
                             <i class="fa fa-plus-circle"></i> Create Voucher
                         </button>
-                        <button type="button" class="btn-custom" style="background-color: #17a2b8; color: white; padding: 8px 16px; display: flex; align-items: center; gap: 8px;" onclick="openAddToGroupModal()">
+                        <!-- <button type="button" class="btn-custom" style="background-color: #17a2b8; color: white; padding: 8px 16px; display: flex; align-items: center; gap: 8px;" onclick="openAddToGroupModal()">
                             <i class="fa fa-folder-open"></i> Add to Voucher
                         </button>
                         <button type="button" class="btn-custom" style="background-color: #dc3545; color: white; padding: 8px 16px; display: flex; align-items: center; gap: 8px;" onclick="removeFromGroup()">
                             <i class="fa fa-unlink"></i> Remove from Voucher
-                        </button>
+                        </button> -->
                     </div>
                 </div>
                 
@@ -181,18 +181,32 @@ if ($records_per_page === 'all') { $total_pages = 1; $current_page = 1; } else {
                                 $cash = $des->cash ?? 0;
                                 $bilty = $des->bilty_commission ?? 0;
                                 $tds_p = $des->tds_percentage ?? 2.00;
+                                $special_shortage = $des->special_shortage ?? 0;
 
                                 // Calculations
                                 $actual_min = min($qty, $received);
-                                $shortage = max(0, $qty - $actual_min);
+                                $actual_shortage = max(0, $qty - $received);
                                 $freight = $actual_min * $rate;
-                                $s_price = ($shortage > 0) ? ($shortage * ($s_rate > 0 ? $s_rate : $rate)) : 0;
+                                
+                                if ($actual_shortage <= 0) {
+                                    $s_price = 0;
+                                } else {
+                                    if ($special_shortage == 1) {
+                                        $chargeable_shortage = max(0, $actual_shortage - $do_min);
+                                    } else {
+                                        $chargeable_shortage = $actual_shortage;
+                                    }
+                                    $s_price = $chargeable_shortage * ($s_rate > 0 ? $s_rate : $rate);
+                                }
+                                $shortage = $actual_shortage; // Displayed shortage
                                 $d_amount = $d_qty * $d_rate;
                                 $d_type = !empty($des->diesel_payment_type) ? $des->diesel_payment_type : 'Party';
+                                $c_type = !empty($des->cash_type) ? $des->cash_type : 'Party';
+                                $c_effect = (strcasecmp($c_type, 'Own') == 0 ? $cash : -$cash);
                                 $tds = ($actual_min * $rate * $tds_p) / 100;
-                                $net = $freight - $s_price + (strcasecmp($d_type, 'Own') == 0 ? $d_amount : -$d_amount) - $cash + $bilty + $tds;
+                                $net = $freight - $s_price + (strcasecmp($d_type, 'Own') == 0 ? $d_amount : -$d_amount) + $c_effect - $bilty - $tds;
                         ?>
-                        <tr data-id="<?= $des->despatch_id; ?>" data-min-qty="<?= $do_min; ?>" data-shortage-rate="<?= $s_rate; ?>" data-diesel-rate="<?= $d_rate; ?>" data-tds-percentage="<?= $tds_p; ?>" data-diesel-payment-type="<?= $d_type; ?>">
+                        <tr data-id="<?= $des->despatch_id; ?>" data-do-id="<?= $des->do_no; ?>" data-min-qty="<?= $do_min; ?>" data-shortage-rate="<?= $s_rate; ?>" data-diesel-rate="<?= $d_rate; ?>" data-tds-percentage="<?= $tds_p; ?>" data-diesel-payment-type="<?= $d_type; ?>" data-cash-type="<?= $c_type; ?>" data-special-shortage="<?= $special_shortage; ?>">
                             <td style="min-width: 60px;"><input type="checkbox" class="row-checkbox" onchange="updateBulkBar()"> <?= $i++; ?></td>
                             <td style="min-width: 100px;"><?= date('d-m-Y', strtotime($des->des_date)); ?></td>
                             <td style="min-width: 90px;"><?= $des->doreg_no; ?></td>
@@ -208,6 +222,7 @@ if ($records_per_page === 'all') { $total_pages = 1; $current_page = 1; } else {
                             <td style="min-width: 110px;"><input type="text" class="uk-input shortage_price" value="<?= number_format($s_price, 2); ?>" readonly style="width: 100px;"></td>
                             <td style="min-width: 100px;"><input type="number" step="0.01" class="uk-input dieselQty" value="<?= $d_qty; ?>" oninput="calculateDieselAmount(this)" style="width: 90px;"></td>
                             <td style="min-width: 110px;"><input type="text" class="uk-input diesel_amount" value="<?= number_format($d_amount, 2); ?>" readonly style="width: 100px;"></td>
+                            
                             <td style="min-width: 90px;"><input type="number" step="0.01" class="uk-input cash" value="<?= $cash; ?>" oninput="calculateRow(this)" style="width: 80px;"></td>
                             <td style="min-width: 100px;"><input type="number" step="0.01" class="uk-input bilty_commission" value="<?= $bilty; ?>" oninput="calculateRow(this)" style="width: 90px;"></td>
                             <td style="min-width: 80px;"><input type="text" class="uk-input tds" value="<?= number_format($tds, 2); ?>" readonly style="width: 70px;"></td>
@@ -261,6 +276,19 @@ if ($records_per_page === 'all') { $total_pages = 1; $current_page = 1; } else {
         rows.forEach(row => { row.style.display = row.textContent.toLowerCase().includes(term) ? '' : 'none'; });
     });
 
+    // Helper to get selected DO ID
+    function getSelectedDoId() {
+        const selected = document.querySelectorAll(".row-checkbox:checked");
+        if (selected.length === 0) return null;
+        const firstDo = selected[0].closest('tr').getAttribute('data-do-id');
+        for (let i = 1; i < selected.length; i++) {
+            if (selected[i].closest('tr').getAttribute('data-do-id') !== firstDo) {
+                return false; // Mixed DOs
+            }
+        }
+        return firstDo;
+    }
+
     // Modal Functions
     function openAddToGroupModal() {
         const selected = document.querySelectorAll(".row-checkbox:checked");
@@ -268,8 +296,15 @@ if ($records_per_page === 'all') { $total_pages = 1; $current_page = 1; } else {
             alert('Please select records to add to a voucher!');
             return;
         }
+
+        const doId = getSelectedDoId();
+        if (doId === false) {
+            alert("Error: You can only add challans from the SAME DO Number to a voucher. Please deselect challans from other DOs.");
+            return;
+        }
         
-        fetchGroups();
+        // Pass DO ID to fetchGroups
+        fetchGroups(doId);
         document.getElementById('addToGroupModal').style.display = 'block';
     }
 
@@ -284,13 +319,19 @@ if ($records_per_page === 'all') { $total_pages = 1; $current_page = 1; } else {
         }
     }
 
-    function fetchGroups() {
+    function fetchGroups(doId) {
+        // Destroy existing Select2 to prevent duplication if modal is re-opened
+        if ($('#groupSelect').hasClass("select2-hidden-accessible")) {
+            $('#groupSelect').select2('destroy');
+        }
+        
         const select = document.getElementById('groupSelect');
         select.innerHTML = '<option value="">Loading...</option>';
         
         $.ajax({
             url: "<?= base_url('Admin/get_active_groups') ?>",
             type: "GET",
+            data: { do_id: doId }, // Pass DO ID to filter groups
             success: function(r) {
                 if(r.status === 'success') {
                     if(r.groups.length > 0) {
@@ -299,8 +340,15 @@ if ($records_per_page === 'all') { $total_pages = 1; $current_page = 1; } else {
                             html += `<option value="${g.id}">${g.group_code} (${new Date(g.created_at).toLocaleDateString()})</option>`;
                         });
                         select.innerHTML = html;
+                        // Initialize Select2
+                        $('#groupSelect').select2({
+                            dropdownParent: $('#addToGroupModal'),
+                            width: '100%',
+                            placeholder: "-- Select Voucher --",
+                            allowClear: true
+                        });
                     } else {
-                        select.innerHTML = '<option value="">No active vouchers found</option>';
+                        select.innerHTML = '<option value="">No compatible vouchers found for this DO</option>';
                     }
                 } else {
                     select.innerHTML = '<option value="">Error loading vouchers</option>';
@@ -319,6 +367,12 @@ if ($records_per_page === 'all') { $total_pages = 1; $current_page = 1; } else {
         if (!groupId) {
             alert('Please select a voucher!');
             return;
+        }
+        
+        const doId = getSelectedDoId();
+        if (doId === false) {
+             alert("Error: You can only add challans from the SAME DO Number to a voucher.");
+             return;
         }
 
         const ids = Array.from(selected).map(cb => cb.closest('tr').getAttribute('data-id'));
@@ -392,7 +446,6 @@ if ($records_per_page === 'all') { $total_pages = 1; $current_page = 1; } else {
     function updateDoRegistrations() {
         var from = $("#from_date").val(); 
         var to = $("#to_date").val();
-        var voucher = $("#single2").val();
         if (from && to) {
             $.ajax({ 
                 url: "<?= base_url('Admin/getDoNumbers') ?>", 
@@ -400,13 +453,33 @@ if ($records_per_page === 'all') { $total_pages = 1; $current_page = 1; } else {
                 data: { 
                     from_date: from, 
                     to_date: to, 
-                    voucher_id: voucher,
                     <?= csrf_token() ?>: "<?= csrf_hash() ?>" 
                 }, 
                 success: function(r) { 
                     $("#single").html(r); 
+                    // Clear vouchers when date changes
+                    $("#single2").html('<option value="">All Vouchers</option>');
                 } 
             });
+        }
+    }
+
+    function updateVouchers() {
+        var do_id = $("#single").val();
+        if (do_id) {
+            $.ajax({ 
+                url: "<?= base_url('Admin/getVouchersByDo') ?>", 
+                type: "POST", 
+                data: { 
+                    do_id: do_id, 
+                    <?= csrf_token() ?>: "<?= csrf_hash() ?>" 
+                }, 
+                success: function(r) { 
+                    $("#single2").html(r); 
+                } 
+            });
+        } else {
+            $("#single2").html('<option value="">All Vouchers</option>');
         }
     }
     function changePerPage() { var p = document.getElementById('per_page').value; var url = new URL(window.location.href); url.searchParams.set('per_page', p); url.searchParams.set('page', '1'); window.location.href = url.toString(); }
@@ -465,6 +538,12 @@ if ($records_per_page === 'all') { $total_pages = 1; $current_page = 1; } else {
         const selected = document.querySelectorAll(".row-checkbox:checked");
         if (selected.length === 0) {
             alert('Please select at least one record to create a voucher!');
+            return;
+        }
+
+        const doId = getSelectedDoId();
+        if (doId === false) {
+            alert("Error: You can only create a voucher for challans from the SAME DO Number. Please deselect challans from other DOs.");
             return;
         }
 
@@ -552,14 +631,24 @@ if ($records_per_page === 'all') { $total_pages = 1; $current_page = 1; } else {
         let freight = min_qty_val * rate;
         row.querySelector(".freight").value = freight.toFixed(2);
         
+        // Shortage calculation flow
+        let actual_shortage = Math.max(0, qty - rest);
+        let special_deduction = parseInt(row.getAttribute('data-special-shortage')) || 0;
+        let do_shortage_qty = parseFloat(row.getAttribute('data-min-qty')) || 0; // shortage_qty from DO
+        
         let shortage_price = 0;
-        if (shortage > 0) {
-            if (shortage_rate > 0) {
-                shortage_price = shortage * shortage_rate;
+        if (actual_shortage > 0) {
+            let chargeable_shortage = 0;
+            if (special_deduction === 1) {
+                chargeable_shortage = Math.max(0, actual_shortage - do_shortage_qty);
             } else {
-                shortage_price = shortage * rate;
+                chargeable_shortage = actual_shortage;
             }
+            
+            let apply_s_rate = (shortage_rate > 0) ? shortage_rate : rate;
+            shortage_price = chargeable_shortage * apply_s_rate;
         }
+        
         row.querySelector(".shortage_price").value = shortage_price.toFixed(2);
         
         let tds_percentage = parseFloat(row.getAttribute('data-tds-percentage')) || 2.00;
@@ -569,11 +658,20 @@ if ($records_per_page === 'all') { $total_pages = 1; $current_page = 1; } else {
         
         let d_amount = parseFloat(row.querySelector(".diesel_amount").value.replace(/,/g, '')) || 0;
         let cash = parseFloat(row.querySelector(".cash").value.replace(/,/g, '')) || 0;
+        let cashType = (row.getAttribute('data-cash-type') || 'Party').toUpperCase();
+        let cashEffect = (cashType === 'OWN') ? cash : -cash;
+
         let bilty_comm = parseFloat(row.querySelector(".bilty_commission").value.replace(/,/g, '')) || 0;
         let tds = tds_amount;
 
         let d_type = (row.getAttribute('data-diesel-payment-type') || 'Party').toUpperCase();
-        let net = (min_qty_val * rate) - shortage_price + (d_type === 'OWN' ? d_amount : -d_amount) - cash + bilty_comm + tds;
+        let net = (min_qty_val * rate)
+          - shortage_price
+          + (d_type === 'OWN' ? d_amount : -d_amount)
+          + cashEffect
+          - bilty_comm
+          - tds;
+
         row.querySelector(".net_amount").value = net.toFixed(2);
     }
     
@@ -587,7 +685,26 @@ if ($records_per_page === 'all') { $total_pages = 1; $current_page = 1; } else {
         let min_qty_val = Math.min(qty, rest);
         let shortage = Math.max(0, qty - min_qty_val);
         let freight = min_qty_val * rate;
-        let shortage_price = parseFloat(row.querySelector(".shortage_price").value) || 0;
+        
+        // Shortage calculation flow
+        let actual_shortage = Math.max(0, qty - rest);
+        let special_deduction = parseInt(row.getAttribute('data-special-shortage')) || 0;
+        let do_shortage_qty = parseFloat(row.getAttribute('data-min-qty')) || 0;
+        let shortage_rate_from_do = parseFloat(row.getAttribute('data-shortage-rate')) || 0;
+        
+        let shortage_price = 0;
+        if (actual_shortage > 0) {
+            let chargeable_shortage = 0;
+            if (special_deduction === 1) {
+                chargeable_shortage = Math.max(0, actual_shortage - do_shortage_qty);
+            } else {
+                chargeable_shortage = actual_shortage;
+            }
+            
+            let apply_s_rate = (shortage_rate_from_do > 0) ? shortage_rate_from_do : rate;
+            shortage_price = chargeable_shortage * apply_s_rate;
+        }
+
         let d_q = parseFloat(row.querySelector(".dieselQty").value) || 0;
         let d_rate = parseFloat(row.getAttribute('data-diesel-rate')) || 0;
         let d_amount = d_q * d_rate;
@@ -599,9 +716,17 @@ if ($records_per_page === 'all') { $total_pages = 1; $current_page = 1; } else {
         let tds = (tds_base_amount * tds_percentage) / 100;
         
         let d_type = (row.getAttribute('data-diesel-payment-type') || 'Party').toUpperCase();
-        let net = (min_qty_val * rate) - shortage_price + (d_type === 'OWN' ? d_amount : -d_amount) - cash + bilty_comm + tds;
+        let cashType = (row.getAttribute('data-cash-type') || 'Party').toUpperCase();
+        let cashEffect = (cashType === 'OWN') ? cash : -cash;
+
+        let net = (min_qty_val * rate)
+          - shortage_price
+          + (d_type === 'OWN' ? d_amount : -d_amount)
+          + cashEffect
+          - bilty_comm
+          - tds;
         
-        let t_d = shortage_price + (d_type === 'OWN' ? -d_amount : d_amount) + cash + bilty_comm + tds;
+        let t_d = shortage_price - (d_type === 'OWN' ? d_amount : -d_amount) - cashEffect + bilty_comm + tds;
         
         row.querySelector(".added_by").value = user;
         

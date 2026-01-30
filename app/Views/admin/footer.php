@@ -17,128 +17,27 @@
       </div>
     </div>
     
-  <!--start Select 2  -->
-     <link href="https://cdnjs.cloudflare.com/ajax/libs/select2/4.0.6-rc.0/css/select2.min.css" rel="stylesheet" />
-   <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.2.1/jquery.min.js"></script>
-    <!-- Select2 -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/select2/4.0.6-rc.0/js/select2.min.js"></script>
     
-    
-
-
-     <script>
-    $("#single").select2({
-        placeholder: "Select an option",
-        allowClear: true
-    });
-    
-    
-    
-    $("#single1").select2({
-        placeholder: "Select an option",
-        allowClear: true
-    });
-    
-    $("#single2").select2({
-        placeholder: "Select an option",
-        allowClear: true
-    });
-    
-     $("#driver_data").select2({
-        placeholder: "Select an option",
-        allowClear: true
-    });
-    
-    $("#vehicle").select2({
-        placeholder: "Select an option",
-        allowClear: true
-    });
-    
-    $("#vehicle_no").select2({
-        placeholder: "Select an option",
-        allowClear: true
-    });
-    
-    $("#multiple").select2({
-        placeholder: "Select an option",
-        allowClear: true
-    });
-    
-     $("#staffFilter").select2({
-        placeholder: "Select an option",
-        allowClear: true
-    });
-    
-    // Event listener for #vehicle
-    $("#vehicle").on('change', function() {
-        vehicleId=$(this).val();
-         if (vehicleId) {
-                $.ajax({
-                    url: '<?php echo base_url("Admin/getVehicleDetails"); ?>',
-                    type: 'POST',
-                    data: { vehicle_id: vehicleId },
-                    success: function (response) {
-                        $('#vehicle-details').html(response);
-                    },
-                    error: function () {
-                        alert('Failed to fetch vehicle details.');
-                    }
-                });
-            } else {
-                $('#vehicle-details').html('');
-            }
-    });
-    
-     $("#vehicle_no").on('change', function() {
-        vehicleId=$(this).val();
-        
-        
-         if (vehicleId) {
-                $.ajax({
-                    url: '<?php echo base_url("Admin/openinghsddtl"); ?>',
-                    type: 'POST',
-                    data: { vehicle_id: vehicleId },
-                    success: function (response) {
-                        $('#openinghsd').html(response);
-                    },
-                    error: function () {
-                        alert('Failed to fetch vehicle details.');
-                    }
-                });
-            } else {
-                $('#openinghsd').html('');
-            }
-    });
-</script>
-
-    
-    
-    
+    <!-- Select 2 CSS moved to top if possible, or just keep here for now but without JS -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/select2/4.0.6-rc.0/css/select2.min.css" rel="stylesheet" />
     <style>
         .select2-container--default .select2-selection--single .select2-selection__arrow {
-  height: 24px !important;
-  position: absolute;
-  top: 1px;
-  right: 1px;
-  width: 20px;
-  top: 10px!important;
-}
+            height: 24px !important;
+            position: absolute;
+            top: 1px;
+            right: 1px;
+            width: 20px;
+            top: 10px!important;
+        }
 
-.select2-container--open .select2-dropdown--below {
-  border-top: none;
-  border-top-left-radius: 0;
-  border-top-right-radius: 0;
-  margin: -20px 0 0 0;
-}
-
+        .select2-container--open .select2-dropdown--below {
+            border-top: none;
+            border-top-left-radius: 0;
+            border-top-right-radius: 0;
+            margin: -20px 0 0 0;
+        }
     </style>
-    
-    
-    <!--End Select 2  --> 
-    
-    
-    
-    
+
     
     
     
@@ -293,6 +192,57 @@
   });
 });
 </script>
+
+    <!-- Select2 JS (Loaded after Main jQuery) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/select2/4.0.6-rc.0/js/select2.min.js"></script>
+    <script>
+        // Initialize Select2 for various inputs
+        $("#single, #single1, #single2, #driver_data, #vehicle, #vehicle_no, #multiple, #staffFilter, .select2-search").select2({
+            placeholder: "Select an option",
+            allowClear: true,
+            width: '100%'
+        });
+
+        // Event listener for #vehicle
+        $("#vehicle").on('change', function() {
+            var vehicleId = $(this).val();
+            if (vehicleId) {
+                $.ajax({
+                    url: '<?php echo base_url("Admin/getVehicleDetails"); ?>',
+                    type: 'POST',
+                    data: { vehicle_id: vehicleId },
+                    success: function (response) {
+                        $('#vehicle-details').html(response);
+                    },
+                    error: function () {
+                        alert('Failed to fetch vehicle details.');
+                    }
+                });
+            } else {
+                $('#vehicle-details').html('');
+            }
+        });
+
+        // Event listener for #vehicle_no
+        $("#vehicle_no").on('change', function() {
+            var vehicleId = $(this).val();
+            if (vehicleId) {
+                $.ajax({
+                    url: '<?php echo base_url("Admin/openinghsddtl"); ?>',
+                    type: 'POST',
+                    data: { vehicle_id: vehicleId },
+                    success: function (response) {
+                        $('#openinghsd').html(response);
+                    },
+                    error: function () {
+                        alert('Failed to fetch vehicle details.');
+                    }
+                });
+            } else {
+                $('#openinghsd').html('');
+            }
+        });
+    </script>
 
   </body>
 
