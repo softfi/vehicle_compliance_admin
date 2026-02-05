@@ -168,22 +168,60 @@ if ($records_per_page === 'all') { $total_pages = 1; $current_page = 1; } else {
                     </thead>
                     <tbody>
                         <?php 
-                            $i = ($records_per_page === 'all') ? 1 : ($current_page - 1) * $records_per_page + 1; 
-                            foreach ($despatch as $des): 
-                                // Base values
-                                $qty = $des->quantity;
-                                $rate = $des->rate;
-                                $received = $des->rest_amount ?? 0;
-                                $do_min = $des->min_qty ?? 0;
-                                $s_rate = $des->shortage_rate ?? 0;
-                                $d_qty = $des->dieselQty ?? 0;
-                                $d_rate = $des->diesel_rate ?? 0;
-                                $cash = $des->cash ?? 0;
-                                $bilty = $des->bilty_commission ?? 0;
-                                $tds_p = $des->tds_percentage ?? 2.00;
-                                $special_shortage = $des->special_shortage ?? 0;
+                            // $i = ($records_per_page === 'all') ? 1 : ($current_page - 1) * $records_per_page + 1; 
+                            // foreach ($despatch as $des): 
+                            //     // Base values
+                            //     $qty = $des->quantity;
+                            //     $rate = $des->rate;
+                            //     $received = $des->rest_amount ?? 0;
+                            //     $do_min = $des->min_qty ?? 0;
+                            //     $s_rate = $des->shortage_rate ?? 0;
+                            //     $d_qty = $des->dieselQty ?? 0;
+                            //     $d_rate = $des->diesel_rate ?? 0;
+                            //     $cash = $des->cash ?? 0;
+                            //     $bilty = $des->bilty_commission ?? 0;
+                            //     $tds_p = $des->tds_percentage ?? 2.00;
+                            //     $special_shortage = $des->special_shortage ?? 0;
 
-                                // Calculations
+                            //     // Calculations
+                            //     $actual_min = min($qty, $received);
+                            //     $actual_shortage = max(0, $qty - $received);
+                            //     $freight = $actual_min * $rate;
+                                
+                            //     if ($actual_shortage <= 0) {
+                            //         $s_price = 0;
+                            //     } else {
+                            //         if ($special_shortage == 1) {
+                            //             $chargeable_shortage = max(0, $actual_shortage - $do_min);
+                            //         } else {
+                            //             $chargeable_shortage = $actual_shortage;
+                            //         }
+                            //         $s_price = $chargeable_shortage * ($s_rate > 0 ? $s_rate : $rate);
+                            //     }
+                            //     $shortage = $actual_shortage; // Displayed shortage
+                            //     $d_amount = $d_qty * $d_rate;
+                            //     $d_type = !empty($des->diesel_payment_type) ? $des->diesel_payment_type : 'Party';
+                            //     $tds = ($actual_min * $rate * $tds_p) / 100;
+                            //     $net = $freight - $s_price - $d_amount + $cash - $bilty - $tds;
+ 
+                        $i = ($records_per_page === 'all') ? 1 : ($current_page - 1) * $records_per_page + 1; 
+                        foreach ($despatch as $des): 
+                            // Base values
+                            $qty = $des->quantity;
+                            $rate = $des->rate;
+                            $received = $des->rest_amount; // ✅ Keep NULL if not entered
+                            $do_min = $des->min_qty ?? 0;
+                            $s_rate = $des->shortage_rate ?? 0;
+                            $d_qty = $des->dieselQty ?? 0;
+                            $d_rate = $des->diesel_rate ?? 0;
+                            $cash = $des->cash ?? 0;
+                            $bilty = $des->bilty_commission ?? 0;
+                            $tds_p = $des->tds_percentage ?? 2.00;
+                            $special_shortage = $des->special_shortage ?? 0;
+
+                            // ✅ Only calculate if received qty is entered
+                            if ($received !== null && $received !== '' && $received > 0) {
+                                // Calculations when received qty is entered
                                 $actual_min = min($qty, $received);
                                 $actual_shortage = max(0, $qty - $received);
                                 $freight = $actual_min * $rate;
@@ -198,15 +236,23 @@ if ($records_per_page === 'all') { $total_pages = 1; $current_page = 1; } else {
                                     }
                                     $s_price = $chargeable_shortage * ($s_rate > 0 ? $s_rate : $rate);
                                 }
-                                $shortage = $actual_shortage; // Displayed shortage
-                                $d_amount = $d_qty * $d_rate;
-                                $d_type = !empty($des->diesel_payment_type) ? $des->diesel_payment_type : 'Party';
-                                $c_type = !empty($des->cash_type) ? $des->cash_type : 'Party';
-                                $c_effect = (strcasecmp($c_type, 'Own') == 0 ? $cash : -$cash);
+                                $shortage = $actual_shortage;
                                 $tds = ($actual_min * $rate * $tds_p) / 100;
-                                $net = $freight - $s_price + (strcasecmp($d_type, 'Own') == 0 ? $d_amount : -$d_amount) + $c_effect - $bilty - $tds;
-                        ?>
-                        <tr data-id="<?= $des->despatch_id; ?>" data-do-id="<?= $des->do_no; ?>" data-min-qty="<?= $do_min; ?>" data-shortage-rate="<?= $s_rate; ?>" data-diesel-rate="<?= $d_rate; ?>" data-tds-percentage="<?= $tds_p; ?>" data-diesel-payment-type="<?= $d_type; ?>" data-cash-type="<?= $c_type; ?>" data-special-shortage="<?= $special_shortage; ?>">
+                            } else {
+                                // ✅ Not entered - show zeros
+                                $actual_min = 0;
+                                $shortage = 0;
+                                $freight = 0;
+                                $s_price = 0; // ✅ This is the key fix
+                                $tds = 0;
+                            }
+                            
+                            $d_amount = $d_qty * $d_rate;
+                            $d_type = !empty($des->diesel_payment_type) ? $des->diesel_payment_type : 'Party';
+                            $net = $freight - $s_price - $d_amount + $cash - $bilty - $tds;
+
+                       ?>
+                        <tr data-id="<?= $des->despatch_id; ?>" data-do-id="<?= $des->do_no; ?>" data-min-qty="<?= $do_min; ?>" data-shortage-rate="<?= $s_rate; ?>" data-diesel-rate="<?= $d_rate; ?>" data-tds-percentage="<?= $tds_p; ?>" data-special-shortage="<?= $special_shortage; ?>">
                             <td style="min-width: 60px;"><input type="checkbox" class="row-checkbox" onchange="updateBulkBar()"> <?= $i++; ?></td>
                             <td style="min-width: 100px;"><?= date('d-m-Y', strtotime($des->des_date)); ?></td>
                             <td style="min-width: 90px;"><?= $des->doreg_no; ?></td>
@@ -247,6 +293,7 @@ if ($records_per_page === 'all') { $total_pages = 1; $current_page = 1; } else {
         </div>
     </div>
 </div>
+
 <!-- Add to Group Modal -->
 <div id="addToGroupModal" class="modal" tabindex="-1" role="dialog" style="display: none; position: fixed; z-index: 1050; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.4);">
   <div class="modal-dialog" role="document" style="margin: 10% auto; max-width: 500px;">
@@ -613,80 +660,86 @@ if ($records_per_page === 'all') { $total_pages = 1; $current_page = 1; } else {
         row.querySelector('.diesel_amount').value = dieselAmount.toFixed(2);
         calculateRow(input);
     }
-
+    
     function calculateRow(input) {
         let row = input.closest('tr');
-        let id = row.getAttribute('data-id');
         let qty = parseFloat(row.querySelector(".quantity").textContent.replace(/,/g, '')) || 0;
-        let rest = parseFloat(row.querySelector(".rest_amount").value) || 0;
+        let rest_val = row.querySelector(".rest_amount").value;
         let rate = parseFloat(row.querySelector(".rate").textContent.replace(/,/g, '')) || 0;
         let shortage_rate = parseFloat(row.getAttribute('data-shortage-rate')) || 0;
         
-        let min_qty_val = Math.min(qty, rest);
-        row.querySelector(".min_qty_col").value = min_qty_val.toFixed(2);
-        
-        let shortage = Math.max(0, qty - min_qty_val);
-        row.querySelector(".shortage").value = shortage.toFixed(2);
-        
-        let freight = min_qty_val * rate;
-        row.querySelector(".freight").value = freight.toFixed(2);
-        
-        // Shortage calculation flow
-        let actual_shortage = Math.max(0, qty - rest);
-        let special_deduction = parseInt(row.getAttribute('data-special-shortage')) || 0;
-        let do_shortage_qty = parseFloat(row.getAttribute('data-min-qty')) || 0; // shortage_qty from DO
-        
-        let shortage_price = 0;
-        if (actual_shortage > 0) {
-            let chargeable_shortage = 0;
-            if (special_deduction === 1) {
-                chargeable_shortage = Math.max(0, actual_shortage - do_shortage_qty);
-            } else {
-                chargeable_shortage = actual_shortage;
-            }
+        // ✅ Check if received qty is entered
+        if (rest_val !== '' && rest_val !== null && parseFloat(rest_val) > 0) {
+            let rest = parseFloat(rest_val);
             
-            let apply_s_rate = (shortage_rate > 0) ? shortage_rate : rate;
-            shortage_price = chargeable_shortage * apply_s_rate;
+            let min_qty_val = Math.min(qty, rest);
+            row.querySelector(".min_qty_col").value = min_qty_val.toFixed(2);
+            
+            let shortage = Math.max(0, qty - min_qty_val);
+            row.querySelector(".shortage").value = shortage.toFixed(2);
+            
+            let freight = min_qty_val * rate;
+            row.querySelector(".freight").value = freight.toFixed(2);
+            
+            // Shortage calculation
+            let actual_shortage = Math.max(0, qty - rest);
+            let special_deduction = parseInt(row.getAttribute('data-special-shortage')) || 0;
+            let do_shortage_qty = parseFloat(row.getAttribute('data-min-qty')) || 0;
+            
+            let shortage_price = 0;
+            if (actual_shortage > 0) {
+                let chargeable_shortage = 0;
+                if (special_deduction === 1) {
+                    chargeable_shortage = Math.max(0, actual_shortage - do_shortage_qty);
+                } else {
+                    chargeable_shortage = actual_shortage;
+                }
+                let apply_s_rate = (shortage_rate > 0) ? shortage_rate : rate;
+                shortage_price = chargeable_shortage * apply_s_rate;
+            }
+            row.querySelector(".shortage_price").value = shortage_price.toFixed(2);
+            
+            let tds_percentage = parseFloat(row.getAttribute('data-tds-percentage')) || 2.00;
+            let tds_base_amount = min_qty_val * rate;
+            let tds_amount = (tds_base_amount * tds_percentage) / 100;
+            row.querySelector(".tds").value = tds_amount.toFixed(2);
+            
+            let d_amount = parseFloat(row.querySelector(".diesel_amount").value.replace(/,/g, '')) || 0;
+            let cash = parseFloat(row.querySelector(".cash").value.replace(/,/g, '')) || 0;
+            let bilty_comm = parseFloat(row.querySelector(".bilty_commission").value.replace(/,/g, '')) || 0;
+            
+            let net = freight - shortage_price - d_amount - cash - bilty_comm - tds_amount;
+            row.querySelector(".net_amount").value = net.toFixed(2);
+        } else {
+            // ✅ Not entered - set zeros
+            row.querySelector(".min_qty_col").value = '0.00';
+            row.querySelector(".shortage").value = '0.00';
+            row.querySelector(".freight").value = '0.00';
+            row.querySelector(".shortage_price").value = '0.00';
+            row.querySelector(".tds").value = '0.00';
+            row.querySelector(".net_amount").value = '0.00';
         }
-        
-        row.querySelector(".shortage_price").value = shortage_price.toFixed(2);
-        
-        let tds_percentage = parseFloat(row.getAttribute('data-tds-percentage')) || 2.00;
-        let tds_base_amount = min_qty_val * rate;
-        let tds_amount = (tds_base_amount * tds_percentage) / 100;
-        row.querySelector(".tds").value = tds_amount.toFixed(2);
-        
-        let d_amount = parseFloat(row.querySelector(".diesel_amount").value.replace(/,/g, '')) || 0;
-        let cash = parseFloat(row.querySelector(".cash").value.replace(/,/g, '')) || 0;
-        let cashType = (row.getAttribute('data-cash-type') || 'Party').toUpperCase();
-        let cashEffect = (cashType === 'OWN') ? cash : -cash;
-
-        let bilty_comm = parseFloat(row.querySelector(".bilty_commission").value.replace(/,/g, '')) || 0;
-        let tds = tds_amount;
-
-        let d_type = (row.getAttribute('data-diesel-payment-type') || 'Party').toUpperCase();
-        let net = (min_qty_val * rate)
-          - shortage_price
-          + (d_type === 'OWN' ? d_amount : -d_amount)
-          + cashEffect
-          - bilty_comm
-          - tds;
-
-        row.querySelector(".net_amount").value = net.toFixed(2);
     }
-    
+
     function updateRow(btn, user, show_alert = true) {
         let row = btn.closest('tr');
         let id = row.getAttribute('data-id');
         let qty = parseFloat(row.querySelector(".quantity").textContent.replace(/,/g, '')) || 0;
-        let rest = parseFloat(row.querySelector(".rest_amount").value) || 0;
+        let rest_val = row.querySelector(".rest_amount").value;
         let rate = parseFloat(row.querySelector(".rate").textContent.replace(/,/g, '')) || 0;
         
+        // ✅ Check if received qty is entered before proceeding
+        if (rest_val === '' || rest_val === null || parseFloat(rest_val) <= 0) {
+            if (show_alert) alert('Please enter Received Qty before saving!');
+            return Promise.reject('No received qty');
+        }
+        
+        let rest = parseFloat(rest_val);
         let min_qty_val = Math.min(qty, rest);
         let shortage = Math.max(0, qty - min_qty_val);
         let freight = min_qty_val * rate;
         
-        // Shortage calculation flow
+        // Shortage calculation
         let actual_shortage = Math.max(0, qty - rest);
         let special_deduction = parseInt(row.getAttribute('data-special-shortage')) || 0;
         let do_shortage_qty = parseFloat(row.getAttribute('data-min-qty')) || 0;
@@ -700,7 +753,6 @@ if ($records_per_page === 'all') { $total_pages = 1; $current_page = 1; } else {
             } else {
                 chargeable_shortage = actual_shortage;
             }
-            
             let apply_s_rate = (shortage_rate_from_do > 0) ? shortage_rate_from_do : rate;
             shortage_price = chargeable_shortage * apply_s_rate;
         }
@@ -715,18 +767,8 @@ if ($records_per_page === 'all') { $total_pages = 1; $current_page = 1; } else {
         let tds_base_amount = min_qty_val * rate;
         let tds = (tds_base_amount * tds_percentage) / 100;
         
-        let d_type = (row.getAttribute('data-diesel-payment-type') || 'Party').toUpperCase();
-        let cashType = (row.getAttribute('data-cash-type') || 'Party').toUpperCase();
-        let cashEffect = (cashType === 'OWN') ? cash : -cash;
-
-        let net = (min_qty_val * rate)
-          - shortage_price
-          + (d_type === 'OWN' ? d_amount : -d_amount)
-          + cashEffect
-          - bilty_comm
-          - tds;
-        
-        let t_d = shortage_price - (d_type === 'OWN' ? d_amount : -d_amount) - cashEffect + bilty_comm + tds;
+        let net = freight - shortage_price - d_amount - cash - bilty_comm - tds;
+        let t_d = shortage_price - d_amount - cash - bilty_comm - tds;
         
         row.querySelector(".added_by").value = user;
         
@@ -770,5 +812,159 @@ if ($records_per_page === 'all') { $total_pages = 1; $current_page = 1; } else {
             }
         });
     }
+    // function calculateRow(input) {
+    //     let row = input.closest('tr');
+    //     let id = row.getAttribute('data-id');
+    //     let qty = parseFloat(row.querySelector(".quantity").textContent.replace(/,/g, '')) || 0;
+    //     let rest = parseFloat(row.querySelector(".rest_amount").value) || 0;
+    //     let rate = parseFloat(row.querySelector(".rate").textContent.replace(/,/g, '')) || 0;
+    //     let shortage_rate = parseFloat(row.getAttribute('data-shortage-rate')) || 0;
+        
+    //     let min_qty_val = Math.min(qty, rest);
+    //     row.querySelector(".min_qty_col").value = min_qty_val.toFixed(2);
+        
+    //     let shortage = Math.max(0, qty - min_qty_val);
+    //     row.querySelector(".shortage").value = shortage.toFixed(2);
+        
+    //     let freight = min_qty_val * rate;
+    //     row.querySelector(".freight").value = freight.toFixed(2);
+        
+    //     // Shortage calculation flow
+    //     let actual_shortage = Math.max(0, qty - rest);
+    //     let special_deduction = parseInt(row.getAttribute('data-special-shortage')) || 0;
+    //     let do_shortage_qty = parseFloat(row.getAttribute('data-min-qty')) || 0; // shortage_qty from DO
+        
+    //     let shortage_price = 0;
+    //     if (actual_shortage > 0) {
+    //         let chargeable_shortage = 0;
+    //         if (special_deduction === 1) {
+    //             chargeable_shortage = Math.max(0, actual_shortage - do_shortage_qty);
+    //         } else {
+    //             chargeable_shortage = actual_shortage;
+    //         }
+            
+    //         let apply_s_rate = (shortage_rate > 0) ? shortage_rate : rate;
+    //         shortage_price = chargeable_shortage * apply_s_rate;
+    //     }
+        
+    //     row.querySelector(".shortage_price").value = shortage_price.toFixed(2);
+        
+    //     let tds_percentage = parseFloat(row.getAttribute('data-tds-percentage')) || 2.00;
+    //     let tds_base_amount = min_qty_val * rate;
+    //     let tds_amount = (tds_base_amount * tds_percentage) / 100;
+    //     row.querySelector(".tds").value = tds_amount.toFixed(2);
+        
+    //     let d_amount = parseFloat(row.querySelector(".diesel_amount").value.replace(/,/g, '')) || 0;
+    //     let cash = parseFloat(row.querySelector(".cash").value.replace(/,/g, '')) || 0;
+    //     let cashType = (row.getAttribute('data-cash-type') || 'Party').toUpperCase();
+
+    //     let bilty_comm = parseFloat(row.querySelector(".bilty_commission").value.replace(/,/g, '')) || 0;
+    //     let tds = tds_amount;
+
+    //     let d_type = (row.getAttribute('data-diesel-payment-type') || 'Party').toUpperCase();
+    //     let net = (min_qty_val * rate)
+    //       - shortage_price
+    //       - d_amount
+    //       - cash
+    //       - bilty_comm
+    //       - tds;
+
+    //     row.querySelector(".net_amount").value = net.toFixed(2);
+    // }
+    
+    // function updateRow(btn, user, show_alert = true) {
+    //     let row = btn.closest('tr');
+    //     let id = row.getAttribute('data-id');
+    //     let qty = parseFloat(row.querySelector(".quantity").textContent.replace(/,/g, '')) || 0;
+    //     let rest = parseFloat(row.querySelector(".rest_amount").value) || 0;
+    //     let rate = parseFloat(row.querySelector(".rate").textContent.replace(/,/g, '')) || 0;
+        
+    //     let min_qty_val = Math.min(qty, rest);
+    //     let shortage = Math.max(0, qty - min_qty_val);
+    //     let freight = min_qty_val * rate;
+        
+    //     // Shortage calculation flow
+    //     let actual_shortage = Math.max(0, qty - rest);
+    //     let special_deduction = parseInt(row.getAttribute('data-special-shortage')) || 0;
+    //     let do_shortage_qty = parseFloat(row.getAttribute('data-min-qty')) || 0;
+    //     let shortage_rate_from_do = parseFloat(row.getAttribute('data-shortage-rate')) || 0;
+        
+    //     let shortage_price = 0;
+    //     if (actual_shortage > 0) {
+    //         let chargeable_shortage = 0;
+    //         if (special_deduction === 1) {
+    //             chargeable_shortage = Math.max(0, actual_shortage - do_shortage_qty);
+    //         } else {
+    //             chargeable_shortage = actual_shortage;
+    //         }
+            
+    //         let apply_s_rate = (shortage_rate_from_do > 0) ? shortage_rate_from_do : rate;
+    //         shortage_price = chargeable_shortage * apply_s_rate;
+    //     }
+
+    //     let d_q = parseFloat(row.querySelector(".dieselQty").value) || 0;
+    //     let d_rate = parseFloat(row.getAttribute('data-diesel-rate')) || 0;
+    //     let d_amount = d_q * d_rate;
+    //     let cash = parseFloat(row.querySelector(".cash").value) || 0;
+    //     let bilty_comm = parseFloat(row.querySelector(".bilty_commission").value) || 0;
+        
+    //     let tds_percentage = parseFloat(row.getAttribute('data-tds-percentage')) || 2.00;
+    //     let tds_base_amount = min_qty_val * rate;
+    //     let tds = (tds_base_amount * tds_percentage) / 100;
+        
+    //     let d_type = (row.getAttribute('data-diesel-payment-type') || 'Party').toUpperCase();
+    //     let cashType = (row.getAttribute('data-cash-type') || 'Party').toUpperCase();
+
+    //     let net = (min_qty_val * rate)
+    //       - shortage_price
+    //       - d_amount
+    //       - cash
+    //       - bilty_comm
+    //       - tds;
+        
+    //     let t_d = shortage_price - d_amount - cash + bilty_comm + tds;
+        
+    //     row.querySelector(".added_by").value = user;
+        
+    //     return $.ajax({
+    //         url: "<?= base_url('Admin/updateDispatch') ?>",
+    //         type: "POST",
+    //         data: {
+    //             id: id,
+    //             rest_amount: rest,
+    //             shortage: shortage,
+    //             freight: freight,
+    //             dieselQty: d_q,
+    //             dieselPrice: d_rate,
+    //             totaldieselRate: d_amount,
+    //             cash: cash,
+    //             bilty_commission: bilty_comm,
+    //             deposit_by: user,
+    //             total_deduction: t_d,
+    //             net_amount: net,
+    //             tds: tds,
+    //             <?= csrf_token() ?>: "<?= csrf_hash() ?>"
+    //         },
+    //         success: function(r) {
+    //             if (r.status === 'success') {
+    //                 if (r.calculations) {
+    //                     row.querySelector(".shortage").value = r.calculations.shortage || shortage.toFixed(2);
+    //                     row.querySelector(".shortage_price").value = r.calculations.shortage_price;
+    //                     row.querySelector(".freight").value = r.calculations.freight || freight.toFixed(2);
+    //                     row.querySelector(".tds").value = r.calculations.tds || tds.toFixed(2);
+    //                     row.querySelector(".net_amount").value = r.calculations.net_amount;
+    //                 }
+    //                 if (show_alert) alert('Updated successfully');
+    //             } else {
+    //                 if (show_alert) alert('Error: ' + r.message);
+    //             }
+    //         },
+    //         error: function(xhr, status, error) {
+    //             console.error('AJAX Error:', error);
+    //             console.error('Response:', xhr.responseText);
+    //             if (show_alert) alert('Error updating record. Check console for details.');
+    //         }
+    //     });
+    // }
 </script>
 <?php include("footer.php"); ?>

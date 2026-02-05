@@ -46,12 +46,46 @@ if ($records_per_page === 'all') { $total_pages = 1; $current_page = 1; } else {
                 </form>
             </div>
             <div class="table-card">
-                <div class="table-controls"><div class="records-per-page"><label for="per_page">Records per page:</label><select id="per_page" class="form-control-custom" onchange="changePerPage()"><option value="10" <?= $records_per_page == 10 ? 'selected' : '' ?>>10</option><option value="25" <?= $records_per_page == 25 ? 'selected' : '' ?>>25</option><option value="50" <?= $records_per_page == 50 ? 'selected' : '' ?>>50</option><option value="100" <?= $records_per_page == 100 ? 'selected' : '' ?>>100</option><option value="all" <?= $records_per_page == 'all' ? 'selected' : '' ?>>Show All</option></select></div></div>
-                <div class="row mb-3"><div class="col-md-4"><input type="text" id="tableSearch" class="form-control" placeholder="🔍 Search in table..."></div></div>
+                <div class="row mb-3 align-items-center">
+                    <!-- Left: Search -->
+                    <div class="col-md-6">
+                        <input type="text"
+                            id="tableSearch"
+                            class="form-control"
+                            placeholder="🔍 Search in table...">
+                    </div>
+
+                    <!-- Right: Records per page -->
+                    <div class="col-md-6 d-flex justify-content-end align-items-center gap-2">
+                        <label for="per_page" class="mb-0">Records per page:</label>
+                        <select id="per_page"
+                                class="form-control"
+                                onchange="changePerPage()"
+                                style="width:120px">
+                            <option value="10" <?= $records_per_page == 10 ? 'selected' : '' ?>>10</option>
+                            <option value="25" <?= $records_per_page == 25 ? 'selected' : '' ?>>25</option>
+                            <option value="50" <?= $records_per_page == 50 ? 'selected' : '' ?>>50</option>
+                            <option value="100" <?= $records_per_page == 100 ? 'selected' : '' ?>>100</option>
+                            <option value="all" <?= $records_per_page == 'all' ? 'selected' : '' ?>>Show All</option>
+                        </select>
+                    </div>
+                </div>
+
+
+                <!-- Second Row: Buttons -->
+                <div class="row mb-3" style="display: flex; justify-content: space-between; align-items: center;">
+                    <div class="col-md-6">
+                        <button type="button" class="btn-custom btn-success-custom" onclick="bulkUpdateVouchers()">Save Selected</button>
+                    </div>
+                    <div class="col-md-6 text-end">
+                        <button type="button" class="btn-custom btn-primary-custom" onclick="addToPayment()">Add to Payment</button>
+                    </div>
+                </div>
                 <div class="table-wrapper">
                     <table id="myTable">
                         <thead>
                             <tr>
+                                <th><input type="checkbox" id="selectAll"></th>
                                 <th>Sl No</th>
                                 <th>Party Name</th>
                                 <th>Voucher No</th>
@@ -67,6 +101,7 @@ if ($records_per_page === 'all') { $total_pages = 1; $current_page = 1; } else {
                         <tbody>
                             <?php $i = 1; foreach ($vouchers as $v): ?>
                             <tr data-id="<?= $v->id; ?>">
+                                <td><input type="checkbox" class="voucher-checkbox" value="<?= $v->id; ?>"></td>
                                 <td><?= $i++; ?></td>
                                 <td><?= $v->party_name ?? 'N/A'; ?></td>
                                 <td><?= $v->group_code; ?></td>
@@ -272,6 +307,87 @@ if ($records_per_page === 'all') { $total_pages = 1; $current_page = 1; } else {
             error: function(xhr, status, error) {
                 console.error('AJAX Error:', error);
                 alert('Error updating record.');
+            }
+        });
+    }
+
+    function bulkUpdateVouchers() {
+        const selected = [];
+        document.querySelectorAll('.voucher-checkbox:checked').forEach(cb => {
+            let row = cb.closest('tr');
+            selected.push({
+                voucher_id: cb.value,
+                deposited_by: row.querySelector('.deposited_by').value,
+                deposit_date: row.querySelector('.deposit_date').value,
+                deposit_place: row.querySelector('.deposit_place').value
+            });
+        });
+
+        if (selected.length === 0) {
+            alert('Please select at least one voucher.');
+            return;
+        }
+
+        if (!confirm(`Are you sure you want to update ${selected.length} vouchers?`)) return;
+
+        $.ajax({
+            url: "<?= base_url('Admin/bulkUpdateVoucherDeposit') ?>",
+            type: "POST",
+            data: {
+                vouchers: selected,
+                '<?= csrf_token() ?>': '<?= csrf_hash() ?>'
+            },
+            success: function(r) {
+                if (r.status === 'success') {
+                    alert('Bulk update successful');
+                    location.reload();
+                } else {
+                    alert('Error: ' + r.message);
+                }
+            },
+            error: function() {
+                alert('Error processing request.');
+            }
+        });
+    }
+
+    // Select All functionality
+    document.getElementById('selectAll').addEventListener('change', function() {
+        const checkboxes = document.querySelectorAll('.voucher-checkbox');
+        checkboxes.forEach(cb => cb.checked = this.checked);
+    });
+
+    // Add to Payment Function
+    function addToPayment() {
+        const selected = [];
+        document.querySelectorAll('.voucher-checkbox:checked').forEach(cb => {
+            selected.push(cb.value);
+        });
+
+        if (selected.length === 0) {
+            alert('Please select at least one voucher.');
+            return;
+        }
+
+        if (!confirm('Are you sure you want to add selected vouchers to payment?')) return;
+
+        $.ajax({
+            url: "<?= base_url('Admin/addToPayment') ?>",
+            type: "POST",
+            data: {
+                voucher_ids: selected,
+                '<?= csrf_token() ?>': '<?= csrf_hash() ?>'
+            },
+            success: function(r) {
+                if (r.status === 'success') {
+                    alert('Successfully added to payment! PO Number: ' + r.po_number); // assuming API returns it, or just generic success
+                    location.reload();
+                } else {
+                    alert('Error: ' + r.message);
+                }
+            },
+            error: function() {
+                alert('Error processing request.');
             }
         });
     }

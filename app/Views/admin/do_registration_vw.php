@@ -238,7 +238,7 @@
                                         <td><?= isset($doreg->shortage_qty) ? $doreg->shortage_qty : '-'; ?></td>
                                         <td><?= isset($doreg->shortage_rate) ? $doreg->shortage_rate : '-'; ?></td>
                                         <td><?= (isset($doreg->special_shortage) && $doreg->special_shortage == 1) ? 'Yes' : 'No'; ?></td>
-                                        <td><?=$doreg->party;?></td>
+                                        <td><?= $doreg->party_name ?? '-'; ?></td>
                                         <td><?=$doreg->from_date;?></td>
                                         <td><?=$doreg->to_date;?></td>
                                         <td><?=$doreg->rate;?></td>

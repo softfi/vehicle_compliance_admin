@@ -205,6 +205,7 @@ public function driverasignment($from_date = null, $to_date = null)
 	public function partyNames(){
 	    $builder= $this->db->table('vendor');
 	    $builder->select('*');
+        $builder->where('type', 'Party');
 	    return $builder->get()->getResult();
 	}
 
@@ -224,15 +225,90 @@ public function driverasignment($from_date = null, $to_date = null)
 		return $builder->get()->getResult();
 	}
 
+    // function tonnage_dtls()
+    // {
+    //     $builder = $this->db->table('tonnage');
+    //     $builder->select('tonnage.*, created_by_user.full_name AS created_by_name, updated_by_user.full_name AS updated_by_name');
+    //     $builder->join('user AS created_by_user', 'created_by_user.id = tonnage.created_by', 'left');
+    //     $builder->join('user AS updated_by_user', 'updated_by_user.id = tonnage.updated_by', 'left');
+    //     $builder->where('tonnage.deleted_by', null);
+    //     return $builder->get()->getResult();
+    // }
+
+    // function tonnage_dtls()
+    // {
+    //     $builder = $this->db->table('tonnage');
+
+    //     $builder->select('
+    //         tonnage.*,
+    //         set_master.set_name,
+    //         created_by_user.full_name AS created_by_name,
+    //         updated_by_user.full_name AS updated_by_name
+    //     ');
+
+    //     // 🔹 Join set_master to get set_name
+    //     $builder->join(
+    //         'set_master',
+    //         'set_master.id = tonnage.set_id',
+    //         'left'
+    //     );
+
+    //     // 🔹 Created / Updated users
+    //     $builder->join(
+    //         'user AS created_by_user',
+    //         'created_by_user.id = tonnage.created_by',
+    //         'left'
+    //     );
+
+    //     $builder->join(
+    //         'user AS updated_by_user',
+    //         'updated_by_user.id = tonnage.updated_by',
+    //         'left'
+    //     );
+
+    //     $builder->where('tonnage.deleted_by', null);
+
+    //     return $builder->get()->getResult();
+    // }
+
     function tonnage_dtls()
     {
         $builder = $this->db->table('tonnage');
-        $builder->select('tonnage.*, created_by_user.full_name AS created_by_name, updated_by_user.full_name AS updated_by_name');
-        $builder->join('user AS created_by_user', 'created_by_user.id = tonnage.created_by', 'left');
-        $builder->join('user AS updated_by_user', 'updated_by_user.id = tonnage.updated_by', 'left');
-        $builder->where('tonnage.deleted_by', null);
+
+        $builder->select('
+            tonnage.*,
+            set_master.set_name,
+            created_by_user.full_name AS created_by_name,
+            updated_by_user.full_name AS updated_by_name
+        ');
+
+        // 🔹 Join set_master to get set_name
+        $builder->join(
+            'set_master',
+            'set_master.id = tonnage.set_id',
+            'left'
+        );
+
+        // 🔹 Created / Updated users
+        $builder->join(
+            'user AS created_by_user',
+            'created_by_user.id = tonnage.created_by',
+            'left'
+        );
+
+        $builder->join(
+            'user AS updated_by_user',
+            'updated_by_user.id = tonnage.updated_by',
+            'left'
+        );
+
+        // ✅ FIX: Proper NULL check
+        $builder->where('tonnage.deleted_by IS NULL', null, false);
+
         return $builder->get()->getResult();
     }
+
+
 
     function single_tonnage($id)
     {
@@ -707,6 +783,47 @@ public function itemdtls()
         $builder->orderBy('do_registration_id', 'DESC');
         return $builder->get()->getResult();
     }
+
+    // public function doregistration_dtls1($from_date = null, $to_date = null, $voucher_id = null)
+    // {
+    //     $builder = $this->db->table('do_registration');
+    //     $builder->select('
+    //         do_registration.*, 
+    //         vendor.name as party_name,
+    //         set_master.set_name as tonnage_set_name,
+    //         route.from_city, 
+    //         route.to_city, 
+    //         route.location_id,
+    //         location.location_name,
+    //         location.location_shortname
+    //     ');
+
+    //     // Join related tables
+    //     $builder->join('vendor', 'vendor.id = do_registration.party', 'left');
+    //     $builder->join('set_master', 'set_master.id = do_registration.load_tonnage_id', 'left'); // <-- set name
+    //     $builder->join('route', 'route.id = do_registration.route_id', 'left'); // <-- route info
+    //     $builder->join('location', 'location.location_id = route.location_id', 'left'); // <-- location info
+
+    //     // Voucher filter
+    //     if (!empty($voucher_id)) {
+    //         $builder->join('despatch', 'despatch.do_no = do_registration.do_registration_id', 'left');
+    //         $builder->where('despatch.voucher_id', $voucher_id);
+    //         $builder->groupBy('do_registration.do_registration_id'); // Ensure unique DOs
+    //     } else {
+    //         // Only apply date filter if no voucher is selected
+    //         if (!empty($from_date) && !empty($to_date)) {
+    //             $builder->groupStart()
+    //                     ->where("do_registration.from_date BETWEEN '$from_date' AND '$to_date'")
+    //                     ->orWhere("do_registration.to_date BETWEEN '$from_date' AND '$to_date'")
+    //                     ->orWhere("(do_registration.from_date <= '$from_date' AND do_registration.to_date >= '$to_date')")
+    //                     ->groupEnd();
+    //         }
+    //     }
+
+    //     $builder->orderBy('do_registration_id', 'DESC');
+    //     return $builder->get()->getResult();
+    // }
+
 public function despatch_count($from_date = null, $to_date = null, $do_no = null, $chalan_status = null, $payment_status = null, $deposited_status = null, $voucher_id = null)
 {
     $builder = $this->db->table('despatch');
@@ -765,7 +882,7 @@ public function despatch_dtls1_paginated($from_date = null, $to_date = null, $do
         $builder->join('vehicle', 'vehicle.id = despatch.vehicle_no');
         $builder->join('do_registration', 'do_registration.do_registration_id = despatch.do_no');
         $builder->join('voucher', 'voucher.id = despatch.voucher_id', 'left');
-    $builder->join('activity_logs', "activity_logs.model_id = despatch.despatch_id AND activity_logs.action = 'create' AND activity_logs.menu = 'despatch_entry'", 'left');
+    $builder->join('activity_logs', "activity_logs.model_id = despatch.despatch_id AND activity_logs.action = 'create' AND (activity_logs.menu = 'despatch_entry' OR activity_logs.menu = 'insert_despatch_entry')", 'left');
     $builder->join('user as creator', 'creator.id = activity_logs.user_id', 'left');
     $builder->where('despatch.deleted_by IS NULL');
 
@@ -1370,9 +1487,233 @@ public function getItemById($id)
 		}
 
 		$builder->groupBy('voucher.id');
-		$builder->orderBy('voucher.id', 'DESC');
-		return $builder->get()->getResult();
-	}
+	$builder->orderBy('voucher.id', 'DESC');
+	return $builder->get()->getResult();
+}
+
+public function createVoucherPayment($voucher_ids)
+{
+    if (empty($voucher_ids)) {
+        return ['status' => 'error', 'message' => 'No vouchers selected'];
+    }
+
+    $builder = $this->db->table('voucher');
+    $builder->select('voucher.id, despatch.do_no, despatch.net_amount');
+    $builder->join('despatch', 'despatch.voucher_id = voucher.id', 'left');
+    $builder->whereIn('voucher.id', $voucher_ids);
+    $results = $builder->get()->getResult();
+
+    if (empty($results)) {
+        return ['status' => 'error', 'message' => 'No voucher details found'];
+    }
+
+    $total_net_amount = 0;
+    $do_numbers = [];
+    $processed_vouchers = [];
+
+    foreach ($results as $row) {
+        $total_net_amount += $row->net_amount;
+        if (!empty($row->do_no)) {
+            $do_numbers[] = $row->do_no;
+        }
+        $processed_vouchers[] = $row->id;
+    }
+
+    $do_numbers = array_unique($do_numbers);
+    $processed_vouchers = array_unique($processed_vouchers);
+
+    $po_number = 'PO-' . date('YmdHis') . '-' . rand(100, 999);
+
+    $data = [
+        'po_number' => $po_number,
+        'do_numbers' => implode(',', $do_numbers),
+        'voucher_ids' => implode(',', $processed_vouchers),
+        'total_net_amount' => $total_net_amount,
+        'received_amount' => 0,
+        'difference_amount' => $total_net_amount, // Initially difference is full amount
+        'adjustment_amount' => 0,
+        'adjustment_remarks' => '',
+        'created_at' => date('Y-m-d H:i:s')
+    ];
+
+    $this->db->table('voucher_payment')->insert($data);
+    return ['status' => 'success', 'message' => 'Payment record created successfully'];
+}
+
+public function getVoucherPayments($from_date = null, $to_date = null, $party = null)
+{
+    $builder = $this->db->table('voucher_payment');
+    $builder->select('voucher_payment.*');
+
+    if ($from_date && $to_date) {
+        $builder->where('created_at >=', $from_date . ' 00:00:00');
+        $builder->where('created_at <=', $to_date . ' 23:59:59');
+    }
+    
+    $records = $builder->orderBy('id', 'DESC')->get()->getResult();
+
+    $filtered_records = [];
+
+    foreach ($records as $rec) {
+        $do_numbers_str = $rec->do_numbers; // e.g., "123, 124" or just "123"
+        
+        // Clean and prepare DO numbers array
+        $do_numbers = [];
+        if (!empty($do_numbers_str)) {
+             $parts = explode(',', $do_numbers_str);
+             foreach($parts as $p) {
+                 $do_numbers[] = trim($p); 
+             }
+        }
+        
+        $rec->party_name = 'N/A';
+        $rec->party_id = null; // Store ID for filtering
+
+        if (!empty($do_numbers)) {
+            // Find Party and actual DO No
+            $first_do = $do_numbers[0]; // For party lookup
+            
+            // Collect actual DO strings
+            $actual_do_strings = [];
+            
+            foreach($do_numbers as $d_val) {
+                $do_query = $this->db->table('do_registration')
+                            ->select('party, do_no')
+                            ->where('do_no', $d_val) 
+                            ->orWhere('do_registration_id', $d_val) 
+                            ->get()->getRow();
+                            
+                if ($do_query) {
+                    $actual_do_strings[] = $do_query->do_no;
+                    
+                    // Set party from the first found DO context if not already set
+                    if ($rec->party_id === null && !empty($do_query->party)) {
+                         $party_val = $do_query->party;
+                         // ... (Vendor lookup logic reused or simplified)
+                         // Re-using the simplified vendor lookup for now since it was working
+                         $vendor = null;
+                         if (is_numeric($party_val)) {
+                              $vendor = $this->db->table('vendor')->select('id, name')->where('id', $party_val)->get()->getRow();
+                         } else {
+                              preg_match('#\((.*?)\)#', $party_val, $match);
+                              if (isset($match[1])) {
+                                   $vendor_id = $match[1];
+                                   $vendor = $this->db->table('vendor')->select('id, name')->where('id', $vendor_id)->get()->getRow();
+                              } else {
+                                   $vendor = $this->db->table('vendor')->select('id, name')->where('id', $party_val)->get()->getRow();
+                              }
+                         }
+
+                         if ($vendor) {
+                             $rec->party_name = $vendor->name;
+                             $rec->party_id = $vendor->id;
+                         }
+                    }
+                } else {
+                    // Fallback: Use the value as is if not found
+                    $actual_do_strings[] = $d_val; 
+                }
+            }
+            
+            // Update the display field
+            $rec->do_numbers = implode(', ', $actual_do_strings);
+        }
+
+        // Filter Logic
+        if ($party) {
+            if ($rec->party_id == $party) {
+                $filtered_records[] = $rec;
+            }
+        } else {
+            $filtered_records[] = $rec;
+        }
+    }
+    
+    return $filtered_records;
+}
+
+public function getPaymentVoucherById($id)
+{
+    $builder = $this->db->table('voucher_payment');
+    // Remove join with user as deposited_by does not exist in voucher_payment
+    $builder->select('voucher_payment.*');
+    $builder->where('voucher_payment.id', $id);
+    return $builder->get()->getRow();
+}
+
+public function getVouchersByList($voucher_ids_array)
+{
+    if (empty($voucher_ids_array)) {
+        return [];
+    }
+
+    $builder = $this->db->table('voucher');
+    // Logic adapted from getVouchersForDeposit
+    $builder->select('voucher.*, SUM(despatch.net_amount) as total_net_amount, COUNT(despatch.despatch_id) as challan_count, MAX(vendor.name) as party_name, user.full_name as deposited_by_name');
+    
+    $builder->join('despatch', 'despatch.voucher_id = voucher.id', 'left');
+    $builder->join('do_registration', 'despatch.do_no = do_registration.do_registration_id', 'left');
+    $builder->join('vendor', 'vendor.id = do_registration.party OR vendor.id = SUBSTRING_INDEX(SUBSTRING_INDEX(do_registration.party, "(", -1), ")", 1)', 'left');
+    $builder->join('user', 'user.id = voucher.deposited_by', 'left');
+
+    $builder->whereIn('voucher.id', $voucher_ids_array);
+    
+    $builder->groupBy('voucher.id');
+    $builder->orderBy('voucher.id', 'DESC');
+    return $builder->get()->getResult();
+}
+
+public function getChallansByDoList($do_numbers_array)
+{
+    if (empty($do_numbers_array)) {
+        return [];
+    }
+
+    $builder = $this->db->table('despatch');
+    $builder->select('despatch.*, vehicle.vehicle_no as vehicle_number, do_registration.do_no as doreg_no, do_registration.rate, do_registration.shortage_qty as min_qty, do_registration.shortage_rate, do_registration.diesel_rate, do_registration.diesel_payment_type, do_registration.cash_type, do_registration.special_shortage, creator.full_name as made_by, COALESCE(do_registration.tds_percentage, 2.00) as tds_percentage, voucher.group_code');
+    $builder->join('vehicle', 'vehicle.id = despatch.vehicle_no');
+    $builder->join('do_registration', 'do_registration.do_registration_id = despatch.do_no');
+    $builder->join('voucher', 'voucher.id = despatch.voucher_id', 'left');
+    $builder->join('activity_logs', "activity_logs.model_id = despatch.despatch_id AND activity_logs.action = 'create' AND (activity_logs.menu = 'despatch_entry' OR activity_logs.menu = 'insert_despatch_entry')", 'left');
+    $builder->join('user as creator', 'creator.id = activity_logs.user_id', 'left');
+    $builder->where('despatch.deleted_by IS NULL');
+    
+    // Filter by DO numbers
+    // Since do_numbers in voucher_payment can match either ID or String, we should try to match both if possible, 
+    // but despatch.do_no is the ID from do_registration table. 
+    // The Input $do_numbers_array comes from the controller which should parse the strings.
+    // However, in this system, it seems `despatch.do_no` is the linking key.
+    
+    // We'll assume the controller passes valid DO IDs or DO Numbers that match. 
+    // Wait, despatch.do_no is a foreign key to do_registration.do_registration_id. 
+    // The DO numbers stored in `voucher_payment` are strings (do_no column of do_registration).
+    // So we need to match `do_registration.do_no` OR `do_registration.do_registration_id` against the input.
+    
+    $builder->groupEnd();
+
+    return $builder->get()->getResult();
+}
+
+public function getChallansByVoucherList($voucher_ids_array)
+{
+    if (empty($voucher_ids_array)) {
+        return [];
+    }
+
+    $builder = $this->db->table('despatch');
+    $builder->select('despatch.*, vehicle.vehicle_no as vehicle_number, do_registration.do_no as doreg_no, do_registration.rate, do_registration.shortage_qty as min_qty, do_registration.shortage_rate, do_registration.diesel_rate, do_registration.diesel_payment_type, do_registration.cash_type, do_registration.special_shortage, creator.full_name as made_by, COALESCE(do_registration.tds_percentage, 2.00) as tds_percentage, voucher.group_code');
+    $builder->join('vehicle', 'vehicle.id = despatch.vehicle_no');
+    $builder->join('do_registration', 'do_registration.do_registration_id = despatch.do_no');
+    $builder->join('voucher', 'voucher.id = despatch.voucher_id', 'left');
+    $builder->join('activity_logs', "activity_logs.model_id = despatch.despatch_id AND activity_logs.action = 'create' AND (activity_logs.menu = 'despatch_entry' OR activity_logs.menu = 'insert_despatch_entry')", 'left');
+    $builder->join('user as creator', 'creator.id = activity_logs.user_id', 'left');
+    $builder->where('despatch.deleted_by IS NULL');
+    
+    // Filter by Voucher IDs
+    $builder->whereIn('despatch.voucher_id', $voucher_ids_array);
+    
+    return $builder->get()->getResult();
+}
 
  function inhouse_orderdtls($order_id)
 {
