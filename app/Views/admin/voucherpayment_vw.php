@@ -44,9 +44,9 @@
                     </div>
 
                     <div class="btn-group-custom">
-                        <button class="btn-custom btn-primary-custom">
-                            <i class="fa fa-filter"></i> Apply Filters
-                        </button>
+                        <button type="submit" class="btn-custom btn-primary-custom"><i class="fa fa-filter"></i> Apply Filters</button>
+                        <button type="button" onclick="exportExcel()" class="btn-custom btn-success-custom"><i class="fa fa-file-excel-o"></i> Export Excel</button>
+                        <button type="button" onclick="exportPDF()" class="btn-custom btn-danger-custom" style="background-color: #dc3545; color: white;"><i class="fa fa-file-pdf-o"></i> Export PDF</button>
                     </div>
                 </form>
             </div>
@@ -82,11 +82,12 @@
                                 <!-- <th>PO Number</th>
                                 <th>DO Number</th> -->
                                 <th>No. of Vouchers</th>
+                                <th>No. of Challans</th>
                                 <th>Total Amount</th>
                                 <th>Received Date</th>
                                 <th>Received Amount</th>
-                                <th>Difference</th>
                                 <th>Adjustment Amount</th>
+                                <th>Difference</th>
                                 <th>Adjustment Remarks</th>
                                 <th>Action</th>
                             </tr>
@@ -100,6 +101,9 @@
                                 <td><?= $v->do_numbers ?></td> -->
                                 <td class="text-center">
                                     <?= !empty($v->voucher_ids) ? count(explode(',', $v->voucher_ids)) : 0 ?>
+                                </td>
+                                <td class="text-center">
+                                    <?= $v->total_challans ?? 0 ?>
                                 </td>
 
                                 <td class="total_net_amount fw-bold" data-amount="<?= $v->total_net_amount ?>">
@@ -116,13 +120,11 @@
                                            class="form-control-custom received_amount"
                                            value="<?= $v->received_amount ?>">
                                 </td>
-
-                                <td class="difference fw-bold text-danger">0.00</td>
-
                                 <td>
                                     <input type="text" class="form-control-custom adjustment_amount"
                                            value="<?= $v->adjustment_amount ?>">
                                 </td>
+                                <td class="difference fw-bold text-danger">0.00</td>
                                 <td>
                                     <input type="text" class="form-control-custom adjustment_remarks"
                                            value="<?= $v->adjustment_remarks ?>">
@@ -151,6 +153,10 @@
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title">View Payment Voucher</h5>
+                <div class="ms-auto me-2">
+                    <button type="button" class="btn btn-sm btn-success" onclick="exportVoucherExcelCurrent()">Excel</button>
+                    <button type="button" class="btn btn-sm btn-danger" onclick="exportVoucherPDF()">PDF</button>
+                </div>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
@@ -185,6 +191,10 @@
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title">View Challans</h5>
+                <div class="ms-auto me-2">
+                    <button type="button" class="btn btn-sm btn-success" onclick="exportChallanExcelCurrent()">Excel</button>
+                    <button type="button" class="btn btn-sm btn-danger" onclick="exportChallanPDF()">PDF</button>
+                </div>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
@@ -225,7 +235,11 @@
 </div>
 
 <script>
+    let currentVoucherId = null;
+    let currentChallanVoucherId = null;
+
     function viewVoucher(id) {
+        currentVoucherId = id;
         $('#voucherDetailsBody').html('<tr><td colspan="9" class="text-center">Loading...</td></tr>');
         $('#viewVoucherModal').modal('show');
 
@@ -290,7 +304,8 @@
     }
 
     function viewChallan(id) {
-        $('#challanDetailsBody').html('<tr><td colspan="21" class="text-center">Loading...</td></tr>');
+        currentChallanVoucherId = id;
+        $('#challanDetailsBody').html('<tr><td colspan="20" class="text-center">Loading...</td></tr>');
         $('#viewChallanModal').modal('show');
 
         $.ajax({
@@ -300,13 +315,18 @@
             success: function(r) {
                 if (r.status === 'success') {
                     if (r.data.length === 0) {
-                        $('#challanDetailsBody').html('<tr><td colspan="21" class="text-center">No Challans found for this Payment</td></tr>');
+                        $('#challanDetailsBody').html('<tr><td colspan="20" class="text-center">No Challans found for this Payment</td></tr>');
                         return;
                     }
 
                     let html = '';
+                    let totals = {
+                        qty: 0, received: 0, actual_min: 0, shortage: 0, 
+                        s_price: 0, d_qty: 0, d_amount: 0, cash: 0, 
+                        bilty: 0, tds: 0, net: 0
+                    };
+
                     r.data.forEach((des, index) => {
-                        // Calculation Logic (Replicated from Collection View)
                         let qty = parseFloat(des.quantity) || 0;
                         let rate = parseFloat(des.rate) || 0;
                         let received = parseFloat(des.rest_amount) || 0;
@@ -319,7 +339,6 @@
                         let tds_p = parseFloat(des.tds_percentage) || 2.00;
                         let special_shortage = parseInt(des.special_shortage) || 0;
 
-                        // Calculations
                         let actual_min = Math.min(qty, received);
                         let actual_shortage = Math.max(0, qty - received);
                         let freight = actual_min * rate;
@@ -335,11 +354,23 @@
                             s_price = chargeable_shortage * (s_rate > 0 ? s_rate : rate);
                         }
                         
-                        // Shortage shown is Actual Shortage
                         let shortage = actual_shortage; 
                         let d_amount = d_qty * d_rate;
                         let tds = (actual_min * rate * tds_p) / 100;
                         let net = freight - s_price - d_amount + cash - bilty - tds;
+
+                        // Add to totals
+                        totals.qty += qty;
+                        totals.received += received;
+                        totals.actual_min += actual_min;
+                        totals.shortage += shortage;
+                        totals.s_price += s_price;
+                        totals.d_qty += d_qty;
+                        totals.d_amount += d_amount;
+                        totals.cash += cash;
+                        totals.bilty += bilty;
+                        totals.tds += tds;
+                        totals.net += net;
 
                         html += `
                             <tr>
@@ -366,13 +397,34 @@
                             </tr>
                         `;
                     });
+
+                    // Append Totals row
+                    html += `
+                        <tr class="fw-bold bg-light">
+                            <td colspan="7" class="text-end">TOTAL:</td>
+                            <td>${totals.qty.toFixed(2)}</td>
+                            <td>-</td>
+                            <td>${totals.received.toFixed(2)}</td>
+                            <td>${totals.actual_min.toFixed(2)}</td>
+                            <td>${totals.shortage.toFixed(2)}</td>
+                            <td>${totals.s_price.toFixed(2)}</td>
+                            <td>${totals.d_qty.toFixed(2)}</td>
+                            <td>${totals.d_amount.toFixed(2)}</td>
+                            <td>${totals.cash.toFixed(2)}</td>
+                            <td>${totals.bilty.toFixed(2)}</td>
+                            <td>${totals.tds.toFixed(2)}</td>
+                            <td class="text-success">${totals.net.toFixed(2)}</td>
+                            <td>-</td>
+                        </tr>
+                    `;
+
                     $('#challanDetailsBody').html(html);
                 } else {
-                    $('#challanDetailsBody').html(`<tr><td colspan="21" class="text-center text-danger">${r.message}</td></tr>`);
+                    $('#challanDetailsBody').html(`<tr><td colspan="20" class="text-center text-danger">${r.message}</td></tr>`);
                 }
             },
             error: function() {
-                $('#challanDetailsBody').html('<tr><td colspan="21" class="text-center text-danger">Error loading data</td></tr>');
+                $('#challanDetailsBody').html('<tr><td colspan="20" class="text-center text-danger">Error loading data</td></tr>');
             }
         });
     }
@@ -403,7 +455,7 @@ $(document).ready(function () {
         let total = parseFloat(row.find('.total_net_amount').attr('data-amount')) || 0;
         let received = parseFloat(row.find('.received_amount').val()) || 0;
         let adjustment = parseFloat(row.find('.adjustment_amount').val()) || 0;
-        let diff = total - received;
+        let diff = total - received - adjustment;
         row.find('.difference').text(diff.toFixed(2));
     }
 
@@ -442,10 +494,149 @@ $(document).ready(function () {
     });
 });
 
-function changePerPage(){
-    let p=document.getElementById('per_page').value;
-    let url=new URL(window.location.href);
-    url.searchParams.set('per_page',p);
-    window.location.href=url.toString();
-}
+    function exportVoucherExcelCurrent() {
+        if (currentVoucherId) {
+            window.location.href = "<?= base_url('Admin/exportPaymentVoucherExcel') ?>?id=" + currentVoucherId;
+        }
+    }
+
+    function exportChallanExcelCurrent() {
+        if (currentChallanVoucherId) {
+            window.location.href = "<?= base_url('Admin/exportPaymentChallanExcel') ?>?id=" + currentChallanVoucherId;
+        }
+    }
+
+    function exportVoucherPDF() {
+        printModalContent('viewVoucherModal', 'Voucher details');
+    }
+
+    function exportChallanPDF() {
+        printModalContent('viewChallanModal', 'Challan Details');
+    }
+
+    function printModalContent(modalId, title) {
+        let content = $(`#${modalId} .modal-body`).html();
+        let printWindow = window.open('', '', 'height=600,width=900');
+        printWindow.document.write('<html><head><title>' + title + '</title>');
+        printWindow.document.write('<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">');
+        printWindow.document.write('<style>table { width: 100%; border-collapse: collapse; } th, td { border: 1px solid black; padding: 5px; font-size: 11px; } .no-print { display: none; } </style>');
+        printWindow.document.write('</head><body>');
+        printWindow.document.write('<h4 class="text-center mb-4">' + title + '</h4>');
+        printWindow.document.write(content);
+        printWindow.document.write('</body></html>');
+        printWindow.document.close();
+        setTimeout(function() {
+            printWindow.print();
+        }, 500);
+    }
+
+    function exportExcel() {
+        let from_date = $('input[name="from_date"]').val();
+        let to_date = $('input[name="to_date"]').val();
+        let party = $('select[name="party"]').val();
+
+        let url = "<?= base_url('Admin/exportPaymentExcel') ?>?" + 
+                  "from_date=" + from_date + 
+                  "&to_date=" + to_date + 
+                  "&party=" + (party || '');
+        
+        window.location.href = url;
+    }
+
+    function exportPDF() {
+        let from_date = $('input[name="from_date"]').val();
+        let to_date = $('input[name="to_date"]').val();
+        let party_text = $('select[name="party"] option:selected').text();
+        let title = 'Payment Report';
+        if (from_date && to_date) title += ' (' + from_date + ' to ' + to_date + ')';
+        if ($('select[name="party"]').val()) title += ' - Party: ' + party_text;
+
+        printTable('myTable', title);
+    }
+
+    function printTable(tableId, title) {
+        let table = document.getElementById(tableId).cloneNode(true);
+        // Initialize totals
+        let totals = {
+            vouchers: 0,
+            challans: 0,
+            total_amount: 0,
+            received_amount: 0,
+            adjustment_amount: 0,
+            difference: 0
+        };
+
+        let rows = table.querySelectorAll('tr');
+        rows.forEach(row => {
+            if (row.cells.length > 0) {
+                let inputs = row.querySelectorAll('input:not([type="hidden"]), select');
+                inputs.forEach(input => {
+                    let val = input.value;
+                    let span = document.createElement('span');
+                    span.textContent = val || '-';
+                    input.parentNode.replaceChild(span, input);
+                });
+
+                if (row.parentElement.tagName === 'TBODY') {
+                    let cells = row.cells;
+                    // Indices: 2: Vouchers, 3: Challans, 4: Total, 6: Received, 7: Adjustment, 8: Difference
+                    totals.vouchers += parseFloat(cells[2].innerText.replace(/,/g, '')) || 0;
+                    totals.challans += parseFloat(cells[3].innerText.replace(/,/g, '')) || 0;
+                    totals.total_amount += parseFloat(cells[4].innerText.replace(/,/g, '')) || 0;
+                    totals.received_amount += parseFloat(cells[6].innerText.replace(/,/g, '')) || 0;
+                    totals.adjustment_amount += parseFloat(cells[7].innerText.replace(/,/g, '')) || 0;
+                    totals.difference += parseFloat(cells[8].innerText.replace(/,/g, '')) || 0;
+                }
+
+                row.deleteCell(-1); // Remove Action
+            }
+        });
+
+        // Add Totals Row
+        let tfoot = table.createTFoot();
+        let footerRow = tfoot.insertRow(0);
+        footerRow.style.fontWeight = 'bold';
+        footerRow.style.backgroundColor = '#f8f9fa';
+
+        for (let j = 0; j < 10; j++) {
+            let cell = footerRow.insertCell(j);
+            cell.style.border = '1px solid #dee2e6';
+            cell.style.padding = '2px 4px';
+            
+            if (j === 1) cell.innerText = 'TOTAL:';
+            else if (j === 2) cell.innerText = totals.vouchers;
+            else if (j === 3) cell.innerText = totals.challans;
+            else if (j === 4) cell.innerText = totals.total_amount.toFixed(2);
+            else if (j === 6) cell.innerText = totals.received_amount.toFixed(2);
+            else if (j === 7) cell.innerText = totals.adjustment_amount.toFixed(2);
+            else if (j === 8) cell.innerText = totals.difference.toFixed(2);
+        }
+
+        let printWindow = window.open('', '', 'height=700,width=1200');
+        printWindow.document.write('<html><head><title>' + title + '</title>');
+        printWindow.document.write('<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">');
+        printWindow.document.write('<style>');
+        printWindow.document.write('@page { size: landscape; margin: 10mm; }');
+        printWindow.document.write('body { font-family: Arial, sans-serif; padding: 10px; }');
+        printWindow.document.write('table { width: 100%; border-collapse: collapse; margin-top: 20px; table-layout: auto; }');
+        printWindow.document.write('th, td { border: 1px solid #dee2e6; padding: 2px 4px; font-size: 10px; text-align: left; word-break: break-word; color: #000 !important; }');
+        printWindow.document.write('th, td, span, div, b, strong { color: #000 !important; -webkit-text-fill-color: #000 !important; opacity: 1 !important; }');
+        printWindow.document.write('th { background-color: #f8f9fa !important; -webkit-print-color-adjust: exact; font-weight: bold; }');
+        printWindow.document.write('tr:nth-child(even) { background-color: #f2f2f2 !important; -webkit-print-color-adjust: exact; }');
+        printWindow.document.write('.badge { background-color: transparent !important; color: #000 !important; border: 1px solid #dee2e6 !important; padding: 1px 2px !important; display: inline-block; }');
+        printWindow.document.write('@media print { .no-print { display: none; } * { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }');
+        printWindow.document.write('</style>');
+        printWindow.document.write('</head><body>');
+        printWindow.document.write('<div class="text-center" style="text-align: center;">');
+        printWindow.document.write('<h2>' + title + '</h2>');
+        printWindow.document.write('<p>Generated on: ' + new Date().toLocaleString() + '</p>');
+        printWindow.document.write('</div>');
+        printWindow.document.write(table.outerHTML);
+        printWindow.document.write('</body></html>');
+        printWindow.document.close();
+        
+        setTimeout(function() {
+            printWindow.print();
+        }, 1000);
+    }
 </script>

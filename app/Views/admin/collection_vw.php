@@ -86,7 +86,8 @@ if ($records_per_page === 'all') { $total_pages = 1; $current_page = 1; } else {
                     </div>
                     <div class="btn-group-custom">
                         <button type="submit" class="btn-custom btn-primary-custom"><i class="fa fa-filter"></i> Apply Filters</button>
-                        <a href="#" id="download_excel" class="btn-custom btn-success-custom"><i class="fa fa-download"></i> Download Excel</a>
+                        <button type="button" onclick="exportExcel()" class="btn-custom btn-success-custom"><i class="fa fa-file-excel-o"></i> Export Excel</button>
+                        <button type="button" onclick="exportPDF()" class="btn-custom btn-danger-custom" style="background-color: #dc3545; color: white;"><i class="fa fa-file-pdf-o"></i> Export PDF</button>
                     </div>
                 </form>
             </div>
@@ -252,7 +253,7 @@ if ($records_per_page === 'all') { $total_pages = 1; $current_page = 1; } else {
                             $net = $freight - $s_price - $d_amount + $cash - $bilty - $tds;
 
                        ?>
-                        <tr data-id="<?= $des->despatch_id; ?>" data-do-id="<?= $des->do_no; ?>" data-min-qty="<?= $do_min; ?>" data-shortage-rate="<?= $s_rate; ?>" data-diesel-rate="<?= $d_rate; ?>" data-tds-percentage="<?= $tds_p; ?>" data-special-shortage="<?= $special_shortage; ?>">
+                        <tr data-id="<?= $des->despatch_id; ?>" data-do-id="<?= $des->do_no; ?>" data-min-qty="<?= $do_min; ?>" data-shortage-rate="<?= $s_rate; ?>" data-diesel-rate="<?= $d_rate; ?>" data-tds-percentage="<?= $tds_p; ?>" data-special-shortage="<?= $special_shortage; ?>" data-diesel-type="<?= $d_type; ?>">
                             <td style="min-width: 60px;"><input type="checkbox" class="row-checkbox" onchange="updateBulkBar()"> <?= $i++; ?></td>
                             <td style="min-width: 100px;"><?= date('d-m-Y', strtotime($des->des_date)); ?></td>
                             <td style="min-width: 90px;"><?= $des->doreg_no; ?></td>
@@ -274,7 +275,6 @@ if ($records_per_page === 'all') { $total_pages = 1; $current_page = 1; } else {
                             <td style="min-width: 80px;"><input type="text" class="uk-input tds" value="<?= number_format($tds, 2); ?>" readonly style="width: 70px;"></td>
                             <td style="min-width: 110px;"><input type="text" class="uk-input net_amount" value="<?= number_format($net, 2); ?>" readonly style="width: 100px; font-weight: 600; color: #059669;"></td>
                             <td style="min-width: 100px;"><input type="text" class="uk-input added_by" value="<?= $des->deposit_by ?? ''; ?>" readonly style="width: 90px;"></td>
-                            <input type="hidden" class="diesel_payment_type_val" value="<?= $d_type; ?>">
                             <td style="min-width: 150px;"><span class="badge badge-primary group-id-badge" title="<?= $des->group_code ?? '-'; ?>"><?= $des->group_code ?? '-'; ?></span></td>
                             <td style="min-width: 80px; text-align: center;"><button type="button" onclick="updateRow(this, '<?= isset($singleuser[0]->full_name) ? htmlspecialchars($singleuser[0]->full_name, ENT_QUOTES) : ''; ?>')">Add</button></td>
                         </tr>
@@ -966,5 +966,145 @@ if ($records_per_page === 'all') { $total_pages = 1; $current_page = 1; } else {
     //         }
     //     });
     // }
+    function exportExcel() {
+        let from_date = $('#from_date').val();
+        let to_date = $('#to_date').val();
+        let do_no = $('#single').val();
+        let chalan_status = $('#chalan_status').val();
+        let voucher_id = $('#single2').val();
+
+        let url = "<?= base_url('Admin/exportCollectionExcel') ?>?" + 
+                  "from_date=" + from_date + 
+                  "&to_date=" + to_date + 
+                  "&do_no=" + do_no + 
+                  "&chalan_status=" + chalan_status +
+                  "&voucher_id=" + (voucher_id || '');
+        
+        window.location.href = url;
+    }
+
+    function exportPDF() {
+        let from_date = $('#from_date').val();
+        let to_date = $('#to_date').val();
+        let do_no_text = $('#single option:selected').text();
+        let title = 'Collection Report';
+        if (from_date && to_date) title += ' (' + from_date + ' to ' + to_date + ')';
+        if ($('#single').val()) title += ' - DO: ' + do_no_text;
+
+        printTable('myTable', title);
+    }
+
+    function printTable(tableId, title) {
+        // Clone the table to manipulate it for printing
+        let table = document.getElementById(tableId).cloneNode(true);
+        
+        // Initialize totals
+        let totals = {
+            qty: 0, received: 0, min: 0, shortage: 0, freight: 0,
+            shortage_price: 0, diesel_qty: 0, diesel_amount: 0,
+            cash: 0, bilty: 0, tds: 0, net: 0
+        };
+
+        // Remove action column (last column) and search/checkboxes, and calculate totals
+        let rows = table.querySelectorAll('tr');
+        rows.forEach(row => {
+            if (row.cells.length > 0) {
+                // If any cells have inputs (like Received Qty), replace with their values
+                // Skip hidden inputs to avoid repeated text artifacts (OwnParty...)
+                let inputs = row.querySelectorAll('input:not([type="hidden"]), select');
+                inputs.forEach(input => {
+                    let val = input.value;
+                    let span = document.createElement('span');
+                    span.textContent = val;
+                    input.parentNode.replaceChild(span, input);
+                });
+
+                if (row.parentElement.tagName === 'TBODY') {
+                    // Indices in collection_vw (assuming initial table structure):
+                    // 6: Qty, 8: Received, 9: Min, 10: Shortage, 11: Freight, 12: S.Price, 13: D.Qty, 14: D.Amount, 15: Cash, 16: Bilty, 17: TDS, 18: Net
+                    let cells = row.cells;
+                    totals.qty += parseFloat(cells[6].innerText.replace(/,/g, '')) || 0;
+                    totals.received += parseFloat(cells[8].innerText.replace(/,/g, '')) || 0;
+                    totals.min += parseFloat(cells[9].innerText.replace(/,/g, '')) || 0;
+                    totals.shortage += parseFloat(cells[10].innerText.replace(/,/g, '')) || 0;
+                    totals.freight += parseFloat(cells[11].innerText.replace(/,/g, '')) || 0;
+                    totals.shortage_price += parseFloat(cells[12].innerText.replace(/,/g, '')) || 0;
+                    totals.diesel_qty += parseFloat(cells[13].innerText.replace(/,/g, '')) || 0;
+                    totals.diesel_amount += parseFloat(cells[14].innerText.replace(/,/g, '')) || 0;
+                    totals.cash += parseFloat(cells[15].innerText.replace(/,/g, '')) || 0;
+                    totals.bilty += parseFloat(cells[16].innerText.replace(/,/g, '')) || 0;
+                    totals.tds += parseFloat(cells[17].innerText.replace(/,/g, '')) || 0;
+                    totals.net += parseFloat(cells[18].innerText.replace(/,/g, '')) || 0;
+                }
+
+                row.deleteCell(-1); // Remove Action
+                
+                // If it's the header, remove checkbox from first cell
+                if (row.parentElement.tagName === 'THEAD') {
+                    let firstCell = row.cells[0];
+                    firstCell.innerHTML = firstCell.innerHTML.replace(/<input[^>]*checkbox[^>]*>/i, '').trim();
+                } else {
+                    // For body rows, remove checkbox if any
+                    let firstCell = row.cells[0];
+                    let checkbox = firstCell.querySelector('input[type="checkbox"]');
+                    if (checkbox) checkbox.remove();
+                }
+            }
+        });
+
+        // Add Totals Row
+        let tfoot = table.createTFoot();
+        let footerRow = tfoot.insertRow(0);
+        footerRow.style.fontWeight = 'bold';
+        footerRow.style.backgroundColor = '#f8f9fa';
+
+        // Fill footer cells
+        for (let j = 0; j < 21; j++) {
+            let cell = footerRow.insertCell(j);
+            cell.style.border = '1px solid #dee2e6';
+            cell.style.padding = '2px 4px';
+            
+            if (j === 5) cell.innerText = 'TOTAL:';
+            else if (j === 6) cell.innerText = totals.qty.toFixed(2);
+            else if (j === 8) cell.innerText = totals.received.toFixed(2);
+            else if (j === 9) cell.innerText = totals.min.toFixed(2);
+            else if (j === 10) cell.innerText = totals.shortage.toFixed(2);
+            else if (j === 11) cell.innerText = totals.freight.toFixed(2);
+            else if (j === 12) cell.innerText = totals.shortage_price.toFixed(2);
+            else if (j === 13) cell.innerText = totals.diesel_qty.toFixed(2);
+            else if (j === 14) cell.innerText = totals.diesel_amount.toFixed(2);
+            else if (j === 15) cell.innerText = totals.cash.toFixed(2);
+            else if (j === 16) cell.innerText = totals.bilty.toFixed(2);
+            else if (j === 17) cell.innerText = totals.tds.toFixed(2);
+            else if (j === 18) cell.innerText = totals.net.toFixed(2);
+        }
+
+        let printWindow = window.open('', '', 'height=700,width=1200');
+        printWindow.document.write('<html><head><title>' + title + '</title>');
+        printWindow.document.write('<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">');
+        printWindow.document.write('<style>');
+        printWindow.document.write('@page { size: landscape; margin: 10mm; }');
+        printWindow.document.write('body { font-family: Arial, sans-serif; padding: 10px; color: #000 !important; }');
+        printWindow.document.write('table { width: 100%; border-collapse: collapse; margin-top: 20px; table-layout: auto; color: #000 !important; }');
+        printWindow.document.write('th, td { border: 1px solid #dee2e6; padding: 2px 4px; font-size: 8px; text-align: left; word-break: break-word; color: #000 !important; }');
+        printWindow.document.write('th, td, span, div, b, strong, .badge { color: #000 !important; -webkit-text-fill-color: #000 !important; opacity: 1 !important; background-image: none !important; }');
+        printWindow.document.write('th { background-color: #f8f9fa !important; -webkit-print-color-adjust: exact; font-weight: bold; }');
+        printWindow.document.write('tr:nth-child(even) { background-color: #f2f2f2 !important; -webkit-print-color-adjust: exact; }');
+        printWindow.document.write('.badge, .badge-primary, .group-id-badge { background-color: transparent !important; color: #000 !important; border: 1px solid #dee2e6 !important; padding: 1px 2px !important; display: inline-block; box-shadow: none !important; }');
+        printWindow.document.write('@media print { .no-print { display: none; } * { -webkit-print-color-adjust: exact; print-color-adjust: exact; color: #000 !important; } }');
+        printWindow.document.write('</style>');
+        printWindow.document.write('</head><body>');
+        printWindow.document.write('<div class="text-center" style="text-align: center;">');
+        printWindow.document.write('<h2>' + title + '</h2>');
+        printWindow.document.write('<p>Generated on: ' + new Date().toLocaleString() + '</p>');
+        printWindow.document.write('</div>');
+        printWindow.document.write(table.outerHTML);
+        printWindow.document.write('</body></html>');
+        printWindow.document.close();
+        
+        setTimeout(function() {
+            printWindow.print();
+        }, 1000);
+    }
 </script>
 <?php include("footer.php"); ?>

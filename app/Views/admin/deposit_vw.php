@@ -28,21 +28,22 @@ if ($records_per_page === 'all') { $total_pages = 1; $current_page = 1; } else {
                                 </select>
                             </div>
                         </div>
-                        <!-- <div class="col-md-3">
+                        <div class="col-md-3">
                             <div class="form-group-custom">
-                                <label for="voucher_no">Voucher No</label>
-                                <select class="form-control-custom select2-search" name="voucher_no" id="voucher_no">
-                                    <option value="">Select Voucher</option>
-                                    <?php if(isset($voucher_list)): foreach ($voucher_list as $vl): ?>
-                                        <option value="<?= $vl->group_code; ?>" <?= isset($date['voucher_no']) && $date['voucher_no'] == $vl->group_code ? 'selected' : '' ?>>
-                                            <?= $vl->group_code; ?>
-                                        </option>
-                                    <?php endforeach; endif; ?>
+                                <label for="status">Status</label>
+                                <select class="form-control-custom" name="status" id="status">
+                                    <option value="">All</option>
+                                    <option value="deposited" <?= isset($date['status']) && $date['status'] == 'deposited' ? 'selected' : '' ?>>Deposited</option>
+                                    <option value="not_deposited" <?= isset($date['status']) && $date['status'] == 'not_deposited' ? 'selected' : '' ?>>Not Deposited</option>
                                 </select>
                             </div>
-                        </div> -->
+                        </div>
                     </div>
-                    <div class="btn-group-custom"><button type="submit" class="btn-custom btn-primary-custom"><i class="fa fa-filter"></i> Apply Filters</button><a href="#" id="download_excel" class="btn-custom btn-success-custom"><i class="fa fa-download"></i> Download Excel</a></div>
+                    <div class="btn-group-custom">
+                        <button type="submit" class="btn-custom btn-primary-custom"><i class="fa fa-filter"></i> Apply Filters</button>
+                        <button type="button" onclick="exportExcel()" class="btn-custom btn-success-custom"><i class="fa fa-file-excel-o"></i> Export Excel</button>
+                        <button type="button" onclick="exportPDF()" class="btn-custom btn-danger-custom" style="background-color: #dc3545; color: white;"><i class="fa fa-file-pdf-o"></i> Export PDF</button>
+                    </div>
                 </form>
             </div>
             <div class="table-card">
@@ -390,6 +391,118 @@ if ($records_per_page === 'all') { $total_pages = 1; $current_page = 1; } else {
                 alert('Error processing request.');
             }
         });
+    }
+    function exportExcel() {
+        let from_date = $('#from_date').val();
+        let to_date = $('#to_date').val();
+        let party = $('#party').val();
+        let status = $('#status').val();
+
+        let url = "<?= base_url('Admin/exportDepositExcel') ?>?" + 
+                  "from_date=" + from_date + 
+                  "&to_date=" + to_date + 
+                  "&party=" + (party || '') + 
+                  "&status=" + (status || '');
+        
+        window.location.href = url;
+    }
+
+    function exportPDF() {
+        let from_date = $('#from_date').val();
+        let to_date = $('#to_date').val();
+        let party_text = $('#party option:selected').text();
+        let title = 'Deposit Report';
+        if (from_date && to_date) title += ' (' + from_date + ' to ' + to_date + ')';
+        if ($('#party').val()) title += ' - Party: ' + party_text;
+
+        printTable('myTable', title);
+    }
+
+    function printTable(tableId, title) {
+        let table = document.getElementById(tableId).cloneNode(true);
+        // Initialize totals
+        let totals = {
+            challans: 0,
+            amount: 0
+        };
+
+        let rows = table.querySelectorAll('tr');
+        rows.forEach(row => {
+            if (row.cells.length > 0) {
+                let inputs = row.querySelectorAll('input:not([type="hidden"]), select');
+                inputs.forEach(input => {
+                    let val = '';
+                    if (input.tagName === 'SELECT') {
+                        val = input.options[input.selectedIndex].text;
+                        if (val === 'Select User') val = '-';
+                    } else {
+                        val = input.value;
+                    }
+                    let span = document.createElement('span');
+                    span.textContent = val || '-';
+                    input.parentNode.replaceChild(span, input);
+                });
+
+                if (row.parentElement.tagName === 'TBODY') {
+                    let cells = row.cells;
+                    // Indices (before deletion): 4: No of Challan, 5: Total Net Amount
+                    totals.challans += parseFloat(cells[4].innerText.replace(/,/g, '')) || 0;
+                    totals.amount += parseFloat(cells[5].innerText.replace(/,/g, '')) || 0;
+                }
+
+                row.deleteCell(-1); // Remove Action
+                row.deleteCell(9);  // Remove Challan Receipt upload column (was index 9)
+                
+                if (row.parentElement.tagName === 'THEAD') {
+                    row.deleteCell(0); // Remove Select All checkbox header
+                } else {
+                    row.deleteCell(0); // Remove Checkbox col
+                }
+            }
+        });
+
+        // Add Totals Row
+        let tfoot = table.createTFoot();
+        let footerRow = tfoot.insertRow(0);
+        footerRow.style.fontWeight = 'bold';
+        footerRow.style.backgroundColor = '#f8f9fa';
+
+        for (let j = 0; j < 8; j++) {
+            let cell = footerRow.insertCell(j);
+            cell.style.border = '1px solid #dee2e6';
+            cell.style.padding = '2px 4px';
+            
+            if (j === 2) cell.innerText = 'TOTAL:';
+            else if (j === 3) cell.innerText = totals.challans;
+            else if (j === 4) cell.innerText = totals.amount.toFixed(2);
+        }
+
+        let printWindow = window.open('', '', 'height=700,width=1200');
+        printWindow.document.write('<html><head><title>' + title + '</title>');
+        printWindow.document.write('<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">');
+        printWindow.document.write('<style>');
+        printWindow.document.write('@page { size: landscape; margin: 10mm; }');
+        printWindow.document.write('body { font-family: Arial, sans-serif; padding: 10px; }');
+        printWindow.document.write('table { width: 100%; border-collapse: collapse; margin-top: 20px; table-layout: auto; }');
+        printWindow.document.write('th, td { border: 1px solid #dee2e6; padding: 2px 4px; font-size: 9px; text-align: left; word-break: break-word; color: #000 !important; }');
+        printWindow.document.write('th, td, span, div, b, strong { color: #000 !important; -webkit-text-fill-color: #000 !important; opacity: 1 !important; }');
+        printWindow.document.write('th { background-color: #f8f9fa !important; -webkit-print-color-adjust: exact; font-weight: bold; }');
+        printWindow.document.write('tr:nth-child(even) { background-color: #f2f2f2 !important; -webkit-print-color-adjust: exact; }');
+        printWindow.document.write('.badge { background-color: transparent !important; color: #000 !important; border: 1px solid #dee2e6 !important; padding: 1px 2px !important; display: inline-block; }');
+        printWindow.document.write('@media print { .no-print { display: none; } * { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }');
+        printWindow.document.write('</style>');
+        printWindow.document.write('</head><body>');
+        printWindow.document.write('<div class="text-center" style="text-align: center;">');
+        printWindow.document.write('<h2>' + title + '</h2>');
+        printWindow.document.write('<p>Generated on: ' + new Date().toLocaleString() + '</p>');
+        printWindow.document.write('</div>');
+        printWindow.document.write(table.outerHTML);
+        printWindow.document.write('</body></html>');
+        printWindow.document.close();
+        
+        setTimeout(function() {
+            printWindow.print();
+        }, 1000);
     }
 </script>
 <style>

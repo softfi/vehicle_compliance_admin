@@ -7052,14 +7052,470 @@ public function getPaymentChallanDetails()
     }
 
     if (empty($voucher_ids)) {
-         return $this->response->setJSON(['status' => 'success', 'data' => []]);
+        return $this->response->setJSON(['status' => 'success', 'data' => []]);
     }
 
-    // 3. Fetch Challans by Voucher IDs
+    // 3. Get Challans for these Voucher IDs
     $challans = $this->AdminModel->getChallansByVoucherList($voucher_ids);
-    
     return $this->response->setJSON(['status' => 'success', 'data' => $challans]);
 }
+
+public function exportPaymentVoucherExcel()
+{
+    $id = $this->request->getVar('id');
+    $payment = $this->AdminModel->getPaymentVoucherById($id);
+    
+    if (!$payment) {
+        return "Payment Record Not Found";
+    }
+
+    $voucher_ids_str = $payment->voucher_ids;
+    $voucher_ids = [];
+    if (!empty($voucher_ids_str)) {
+        $parts = explode(',', $voucher_ids_str);
+        foreach($parts as $p) $voucher_ids[] = trim($p);
+    }
+    
+    $vouchers = !empty($voucher_ids) ? $this->AdminModel->getVouchersByList($voucher_ids) : [];
+
+    $spreadsheet = new Spreadsheet();
+    $sheet = $spreadsheet->getActiveSheet();
+    $sheet->setTitle('Linked Vouchers');
+
+    $headers = ['Sl No', 'Party Name', 'Voucher ID', 'No of Challan', 'Total Net Amount', 'Deposited by', 'Deposited on', 'Deposit Place'];
+    $col = 'A';
+    foreach($headers as $h) {
+        $sheet->setCellValue($col . '1', $h);
+        $col++;
+    }
+
+    $row = 2;
+    foreach($vouchers as $index => $v) {
+        $sheet->setCellValue('A'.$row, $index + 1);
+        $sheet->setCellValue('B'.$row, $v->party_name ?? 'N/A');
+        $sheet->setCellValue('C'.$row, $v->group_code ?? '-');
+        $sheet->setCellValue('D'.$row, $v->challan_count ?? 0);
+        $sheet->setCellValue('E'.$row, $v->total_net_amount ?? 0);
+        $sheet->setCellValue('F'.$row, $v->deposited_by_name ?? '-');
+        $sheet->setCellValue('G'.$row, $v->deposit_date ?? '-');
+        $sheet->setCellValue('H'.$row, $v->deposit_place ?? '-');
+        $row++;
+    }
+
+    header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    header('Content-Disposition: attachment;filename="Linked_Vouchers_'.$id.'.xlsx"');
+    header('Cache-Control: max-age=0');
+
+    $writer = new XlsxWriter($spreadsheet);
+    $writer->save('php://output');
+    exit;
+}
+
+public function exportPaymentChallanExcel()
+{
+    $id = $this->request->getVar('id');
+    $payment = $this->AdminModel->getPaymentVoucherById($id);
+    
+    if (!$payment) {
+        return "Payment Record Not Found";
+    }
+
+    $voucher_ids_str = $payment->voucher_ids;
+    $voucher_ids = [];
+    if (!empty($voucher_ids_str)) {
+        $parts = explode(',', $voucher_ids_str);
+        foreach($parts as $p) $voucher_ids[] = trim($p);
+    }
+    
+    $challans = !empty($voucher_ids) ? $this->AdminModel->getChallansByVoucherList($voucher_ids) : [];
+
+    $spreadsheet = new Spreadsheet();
+    $sheet = $spreadsheet->getActiveSheet();
+    $sheet->setTitle('Challan Details');
+
+    $totals = [
+        'qty' => 0, 'received' => 0, 'shortage' => 0, 's_price' => 0, 
+        'd_qty' => 0, 'd_amount' => 0, 'cash' => 0, 'bilty' => 0, 
+        'tds' => 0, 'net' => 0
+    ];
+
+    $headers = [
+        'Sl No', 'Date', 'Voucher ID', 'DO No', 'Vehicle No', 'Ref No', 'Challan No', 
+        'Qty', 'Party Rate', 'Received Qty', 'Min Qty', 'Shortage', 'Shortage Price', 
+        'Diesel Qty', 'Diesel Amount', 'Cash', 'Bilty Comm', 'TDS', 'Net Amount', 'Added By'
+    ];
+
+    $col = 'A';
+    foreach($headers as $h) {
+        $sheet->setCellValue($col . '1', $h);
+        $col++;
+    }
+
+    $row = 2;
+    foreach($challans as $index => $des) {
+        // Recalculate values exactly like in JS for consistency
+        $qty = (float)($des->quantity ?? 0);
+        $rate = (float)($des->rate ?? 0);
+        $received = (float)($des->rest_amount ?? 0);
+        $do_min = (float)($des->min_qty ?? 0);
+        $s_rate = (float)($des->shortage_rate ?? 0);
+        $d_qty = (float)($des->dieselQty ?? 0);
+        $d_rate = (float)($des->diesel_rate ?? 0);
+        $cash = (float)($des->cash ?? 0);
+        $bilty = (float)($des->bilty_commission ?? 0);
+        $tds_p = (float)($des->tds_percentage ?? 2.00);
+        $special_shortage = (int)($des->special_shortage ?? 0);
+
+        $actual_min = min($qty, $received);
+        $actual_shortage = max(0, $qty - $received); // Corrected from $qty - received
+        $freight = $actual_min * $rate;
+        
+        $s_price = 0;
+        if ($actual_shortage > 0) {
+            $chargeable_shortage = ($special_shortage == 1) ? max(0, $actual_shortage - $do_min) : $actual_shortage;
+            $s_price = $chargeable_shortage * ($s_rate > 0 ? $s_rate : $rate);
+        }
+        
+        $d_amount = $d_qty * $d_rate;
+        $tds = ($actual_min * $rate * $tds_p) / 100;
+        $net = $freight - $s_price - $d_amount + $cash - $bilty - $tds;
+
+        $sheet->setCellValue('A'.$row, $index + 1);
+        $sheet->setCellValue('B'.$row, $des->des_date ? date('d-m-Y', strtotime($des->des_date)) : '-');
+        $sheet->setCellValue('C'.$row, $des->group_code ?? '-');
+        $sheet->setCellValue('D'.$row, $des->doreg_no ?? '-');
+        $sheet->setCellValue('E'.$row, $des->vehicle_number ?? '-');
+        $sheet->setCellValue('F'.$row, $des->ref_no ?? '-');
+        $sheet->setCellValue('G'.$row, $des->challan_no ?? '-');
+        $sheet->setCellValue('H'.$row, $qty);
+        $sheet->setCellValue('I'.$row, $rate);
+        $sheet->setCellValue('J'.$row, $received);
+        $sheet->setCellValue('K'.$row, $do_min);
+        $sheet->setCellValue('L'.$row, $actual_shortage);
+        $sheet->setCellValue('M'.$row, $s_price);
+        $sheet->setCellValue('N'.$row, $d_qty);
+        $sheet->setCellValue('O'.$row, $d_amount);
+        $sheet->setCellValue('P'.$row, $cash);
+        $sheet->setCellValue('Q'.$row, $bilty);
+        $sheet->setCellValue('R'.$row, $tds);
+        $sheet->setCellValue('S'.$row, $net);
+        $sheet->setCellValue('T'.$row, $des->made_by ?? '-');
+
+        // Add to totals
+        $totals['qty'] += $qty;
+        $totals['received'] += $received;
+        $totals['shortage'] += $actual_shortage;
+        $totals['s_price'] += $s_price;
+        $totals['d_qty'] += $d_qty;
+        $totals['d_amount'] += $d_amount;
+        $totals['cash'] += $cash;
+        $totals['bilty'] += $bilty;
+        $totals['tds'] += $tds;
+        $totals['net'] += $net;
+        
+        $row++;
+    }
+
+    // Add Totals Row
+    $sheet->setCellValue('G' . $row, 'TOTAL:');
+    $sheet->setCellValue('H' . $row, $totals['qty']);
+    $sheet->setCellValue('J' . $row, $totals['received']);
+    $sheet->setCellValue('L' . $row, $totals['shortage']);
+    $sheet->setCellValue('M' . $row, $totals['s_price']);
+    $sheet->setCellValue('N' . $row, $totals['d_qty']);
+    $sheet->setCellValue('O' . $row, $totals['d_amount']);
+    $sheet->setCellValue('P' . $row, $totals['cash']);
+    $sheet->setCellValue('Q' . $row, $totals['bilty']);
+    $sheet->setCellValue('R' . $row, $totals['tds']);
+    $sheet->setCellValue('S' . $row, $totals['net']);
+
+    // Style the totals row
+    $sheet->getStyle('A' . $row . ':T' . $row)->getFont()->setBold(true);
+
+    header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    header('Content-Disposition: attachment;filename="Challan_Details_'.$id.'.xlsx"');
+    header('Cache-Control: max-age=0');
+
+    $writer = new XlsxWriter($spreadsheet);
+    $writer->save('php://output');
+    exit;
+}
+
+public function exportCollectionExcel()
+{
+    if ($this->session->get('user_id') == '') {
+        return "Session Expired";
+    }
+
+    $from_date = $this->request->getVar('from_date') ?? date('Y-m-01');
+    $to_date = $this->request->getVar('to_date') ?? date('Y-m-t');
+    $do_no = $this->request->getVar('do_no');
+    $voucher_id = $this->request->getVar('voucher_id');
+    $chalan_status = $this->request->getVar('chalan_status');
+    $payment_status = $this->request->getVar('payment_status');
+    $deposited_status = $this->request->getVar('deposited_status');
+
+    $despatch = $this->AdminModel->despatch_dtls1($from_date, $to_date, $do_no, $chalan_status, $payment_status, $deposited_status, null, null, $voucher_id);
+
+    $spreadsheet = new Spreadsheet();
+    $sheet = $spreadsheet->getActiveSheet();
+    $sheet->setTitle('Collection Report');
+
+    $headers = [
+        'Sl No', 'Date', 'DO No', 'Vehicle No', 'Ref No', 'Challan No', 
+        'Qty', 'Party Rate', 'Received Qty', 'Min Qty', 'Shortage', 
+        'Freight', 'Shortage Price', 'Diesel Qty', 'Diesel Amount', 
+        'Cash', 'Bilty Comm', 'TDS', 'Net Amount', 'Added By', 'Voucher ID'
+    ];
+
+    $col = 'A';
+    foreach($headers as $h) {
+        $sheet->setCellValue($col . '1', $h);
+        $col++;
+    }
+
+    $row = 2;
+    $totals = [
+        'qty' => 0, 'min_qty' => 0, 'shortage' => 0, 'freight' => 0,
+        's_price' => 0, 'd_qty' => 0, 'd_amount' => 0, 'cash' => 0,
+        'bilty' => 0, 'tds' => 0, 'net' => 0
+    ];
+
+    foreach($despatch as $index => $des) {
+        $qty = (float)($des->quantity ?? 0);
+        $rate = (float)($des->rate ?? 0);
+        $received = $des->rest_amount;
+        $do_min = (float)($des->min_qty ?? 0);
+        $s_rate = (float)($des->shortage_rate ?? 0);
+        $d_qty = (float)($des->dieselQty ?? 0);
+        $d_rate = (float)($des->diesel_rate ?? 0);
+        $cash = (float)($des->cash ?? 0);
+        $bilty = (float)($des->bilty_commission ?? 0);
+        $tds_p = (float)($des->tds_percentage ?? 2.00);
+        $special_shortage = (int)($des->special_shortage ?? 0);
+
+        if ($received !== null && $received !== '' && $received > 0) {
+            $actual_min = min($qty, $received);
+            $actual_shortage = max(0, $qty - $received);
+            $freight = $actual_min * $rate;
+            
+            if ($actual_shortage <= 0) {
+                $s_price = 0;
+            } else {
+                $chargeable_shortage = ($special_shortage == 1) ? max(0, $actual_shortage - $do_min) : $actual_shortage;
+                $s_price = $chargeable_shortage * ($s_rate > 0 ? $s_rate : $rate);
+            }
+            $tds = ($actual_min * $rate * $tds_p) / 100;
+        } else {
+            $actual_min = 0; $actual_shortage = 0; $freight = 0; $s_price = 0; $tds = 0;
+        }
+        
+        $d_amount = $d_qty * $d_rate;
+        $net = $freight - $s_price - $d_amount + $cash - $bilty - $tds;
+
+        $sheet->setCellValue('A'.$row, $index + 1);
+        $sheet->setCellValue('B'.$row, $des->des_date ? date('d-m-Y', strtotime($des->des_date)) : '-');
+        $sheet->setCellValue('C'.$row, $des->doreg_no ?? '-');
+        $sheet->setCellValue('D'.$row, $des->vehicle_number ?? '-');
+        $sheet->setCellValue('E'.$row, $des->ref_no ?? '-');
+        $sheet->setCellValue('F'.$row, $des->challan_no ?? '-');
+        $sheet->setCellValue('G'.$row, $qty);
+        $sheet->setCellValue('H'.$row, $rate);
+        $sheet->setCellValue('I'.$row, $received ?? 0);
+        $sheet->setCellValue('J'.$row, $actual_min);
+        $sheet->setCellValue('K'.$row, $actual_shortage);
+        $sheet->setCellValue('L'.$row, $freight);
+        $sheet->setCellValue('M'.$row, $s_price);
+        $sheet->setCellValue('N'.$row, $d_qty);
+        $sheet->setCellValue('O'.$row, $d_amount);
+        $sheet->setCellValue('P'.$row, $cash);
+        $sheet->setCellValue('Q'.$row, $bilty);
+        $sheet->setCellValue('R'.$row, $tds);
+        $sheet->setCellValue('S'.$row, $net);
+        $sheet->setCellValue('T'.$row, $des->deposit_by ?? '-');
+        $sheet->setCellValue('U'.$row, $des->group_code ?? '-');
+
+        // Totals
+        $totals['qty'] += $qty;
+        $totals['min_qty'] += $actual_min;
+        $totals['shortage'] += $actual_shortage;
+        $totals['freight'] += $freight;
+        $totals['s_price'] += $s_price;
+        $totals['d_qty'] += $d_qty;
+        $totals['d_amount'] += $d_amount;
+        $totals['cash'] += $cash;
+        $totals['bilty'] += $bilty;
+        $totals['tds'] += $tds;
+        $totals['net'] += $net;
+
+        $row++;
+    }
+
+    $sheet->setCellValue('F' . $row, 'TOTAL:');
+    $sheet->setCellValue('G' . $row, $totals['qty']);
+    $sheet->setCellValue('J' . $row, $totals['min_qty']);
+    $sheet->setCellValue('K' . $row, $totals['shortage']);
+    $sheet->setCellValue('L' . $row, $totals['freight']);
+    $sheet->setCellValue('M' . $row, $totals['s_price']);
+    $sheet->setCellValue('N' . $row, $totals['d_qty']);
+    $sheet->setCellValue('O' . $row, $totals['d_amount']);
+    $sheet->setCellValue('P' . $row, $totals['cash']);
+    $sheet->setCellValue('Q' . $row, $totals['bilty']);
+    $sheet->setCellValue('R' . $row, $totals['tds']);
+    $sheet->setCellValue('S' . $row, $totals['net']);
+    
+    $sheet->getStyle('A' . $row . ':U' . $row)->getFont()->setBold(true);
+
+    header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    header('Content-Disposition: attachment;filename="Collection_Report_'.date('YmdHis').'.xlsx"');
+    header('Cache-Control: max-age=0');
+
+    $writer = new XlsxWriter($spreadsheet);
+    $writer->save('php://output');
+    exit;
+}
+
+public function exportDepositExcel()
+{
+    if ($this->session->get('user_id') == '') {
+        return "Session Expired";
+    }
+
+    $from_date = $this->request->getVar('from_date') ?? date('Y-m-01');
+    $to_date = $this->request->getVar('to_date') ?? date('Y-m-t');
+    $party = $this->request->getVar('party');
+    $status = $this->request->getVar('status');
+
+    $vouchers = $this->AdminModel->getVouchersForDeposit($from_date, $to_date, $party, null, $status);
+
+    $spreadsheet = new Spreadsheet();
+    $sheet = $spreadsheet->getActiveSheet();
+    $sheet->setTitle('Deposit Report');
+
+    $headers = [
+        'Sl No', 'Party Name', 'Voucher No', 'No of Challan', 
+        'Total Net Amount', 'Deposited by', 'Deposited on', 'Deposit Place'
+    ];
+
+    $col = 'A';
+    foreach($headers as $h) {
+        $sheet->setCellValue($col . '1', $h);
+        $col++;
+    }
+
+    $row = 2;
+    $total_amount = 0;
+    $total_challans = 0;
+
+    foreach($vouchers as $index => $v) {
+        $sheet->setCellValue('A'.$row, $index + 1);
+        $sheet->setCellValue('B'.$row, $v->party_name ?? '-');
+        $sheet->setCellValue('C'.$row, $v->group_code ?? '-');
+        $sheet->setCellValue('D'.$row, $v->challan_count ?? 0);
+        $sheet->setCellValue('E'.$row, (float)($v->total_net_amount ?? 0));
+        $sheet->setCellValue('F'.$row, $v->deposited_by ?? '-');
+        $sheet->setCellValue('G'.$row, ($v->deposit_date && $v->deposit_date != '0000-00-00') ? date('d-m-Y', strtotime($v->deposit_date)) : '-');
+        $sheet->setCellValue('H'.$row, $v->deposit_place ?? '-');
+
+        $total_amount += (float)($v->total_net_amount ?? 0);
+        $total_challans += (int)($v->challan_count ?? 0);
+        $row++;
+    }
+
+    $sheet->setCellValue('C' . $row, 'TOTAL:');
+    $sheet->setCellValue('D' . $row, $total_challans);
+    $sheet->setCellValue('E' . $row, $total_amount);
+    
+    $sheet->getStyle('A' . $row . ':H' . $row)->getFont()->setBold(true);
+
+    header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    header('Content-Disposition: attachment;filename="Deposit_Report_'.date('YmdHis').'.xlsx"');
+    header('Cache-Control: max-age=0');
+
+    $writer = new XlsxWriter($spreadsheet);
+    $writer->save('php://output');
+    exit;
+}
+
+public function exportPaymentExcel()
+{
+    if ($this->session->get('user_id') == '') {
+        return "Session Expired";
+    }
+
+    $from_date = $this->request->getVar('from_date') ?? date('Y-m-01');
+    $to_date = $this->request->getVar('to_date') ?? date('Y-m-t');
+    $party = $this->request->getVar('party');
+
+    $payments = $this->AdminModel->getVoucherPayments($from_date, $to_date, $party);
+
+    $spreadsheet = new Spreadsheet();
+    $sheet = $spreadsheet->getActiveSheet();
+    $sheet->setTitle('Payment Report');
+
+    $headers = [
+        'Sl No', 'Party Name', 'No. of Vouchers', 'No. of Challans', 
+        'Total Amount', 'Received Date', 'Received Amount', 
+        'Adjustment Amount', 'Difference', 'Adjustment Remarks'
+    ];
+
+    $col = 'A';
+    foreach($headers as $h) {
+        $sheet->setCellValue($col . '1', $h);
+        $col++;
+    }
+
+    $row = 2;
+    $totals = [
+        'vouchers' => 0, 'challans' => 0, 'total' => 0, 
+        'received' => 0, 'adjustment' => 0, 'difference' => 0
+    ];
+
+    foreach($payments as $index => $v) {
+        $v_count = !empty($v->voucher_ids) ? count(explode(',', $v->voucher_ids)) : 0;
+        $diff = (float)($v->total_net_amount ?? 0) - (float)($v->received_amount ?? 0) - (float)($v->adjustment_amount ?? 0);
+
+        $sheet->setCellValue('A'.$row, $index + 1);
+        $sheet->setCellValue('B'.$row, $v->party_name ?? 'N/A');
+        $sheet->setCellValue('C'.$row, $v_count);
+        $sheet->setCellValue('D'.$row, $v->total_challans ?? 0);
+        $sheet->setCellValue('E'.$row, (float)($v->total_net_amount ?? 0));
+        $sheet->setCellValue('F'.$row, ($v->received_date && $v->received_date != '0000-00-00') ? date('d-m-Y', strtotime($v->received_date)) : '-');
+        $sheet->setCellValue('G'.$row, (float)($v->received_amount ?? 0));
+        $sheet->setCellValue('H'.$row, (float)($v->adjustment_amount ?? 0));
+        $sheet->setCellValue('I'.$row, $diff);
+        $sheet->setCellValue('J'.$row, $v->adjustment_remarks ?? '-');
+
+        // Totals
+        $totals['vouchers'] += $v_count;
+        $totals['challans'] += (int)($v->total_challans ?? 0);
+        $totals['total'] += (float)($v->total_net_amount ?? 0);
+        $totals['received'] += (float)($v->received_amount ?? 0);
+        $totals['adjustment'] += (float)($v->adjustment_amount ?? 0);
+        $totals['difference'] += $diff;
+
+        $row++;
+    }
+
+    $sheet->setCellValue('B' . $row, 'TOTAL:');
+    $sheet->setCellValue('C' . $row, $totals['vouchers']);
+    $sheet->setCellValue('D' . $row, $totals['challans']);
+    $sheet->setCellValue('E' . $row, $totals['total']);
+    $sheet->setCellValue('G' . $row, $totals['received']);
+    $sheet->setCellValue('H' . $row, $totals['adjustment']);
+    $sheet->setCellValue('I' . $row, $totals['difference']);
+    
+    $sheet->getStyle('A' . $row . ':J' . $row)->getFont()->setBold(true);
+
+    header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    header('Content-Disposition: attachment;filename="Payment_Report_'.date('YmdHis').'.xlsx"');
+    header('Cache-Control: max-age=0');
+
+    $writer = new XlsxWriter($spreadsheet);
+    $writer->save('php://output');
+    exit;
+}
+
     public function updateVoucherPayment()
     {
         if ($this->session->get('user_id') == '') {
@@ -7308,6 +7764,7 @@ public function getPaymentChallanDetails()
         $to_date = $this->request->getVar('to_date') ?? date('Y-m-t');
         $party = $this->request->getVar('party');
         $voucher_no = $this->request->getVar('voucher_no');
+        $status = $this->request->getVar('status');
 
         $user_id = $this->session->get('user_id');
         $data['setting'] = $this->AdminModel->Settingdata();
@@ -7324,9 +7781,9 @@ public function getPaymentChallanDetails()
             ->getResult();
 
         // $data['vouchers'] replaced by vouchers
-        $data['vouchers'] = $this->AdminModel->getVouchersForDeposit($from_date, $to_date, $party, $voucher_no);
+        $data['vouchers'] = $this->AdminModel->getVouchersForDeposit($from_date, $to_date, $party, $voucher_no, $status);
 
-        $data['date'] = ['from_date' => $from_date, 'to_date' => $to_date, 'party' => $party, 'voucher_no' => $voucher_no];
+        $data['date'] = ['from_date' => $from_date, 'to_date' => $to_date, 'party' => $party, 'voucher_no' => $voucher_no, 'status' => $status];
         $data['current_page'] = $current_page;
         $data['records_per_page'] = $records_per_page;
 

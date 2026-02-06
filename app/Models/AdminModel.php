@@ -937,7 +937,9 @@ public function despatch_dtls1($from_date = null, $to_date = null, $do_no = null
         $builder->join('vehicle', 'vehicle.id = despatch.vehicle_no');
         $builder->join('do_registration', 'do_registration.do_registration_id = despatch.do_no');
         $builder->join('voucher', 'voucher.id = despatch.voucher_id', 'left');
-    $builder->where('despatch.deleted_by IS NULL');
+        $builder->join('activity_logs', "activity_logs.model_id = despatch.despatch_id AND activity_logs.action = 'create' AND (activity_logs.menu = 'despatch_entry' OR activity_logs.menu = 'insert_despatch_entry')", 'left');
+        $builder->join('user as creator', 'creator.id = activity_logs.user_id', 'left');
+        $builder->where('despatch.deleted_by IS NULL');
 
     if (!empty($voucher_id)) {
         $builder->where('despatch.voucher_id', $voucher_id);
@@ -980,7 +982,7 @@ public function despatch_dtls1($from_date = null, $to_date = null, $do_no = null
     return $results ?? []; // ✅ Always return array, never null
 }
 
-    public function getVouchersForDeposit($from_date = null, $to_date = null, $party = null, $voucher_no = null)
+    public function getVouchersForDeposit($from_date = null, $to_date = null, $party = null, $voucher_no = null, $status = null)
     {
         $builder = $this->db->table('voucher');
         // Using MAX(vendor.name) to get a party name even if multiple despatches exist (they should have the same party now)
@@ -988,9 +990,9 @@ public function despatch_dtls1($from_date = null, $to_date = null, $do_no = null
         
         // Using LEFT JOINs to ensure we see the voucher even if some links are missing (though they shouldn't be)
         $builder->join('despatch', 'despatch.voucher_id = voucher.id', 'left');
-    $builder->join('do_registration', 'despatch.do_no = do_registration.do_registration_id', 'left');
-    // Using a more robust join that handles both numeric IDs and "Name (ID)" formatted strings
-    $builder->join('vendor', 'vendor.id = do_registration.party OR vendor.id = SUBSTRING_INDEX(SUBSTRING_INDEX(do_registration.party, "(", -1), ")", 1)', 'left');
+        $builder->join('do_registration', 'despatch.do_no = do_registration.do_registration_id', 'left');
+        // Using a more robust join that handles both numeric IDs and "Name (ID)" formatted strings
+        $builder->join('vendor', 'vendor.id = do_registration.party OR vendor.id = SUBSTRING_INDEX(SUBSTRING_INDEX(do_registration.party, "(", -1), ")", 1)', 'left');
         
         if ($from_date && $to_date) {
              $builder->where('despatch.des_date >=', $from_date);
@@ -1003,6 +1005,12 @@ public function despatch_dtls1($from_date = null, $to_date = null, $do_no = null
 
         if ($voucher_no) {
             $builder->like('voucher.group_code', $voucher_no);
+        }
+
+        if ($status === 'deposited') {
+            $builder->where("(voucher.deposit_date IS NOT NULL AND voucher.deposit_date != '0000-00-00' AND voucher.deposit_date != '')");
+        } elseif ($status === 'not_deposited') {
+            $builder->where("(voucher.deposit_date IS NULL OR voucher.deposit_date = '0000-00-00' OR voucher.deposit_date = '')");
         }
         
         $builder->groupBy('voucher.id');
@@ -1617,6 +1625,25 @@ public function getVoucherPayments($from_date = null, $to_date = null, $party = 
             
             // Update the display field
             $rec->do_numbers = implode(', ', $actual_do_strings);
+        }
+
+        // Calculate total challans
+        $voucher_ids_str = $rec->voucher_ids;
+        $v_ids = [];
+        if (!empty($voucher_ids_str)) {
+            $v_parts = explode(',', $voucher_ids_str);
+            foreach($v_parts as $v_p) {
+                $trimmed_v = trim($v_p);
+                if (!empty($trimmed_v)) $v_ids[] = $trimmed_v;
+            }
+        }
+        
+        if (!empty($v_ids)) {
+            $rec->total_challans = $this->db->table('despatch')
+                ->whereIn('voucher_id', $v_ids)
+                ->countAllResults();
+        } else {
+            $rec->total_challans = 0;
         }
 
         // Filter Logic
