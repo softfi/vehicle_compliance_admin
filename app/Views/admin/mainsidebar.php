@@ -191,9 +191,10 @@
                       <a class="sidebar-link sidebar-title" href="#"><span >Repots </span></a>
                        <?php } ?>
                       <ul class="sidebar-submenu">
-                      <?php if(in_array(22,$jobAssign)){ ?>
+                     <?php if(in_array(22,$jobAssign)){ ?>
                      <li><a  href="<?php echo base_url();?>/admin/Stock_Report">Stock Report</a></li>
                      <?php } ?>
+                     <li><a  href="<?php echo base_url();?>/admin/Driver_Report">Driver Report</a></li>
                      <?php if(in_array(23,$jobAssign)){ ?>
                      <li><a  href="<?php echo base_url();?>/admin/Vehicle_Ledger">Vehicle Ledger </a></li>
                      <?php } ?>

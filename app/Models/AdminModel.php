@@ -3205,6 +3205,128 @@ function satury_data($from_date, $to_date, $vehicle)
             ->get()
             ->getRow();
     }
+
+    public function get_driver_daily_report_data($driver_id, $from_date, $to_date)
+    {
+        // 1. Get assignments for the period
+        $assignments = $this->db->table('driver_assignment')
+            ->select('driver_assignment.*, vehicle.vehicle_no as truck_number')
+            ->join('vehicle', 'vehicle.id = driver_assignment.vehicle_no', 'left')
+            ->where('driver_assignment.driver', $driver_id)
+            ->groupStart()
+                ->where('driver_assignment.from_date <=', $to_date)
+                ->groupStart()
+                    ->where('driver_assignment.to_date >=', $from_date)
+                    ->orWhere('driver_assignment.to_date IS NULL')
+                ->groupEnd()
+            ->groupEnd()
+            ->get()->getResult();
+
+        $v_ids = !empty($assignments) ? array_column($assignments, 'vehicle_no') : [0];
+
+        // 2. Trips and Expenses
+        $builder = $this->db->table('despatch');
+        $builder->select('despatch.des_date, despatch.vehicle_no, COUNT(despatch.despatch_id) as trips, 
+                          do_registration.trip_expenses1, do_registration.trip_expenses2, do_registration.trip_expenses3, 
+                          do_registration.trip_expenses4, do_registration.trip_expenses5, do_registration.trip_expenses6,
+                          doprice_change.trip1 as doprice_trip1, doprice_change.trip2 as doprice_trip2, doprice_change.trip3 as doprice_trip3,
+                          doprice_change.trip4 as doprice_trip4, doprice_change.trip5 as doprice_trip5, doprice_change.trip6 as doprice_trip6');
+        $builder->join('do_registration', 'do_registration.do_registration_id = despatch.do_no', 'left');
+        $builder->join('doprice_change', 'do_registration.do_registration_id = doprice_change.dono AND despatch.des_date >= doprice_change.from_date', 'left');
+        $builder->where('despatch.des_date >=', $from_date);
+        $builder->where('despatch.des_date <=', $to_date);
+        $builder->whereIn('despatch.vehicle_no', $v_ids);
+        $builder->groupBy(['despatch.des_date', 'despatch.vehicle_no']);
+        $trips_data = $builder->get()->getResult();
+
+        // 3. Cash Paid
+        $cash_data = $this->db->table('staff_advance')
+            ->select('adv_date, SUM(amount) as total_cash')
+            ->where('staff_id', $driver_id)
+            ->where('adv_date >=', $from_date)
+            ->where('adv_date <=', $to_date)
+            ->groupBy('adv_date')
+            ->get()->getResult();
+
+        // 4. Diesel Issued
+        $diesel_data = $this->db->table('diselentry')
+            ->select('diesel_date, vehicle_id, SUM(qty) as total_diesel')
+            ->where('diesel_date >=', $from_date)
+            ->where('diesel_date <=', $to_date);
+        if (!empty($v_ids)) {
+            $diesel_data->whereIn('vehicle_id', $v_ids);
+        }
+        $diesel_data = $diesel_data->groupBy(['diesel_date', 'vehicle_id'])
+            ->get()->getResult();
+
+        // 5. Build Result array
+        $result = [];
+        $current = strtotime($from_date);
+        $end = strtotime($to_date);
+
+        while ($current <= $end) {
+            $date = date('Y-m-d', $current);
+            
+            $active_asgn = null;
+            foreach ($assignments as $asgn) {
+                if ($date >= $asgn->from_date && ($asgn->to_date === null || $date <= $asgn->to_date)) {
+                    $active_asgn = $asgn;
+                    break;
+                }
+            }
+
+            $day_info = [
+                'date' => date('d-m-Y', $current),
+                'truck_no' => $active_asgn ? $active_asgn->truck_number : '-',
+                'trips' => 0,
+                'accrued_expense' => 0,
+                'cash_paid' => 0,
+                'diesel_issued' => 0,
+                'opening_hsd' => $active_asgn ? $active_asgn->opening_hsd : 0,
+                'closing_hsd' => $active_asgn ? $active_asgn->closing_hsd : 0,
+                'remarks' => ''
+            ];
+
+            if ($active_asgn) {
+                foreach ($trips_data as $td) {
+                    if ($td->des_date == $date && $td->vehicle_no == $active_asgn->vehicle_no) {
+                        $day_info['trips'] = $td->trips;
+                        $count = $td->trips;
+                        $expense = 0;
+                        $reg_col = "trip_expenses" . ($count <= 6 ? $count : 6);
+                        $doprice_col = "doprice_trip" . ($count <= 6 ? $count : 6);
+                        
+                        if (!empty($td->$doprice_col)) {
+                            $expense = $this->getTripExpense($td->$doprice_col, $count);
+                        } else {
+                            $expense = $this->getTripExpense($td->$reg_col, $count);
+                        }
+                        $day_info['accrued_expense'] = $expense;
+                        break;
+                    }
+                }
+
+                foreach ($diesel_data as $dd) {
+                    if ($dd->diesel_date == $date && $dd->vehicle_id == $active_asgn->vehicle_no) {
+                        $day_info['diesel_issued'] = $dd->total_diesel;
+                        break;
+                    }
+                }
+            }
+
+            foreach ($cash_data as $cd) {
+                if ($cd->adv_date == $date) {
+                    $day_info['cash_paid'] = $cd->total_cash;
+                    break;
+                }
+            }
+
+            $result[] = $day_info;
+            $current = strtotime("+1 day", $current);
+        }
+
+        return $result;
+    }
 }
 
 
