@@ -4703,154 +4703,496 @@ class Admin extends BaseController
     }
 
     function get_driver_report_details()
-    {
-        $driver_id = $this->request->getVar('driver');
-        $from_date = $this->request->getVar('from_date');
-        $to_date = $this->request->getVar('to_date');
+{
+    $driver_id = $this->request->getVar('driver');
+    $from_date = $this->request->getVar('from_date');
+    $to_date = $this->request->getVar('to_date');
 
-        if (empty($driver_id) || empty($from_date) || empty($to_date)) {
-            return $this->response->setStatusCode(400)->setBody("Please select Driver and Date Range.");
-        }
-
-        $all_data = $this->AdminModel->get_driver_daily_report_data($driver_id, $from_date, $to_date);
-
-        ?>
-        <div class="table-responsive">
-            <div class="mb-3 text-end">
-                <button type="button" class="btn btn-primary" onclick="downloadExcel()">Download Excel</button>
-            </div>
-            <table class="uk-table uk-table-striped uk-table-small" style="width:100%">
-                <thead>
-                    <?php if (!empty($all_data)): ?>
-                        <tr style="font-weight: bold; background: #f0f0f0;">
-                            <td colspan="3" style="border-right: 1px solid #ddd;">Opening Diesel: <?= $all_data[0]['opening_hsd']; ?></td>
-                            <td colspan="4">Closing Diesel: <?= $all_data[count($all_data)-1]['closing_hsd']; ?></td>
-                        </tr>
-                    <?php endif; ?>
-                    <tr>
-                        <th>Date</th>
-                        <th>Truck No</th>
-                        <th>No of Trips</th>
-                        <th>Trip Expenses Accrued</th>
-                        <th>Cash Paid</th>
-                        <th>Diesel Issued</th>
-                        <th>Remarks</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <?php if (!empty($all_data)) {
-                        $total_trips = 0;
-                        $total_expense = 0;
-                        $total_cash = 0;
-                        $total_diesel = 0;
-                        
-                        foreach ($all_data as $row) {
-                            $total_trips += $row['trips'];
-                            $total_expense += $row['accrued_expense'];
-                            $total_cash += $row['cash_paid'];
-                            $total_diesel += $row['diesel_issued'];
-                            ?>
-                            <tr>
-                                <td><?= $row['date']; ?></td>
-                                <td><?= $row['truck_no']; ?></td>
-                                <td><?= $row['trips']; ?></td>
-                                <td><?= number_format($row['accrued_expense'], 2); ?></td>
-                                <td><?= number_format($row['cash_paid'], 2); ?></td>
-                                <td><?= number_format($row['diesel_issued'], 2); ?></td>
-                                <td><?= $row['remarks']; ?></td>
-                            </tr>
-                        <?php } ?>
-                        <tr style="font-weight: bold; background: #eee;">
-                            <td colspan="2">Total</td>
-                            <td><?= $total_trips; ?></td>
-                            <td><?= number_format($total_expense, 2); ?></td>
-                            <td><?= number_format($total_cash, 2); ?></td>
-                            <td><?= number_format($total_diesel, 2); ?></td>
-                            <td></td>
-                        </tr>
-                    <?php } else { ?>
-                        <tr><td colspan="7">No data found for the selected period.</td></tr>
-                    <?php } ?>
-                </tbody>
-            </table>
-        </div>
-        <?php
+    if (empty($driver_id) || empty($from_date) || empty($to_date)) {
+        return $this->response->setStatusCode(400)->setBody("Please select Driver and Date Range.");
     }
 
-    public function get_driver_report_excel()
-    {
-        $driver_id = $this->request->getVar('driver');
-        $from_date = $this->request->getVar('from_date');
-        $to_date = $this->request->getVar('to_date');
+    $all_data = $this->AdminModel->get_driver_daily_report_data($driver_id, $from_date, $to_date);
 
-        $driver = $this->db->table('staff')->where('id', $driver_id)->get()->getRow();
-        $all_data = $this->AdminModel->get_driver_daily_report_data($driver_id, $from_date, $to_date);
+    // Group data by truck_no
+    $grouped_data = [];
+    $grand_total_trips = 0;
+    $grand_total_expense = 0;
+    $grand_total_cash = 0;
+    $grand_total_diesel = 0;
 
-        $spreadsheet = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
-        $sheet = $spreadsheet->getActiveSheet();
-
-        $sheet->setCellValue('A1', 'Driver: ' . ($driver ? $driver->name : 'Unknown'));
-        $sheet->setCellValue('A2', 'Period: ' . $from_date . ' to ' . $to_date);
-
-        if (!empty($all_data)) {
-            $sheet->setCellValue('A3', 'Opening Diesel:');
-            $sheet->setCellValue('B3', (float) $all_data[0]['opening_hsd']);
-            $sheet->setCellValue('C3', 'Closing Diesel:');
-            $sheet->setCellValue('D3', (float) $all_data[count($all_data)-1]['closing_hsd']);
+    foreach ($all_data as $row) {
+        $truck = $row['truck_no'];
+        if (!isset($grouped_data[$truck])) {
+            $grouped_data[$truck] = [
+                'truck_no' => $truck,
+                'opening_hsd' => $row['opening_hsd'],
+                'opening_km' => $row['opening_km'],
+                'closing_hsd' => $row['closing_hsd'],
+                'closing_km' => $row['closing_km'],
+                'data' => []
+            ];
         }
+        $grouped_data[$truck]['data'][] = $row;
+        // Update closing balances to the last row's balances for that vehicle
+        $grouped_data[$truck]['closing_hsd'] = $row['closing_hsd'];
+        $grouped_data[$truck]['closing_km'] = $row['closing_km'];
+    }
+    ?>
+    <div class="table-responsive">
+        <div class="mb-3 text-end">
+            <button type="button" class="btn btn-primary" onclick="downloadExcel()">Download Excel</button>
+        </div>
+        
+        <?php if (!empty($grouped_data)): ?>
+            <?php foreach ($grouped_data as $truck_no => $group): 
+                $visible_rows = array_filter($group['data'], function($r) {
+                    return $r['trips'] > 0;
+                });
+                $visible_rows = array_values($visible_rows);
+                $row_count = count($visible_rows);
 
-        $headers = ['Date', 'Truck No', 'No of Trips', 'Trip Expenses Accrued', 'Cash Paid', 'Diesel Issued', 'Remarks'];
+                if ($row_count <= 0) continue;
+            ?>
+                <div class="card mb-4">
+                    <div class="card-body p-0">
+                        <table class="uk-table uk-table-striped uk-table-small mb-0" style="width:100%">
+                            <thead>
+                                <tr>
+                                    <th>Date</th>
+                                    <th>Truck No.</th>
+                                    <th>Opening Diesel</th>
+                                    <th>Closing Diesel</th>
+                                    <!-- <th>Driver Name</th> -->
+                                    <th>No of Trips</th>
+                                    <th>Trip Expenses Accrued</th>
+                                    <th>Cash Paid</th>
+                                    <th>Diesel Issued</th>
+                                    <th>Remarks</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php 
+                                    $total_trips = 0;
+                                    $total_expense = 0;
+                                    $total_cash = 0;
+                                    $total_diesel = 0;
+
+                                    foreach ($visible_rows as $idx => $row) {
+                                        $total_trips += $row['trips'];
+                                        $total_expense += $row['accrued_expense'];
+                                        $total_cash += $row['cash_paid'];
+                                        $total_diesel += $row['diesel_issued'];
+
+                                        // Grand totals
+                                        $grand_total_trips += $row['trips'];
+                                        $grand_total_expense += $row['accrued_expense'];
+                                        $grand_total_cash += $row['cash_paid'];
+                                        $grand_total_diesel += $row['diesel_issued'];
+                                        ?>
+                                        <tr>
+                                            <td><?= $row['date']; ?></td>
+                                            <td><?= $row['truck_no']; ?></td>
+                                            <td><?= ($idx === 0) ? number_format($row['opening_hsd'], 2) : ''; ?></td>
+                                            <td><?= ($idx === $row_count - 1) ? number_format($row['closing_hsd'], 2) : ''; ?></td>
+                                            <td><?= $row['trips']; ?></td>
+                                            <td><?= number_format($row['accrued_expense'], 2); ?></td>
+                                            <td><?= number_format($row['cash_paid'], 2); ?></td>
+                                            <td><?= number_format($row['diesel_issued'], 2); ?></td>
+                                            <td><?= $row['remarks']; ?></td>
+                                        </tr>
+                                    <?php } ?>
+                                    <?php /* ?>
+                                    <tr style="font-weight: bold; background: #f8f9fa;">
+                                        <td colspan="5">Total for <?= $truck_no ?></td>
+                                        <td><?= $total_trips; ?></td>
+                                        <td><?= number_format($total_expense, 2); ?></td>
+                                        <td><?= number_format($total_cash, 2); ?></td>
+                                        <td><?= number_format($total_diesel, 2); ?></td>
+                                        <td></td>
+                                    </tr>
+                                    <?php */ ?>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            <?php endforeach; ?>
+
+            <div class="mt-4 p-3 border">
+                <div class="row" style="font-weight: bold; font-size: 1.1em;">
+                    <div class="col-md-3">GRAND TOTAL:</div>
+                    <div class="col-md-2">Trips: <?= $grand_total_trips; ?></div>
+                    <div class="col-md-2">Expenses: <?= number_format($grand_total_expense, 2); ?></div>
+                    <div class="col-md-2">Cash: <?= number_format($grand_total_cash, 2); ?></div>
+                    <div class="col-md-3 text-end">Diesel: <?= number_format($grand_total_diesel, 2); ?></div>
+                </div>
+            </div>
+        <?php else: ?>
+            <p>No data found for the selected period.</p>
+        <?php endif; ?>
+    </div>
+    <?php
+}
+
+function Vehicle_Report()
+{
+    if ($this->session->get('user_id')) {
+        $user_id = $this->session->get('user_id');
+        $data['setting'] = $this->AdminModel->Settingdata();
+        $data['singleuser'] = $this->AdminModel->userdata($user_id);
+        $data['vehicles'] = $this->db->table('vehicle')->get()->getResult();
+        return view('admin/vehicle_report_vw', $data);
+    } else {
+        return redirect()->to('Admin/');
+    }
+}
+
+function get_vehicle_report_details()
+{
+    $vehicle_id = $this->request->getVar('vehicle');
+    $from_date = $this->request->getVar('from_date');
+    $to_date = $this->request->getVar('to_date');
+
+    if (empty($vehicle_id) || empty($from_date) || empty($to_date)) {
+        return $this->response->setStatusCode(400)->setBody("Please select Vehicle and Date Range.");
+    }
+
+    $all_data = $this->AdminModel->get_vehicle_daily_report_data($vehicle_id, $from_date, $to_date);
+
+    $all_data = $this->AdminModel->get_vehicle_daily_report_data($vehicle_id, $from_date, $to_date);
+
+    // Group data by driver assignment stints
+    $stints = [];
+    $current_stint = null;
+    $grand_total_trips = 0;
+    $grand_total_expense = 0;
+    $grand_total_cash = 0;
+    $grand_total_diesel = 0;
+
+    $visible_rows_all = array_filter($all_data, function($r) {
+        return $r['trips'] > 0;
+    });
+    $visible_rows_all = array_values($visible_rows_all);
+
+    foreach ($visible_rows_all as $row) {
+        $driver_key = $row['driver_name'] . '|' . $row['truck_no'];
+        
+        if ($current_stint === null || $current_stint['key'] !== $driver_key) {
+            if ($current_stint !== null) {
+                $stints[] = $current_stint;
+            }
+            $current_stint = [
+                'key' => $driver_key,
+                'driver_name' => $row['driver_name'],
+                'truck_no' => $row['truck_no'],
+                'data' => []
+            ];
+        }
+        $current_stint['data'][] = $row;
+        
+        // Grand totals
+        $grand_total_trips += $row['trips'];
+        $grand_total_expense += $row['accrued_expense'];
+        $grand_total_cash += $row['cash_paid'];
+        $grand_total_diesel += $row['diesel_issued'];
+    }
+    if ($current_stint !== null) {
+        $stints[] = $current_stint;
+    }
+    ?>
+    <div class="table-responsive">
+        <div class="mb-3 text-end">
+            <button type="button" class="btn btn-primary" onclick="downloadExcel()">Download Excel</button>
+        </div>
+        
+        <div class="report-container" style="background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.05);">
+            <?php if (!empty($stints)): ?>
+                <?php foreach ($stints as $stint): 
+                    $rows = $stint['data'];
+                    $row_count = count($rows);
+                ?>
+                    <table class="uk-table uk-table-divider uk-table-small mb-4" style="width:100%">
+                        <thead>
+                            <tr style="background: #fff;">
+                                <th style="color: #bbb; font-size: 11px; font-weight: 600; text-transform: uppercase; border-bottom: 1px solid #f0f0f0;">Date</th>
+                                <!-- <th style="color: #bbb; font-size: 11px; font-weight: 600; text-transform: uppercase; border-bottom: 1px solid #f0f0f0;">Truck No</th> -->
+                                <th style="color: #bbb; font-size: 11px; font-weight: 600; text-transform: uppercase; border-bottom: 1px solid #f0f0f0;">Opening Diesel</th>
+                                <th style="color: #bbb; font-size: 11px; font-weight: 600; text-transform: uppercase; border-bottom: 1px solid #f0f0f0;">Closing Diesel</th>
+                                <th style="color: #bbb; font-size: 11px; font-weight: 600; text-transform: uppercase; border-bottom: 1px solid #f0f0f0;">Driver Name</th>
+                                <th style="color: #bbb; font-size: 11px; font-weight: 600; text-transform: uppercase; border-bottom: 1px solid #f0f0f0;">No of Trips</th>
+                                <th style="color: #bbb; font-size: 11px; font-weight: 600; text-transform: uppercase; border-bottom: 1px solid #f0f0f0;">Trip Expenses Accrued</th>
+                                <th style="color: #bbb; font-size: 11px; font-weight: 600; text-transform: uppercase; border-bottom: 1px solid #f0f0f0;">Cash Paid</th>
+                                <th style="color: #bbb; font-size: 11px; font-weight: 600; text-transform: uppercase; border-bottom: 1px solid #f0f0f0;">Diesel Issued</th>
+                                <th style="color: #bbb; font-size: 11px; font-weight: 600; text-transform: uppercase; border-bottom: 1px solid #f0f0f0;">Remarks</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php foreach ($rows as $idx => $row): ?>
+                                <tr>
+                                    <td style="font-size: 13px; color: #444;"><?= $row['date']; ?></td>
+                                    <td style="font-size: 13px; color: #444;"><?= ($idx === 0) ? number_format($row['opening_hsd'], 2) : ''; ?></td>
+                                    <td style="font-size: 13px; color: #444;"><?= ($idx === $row_count - 1) ? number_format($row['closing_hsd'], 2) : ''; ?></td>
+                                    <td style="font-size: 13px; color: #444;"><?= $row['driver_name']; ?></td>
+                                    <td style="font-size: 13px; color: #444;"><?= $row['trips']; ?></td>
+                                    <td style="font-size: 13px; color: #444;"><?= number_format($row['accrued_expense'], 2); ?></td>
+                                    <td style="font-size: 13px; color: #444;"><?= number_format($row['cash_paid'], 2); ?></td>
+                                    <td style="font-size: 13px; color: #444;"><?= number_format($row['diesel_issued'], 2); ?></td>
+                                    <td style="font-size: 13px; color: #444;"><?= $row['remarks']; ?></td>
+                                </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                <?php endforeach; ?>
+
+                <div class="grand-total-bar mt-4 p-3 d-flex justify-content-between align-items-center" style="border: 1px solid #eee; border-radius: 4px; background: #fff;">
+                    <span style="font-weight: 700; color: #555; text-transform: uppercase;">Grand Total:</span>
+                    <div class="d-flex gap-5">
+                        <span style="font-weight: 600;">Trips: <?= $grand_total_trips; ?></span>
+                        <span style="font-weight: 600;">Expenses: <?= number_format($grand_total_expense, 2); ?></span>
+                        <span style="font-weight: 600;">Cash: <?= number_format($grand_total_cash, 2); ?></span>
+                        <span style="font-weight: 600;">Diesel: <?= number_format($grand_total_diesel, 2); ?></span>
+                    </div>
+                </div>
+
+            <?php else: ?>
+                <div class="alert alert-info py-2">No trip data found for the selected criteria.</div>
+            <?php endif; ?>
+        </div>
+    </div>
+    <?php
+}
+
+    public function get_driver_report_excel()
+{
+    $driver_id = $this->request->getVar('driver');
+    $from_date = $this->request->getVar('from_date');
+    $to_date = $this->request->getVar('to_date');
+
+    $driver = $this->db->table('staff')->where('id', $driver_id)->get()->getRow();
+    $all_data = $this->AdminModel->get_driver_daily_report_data($driver_id, $from_date, $to_date);
+
+    $spreadsheet = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
+    $sheet = $spreadsheet->getActiveSheet();
+
+    $sheet->setCellValue('A1', 'Driver: ' . ($driver ? $driver->name : 'Unknown'));
+    $sheet->setCellValue('A2', 'Period: ' . $from_date . ' to ' . $to_date);
+
+    // Group data by truck_no
+    $grouped_data = [];
+    $grand_total_trips = 0;
+    $grand_total_expense = 0;
+    $grand_total_cash = 0;
+    $grand_total_diesel = 0;
+
+    foreach ($all_data as $row) {
+        $truck = $row['truck_no'];
+        if (!isset($grouped_data[$truck])) {
+            $grouped_data[$truck] = [
+                'truck_no' => $truck,
+                'opening_hsd' => $row['opening_hsd'],
+                'opening_km' => $row['opening_km'],
+                'closing_hsd' => $row['closing_hsd'],
+                'closing_km' => $row['closing_km'],
+                'data' => []
+            ];
+        }
+        $grouped_data[$truck]['data'][] = $row;
+        $grouped_data[$truck]['closing_hsd'] = $row['closing_hsd'];
+        $grouped_data[$truck]['closing_km'] = $row['closing_km'];
+    }
+
+    $row_idx = 4;
+    foreach ($grouped_data as $truck_no => $group) {
+        $visible_rows = array_filter($group['data'], function($r) {
+            return $r['trips'] > 0;
+        });
+        $visible_rows = array_values($visible_rows);
+        $row_count = count($visible_rows);
+
+        if ($row_count <= 0) continue;
+
+        // Table Headers
+        $headers = ['Date', 'Truck No.', 'Opening Diesel', 'Closing Diesel', 'No of Trips', 'Trip Expenses Accrued', 'Cash Paid', 'Diesel Issued', 'Remarks'];
         $col = 'A';
         foreach ($headers as $header) {
-            $sheet->setCellValue($col . '5', $header);
+            $sheet->setCellValue($col . $row_idx, $header);
+            $sheet->getStyle($col . $row_idx)->getFont()->setBold(true);
             $col++;
         }
+        $row_idx++;
 
-        $row_idx = 6;
         $total_trips = 0;
         $total_expense = 0;
         $total_cash = 0;
         $total_diesel = 0;
 
-        foreach ($all_data as $row) {
+        foreach ($visible_rows as $idx => $row) {
             $sheet->setCellValue('A' . $row_idx, $row['date']);
             $sheet->setCellValue('B' . $row_idx, $row['truck_no']);
-            $sheet->setCellValue('C' . $row_idx, $row['trips']);
-            $sheet->setCellValue('D' . $row_idx, (float) $row['accrued_expense']);
-            $sheet->setCellValue('E' . $row_idx, (float) $row['cash_paid']);
-            $sheet->setCellValue('F' . $row_idx, (float) $row['diesel_issued']);
-            $sheet->setCellValue('G' . $row_idx, $row['remarks']);
+            $sheet->setCellValue('C' . $row_idx, ($idx === 0) ? (float) $row['opening_hsd'] : '');
+            $sheet->setCellValue('D' . $row_idx, ($idx === $row_count - 1) ? (float) $row['closing_hsd'] : '');
+            $sheet->setCellValue('E' . $row_idx, $row['trips']);
+            $sheet->setCellValue('F' . $row_idx, (float) $row['accrued_expense']);
+            $sheet->setCellValue('G' . $row_idx, (float) $row['cash_paid']);
+            $sheet->setCellValue('H' . $row_idx, (float) $row['diesel_issued']);
+            $sheet->setCellValue('I' . $row_idx, $row['remarks']);
 
             $total_trips += $row['trips'];
             $total_expense += (float)$row['accrued_expense'];
             $total_cash += (float)$row['cash_paid'];
             $total_diesel += (float)$row['diesel_issued'];
 
+            // Grand totals
+            $grand_total_trips += $row['trips'];
+            $grand_total_expense += (float)$row['accrued_expense'];
+            $grand_total_cash += (float)$row['cash_paid'];
+            $grand_total_diesel += (float)$row['diesel_issued'];
+
             $row_idx++;
         }
 
-        // Add Total Row
-        $sheet->setCellValue('A' . $row_idx, 'Total');
-        $sheet->setCellValue('C' . $row_idx, $total_trips);
-        $sheet->setCellValue('D' . $row_idx, $total_expense);
-        $sheet->setCellValue('E' . $row_idx, $total_cash);
-        $sheet->setCellValue('F' . $row_idx, $total_diesel);
-
-        // Bold the Total Row
-        $sheet->getStyle('A' . $row_idx . ':F' . $row_idx)->getFont()->setBold(true);
-
+        /*
+        // Total Row for Vehicle
+        $sheet->setCellValue('A' . $row_idx, 'Total for ' . $truck_no);
+        $sheet->setCellValue('D' . $row_idx, $total_trips);
+        $sheet->setCellValue('E' . $row_idx, $total_expense);
+        $sheet->setCellValue('F' . $row_idx, $total_cash);
+        $sheet->setCellValue('G' . $row_idx, $total_diesel);
+        $sheet->getStyle('A' . $row_idx . ':G' . $row_idx)->getFont()->setBold(true);
         $row_idx++;
+        */
 
-        $filename = "Driver_Report_" . ($driver ? str_replace(' ', '_', $driver->name) : 'Report') . ".xlsx";
-        header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-        header('Content-Disposition: attachment;filename="' . $filename . '"');
-        header('Cache-Control: max-age=0');
-
-        $writer = \PhpOffice\PhpSpreadsheet\IOFactory::createWriter($spreadsheet, 'Xlsx');
-        $writer->save('php://output');
-        exit();
+        /*
+        // Vehicle Footer
+        $sheet->setCellValue('A' . $row_idx, 'Closing Diesel: ' . $group['closing_hsd']);
+        $sheet->setCellValue('E' . $row_idx, 'Closing KM: ' . $group['closing_km']);
+        $sheet->getStyle('A' . $row_idx . ':E' . $row_idx)->getFont()->setBold(true);
+        $row_idx += 2; // Add some space before next vehicle
+        */
+        $row_idx++; // Minimal space
     }
 
+    // Grand Total Row
+    $sheet->setCellValue('A' . $row_idx, 'Grand Total');
+    $sheet->setCellValue('E' . $row_idx, $grand_total_trips);
+    $sheet->setCellValue('F' . $row_idx, $grand_total_expense);
+    $sheet->setCellValue('G' . $row_idx, $grand_total_cash);
+    $sheet->setCellValue('H' . $row_idx, $grand_total_diesel);
+    $sheet->getStyle('A' . $row_idx . ':H' . $row_idx)->getFont()->setBold(true);
+    $row_idx++;
+
+    $filename = "Driver_Report_" . ($driver ? str_replace(' ', '_', $driver->name) : 'Report') . ".xlsx";
+    header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    header('Content-Disposition: attachment;filename="' . $filename . '"');
+    header('Cache-Control: max-age=0');
+
+    $writer = \PhpOffice\PhpSpreadsheet\IOFactory::createWriter($spreadsheet, 'Xlsx');
+    $writer->save('php://output');
+    exit();
+}
+
+public function get_vehicle_report_excel()
+{
+    $vehicle_id = $this->request->getVar('vehicle');
+    $from_date = $this->request->getVar('from_date');
+    $to_date = $this->request->getVar('to_date');
+
+    $vehicle = $this->db->table('vehicle')->where('id', $vehicle_id)->get()->getRow();
+    $all_data = $this->AdminModel->get_vehicle_daily_report_data($vehicle_id, $from_date, $to_date);
+
+    $spreadsheet = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
+    $sheet = $spreadsheet->getActiveSheet();
+
+    $sheet->setCellValue('A1', 'Vehicle Report');
+    $sheet->setCellValue('A2', 'Vehicle No: ' . $vehicle->vehicle_no);
+    $sheet->setCellValue('A3', 'Period: ' . $from_date . ' to ' . $to_date);
+
+    // Group data by driver assignment stints
+    $stints = [];
+    $current_stint = null;
+    $grand_total_trips = 0;
+    $grand_total_expense = 0;
+    $grand_total_cash = 0;
+    $grand_total_diesel = 0;
+
+    $visible_rows_all = array_filter($all_data, function($r) {
+        return $r['trips'] > 0;
+    });
+    $visible_rows_all = array_values($visible_rows_all);
+
+    foreach ($visible_rows_all as $row) {
+        $driver_key = $row['driver_name'] . '|' . $row['truck_no'];
+        
+        if ($current_stint === null || $current_stint['key'] !== $driver_key) {
+            if ($current_stint !== null) {
+                $stints[] = $current_stint;
+            }
+            $current_stint = [
+                'key' => $driver_key,
+                'driver_name' => $row['driver_name'],
+                'truck_no' => $row['truck_no'],
+                'data' => []
+            ];
+        }
+        $current_stint['data'][] = $row;
+        
+        $grand_total_trips += $row['trips'];
+        $grand_total_expense += (float)$row['accrued_expense'];
+        $grand_total_cash += (float)$row['cash_paid'];
+        $grand_total_diesel += (float)$row['diesel_issued'];
+    }
+    if ($current_stint !== null) {
+        $stints[] = $current_stint;
+    }
+
+    $row_idx = 4;
+    foreach ($stints as $stint) {
+        $rows = $stint['data'];
+        $row_count = count($rows);
+
+        // Table Headers
+        $headers = ['Date', 'Opening Diesel', 'Closing Diesel', 'Driver Name', 'No of Trips', 'Trip Expenses Accrued', 'Cash Paid', 'Diesel Issued', 'Remarks'];
+        $col = 'A';
+        foreach ($headers as $header) {
+            $sheet->setCellValue($col . $row_idx, $header);
+            $sheet->getStyle($col . $row_idx)->getFont()->setBold(true);
+            $col++;
+        }
+        $row_idx++;
+
+        foreach ($rows as $idx => $row) {
+            $sheet->setCellValue('A' . $row_idx, $row['date']);
+            $sheet->setCellValue('B' . $row_idx, ($idx === 0) ? (float) $row['opening_hsd'] : '');
+            $sheet->setCellValue('C' . $row_idx, ($idx === $row_count - 1) ? (float) $row['closing_hsd'] : '');
+            $sheet->setCellValue('D' . $row_idx, $row['driver_name']);
+            $sheet->setCellValue('E' . $row_idx, $row['trips']);
+            $sheet->setCellValue('F' . $row_idx, (float) $row['accrued_expense']);
+            $sheet->setCellValue('G' . $row_idx, (float) $row['cash_paid']);
+            $sheet->setCellValue('H' . $row_idx, (float) $row['diesel_issued']);
+            $sheet->setCellValue('I' . $row_idx, $row['remarks']);
+            $row_idx++;
+        }
+        $row_idx++; // Minimal space between stints
+    }
+
+    // Grand Total Row (matches the bar structure)
+    $sheet->setCellValue('A' . $row_idx, 'GRAND TOTAL:');
+    $sheet->setCellValue('E' . $row_idx, 'Trips: ' . $grand_total_trips);
+    $sheet->setCellValue('F' . $row_idx, 'Expenses: ' . number_format($grand_total_expense, 2));
+    $sheet->setCellValue('G' . $row_idx, 'Cash: ' . number_format($grand_total_cash, 2));
+    $sheet->setCellValue('H' . $row_idx, 'Diesel: ' . number_format($grand_total_diesel, 2));
+    
+    $sheet->getStyle('A' . $row_idx . ':I' . $row_idx)->getFont()->setBold(true);
+
+    $filename = "Vehicle_Report_" . ($vehicle ? str_replace(' ', '_', $vehicle->vehicle_no) : 'Report') . ".xlsx";
+    header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    header('Content-Disposition: attachment;filename="' . $filename . '"');
+    header('Cache-Control: max-age=0');
+
+    $writer = \PhpOffice\PhpSpreadsheet\IOFactory::createWriter($spreadsheet, 'Xlsx');
+    $writer->save('php://output');
+    exit();
+}
 
 
     function getdriver_salary_details()

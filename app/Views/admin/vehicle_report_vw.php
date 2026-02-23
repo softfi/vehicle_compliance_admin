@@ -7,7 +7,7 @@
             <div class="page-title">
                 <div class="row">
                     <div class="col-sm-6 p-0">
-                        <h3>Driver Report</h3>
+                        <h3>Vehicle Report</h3>
                     </div>
                 </div>
             </div>
@@ -21,11 +21,11 @@
                             <div class="row">
                                 <div class="col-md-4">
                                     <div class="form-group">
-                                        <label for="driver">Driver</label>
-                                        <select class="form-control select2-search" name="driver" id="driver_data" required>
-                                            <option value="">Select Driver</option>
-                                            <?php foreach ($drivers as $driver): ?>
-                                                <option value="<?= $driver->id; ?>"><?= $driver->name; ?></option>
+                                        <label for="vehicle">Vehicle</label>
+                                        <select class="form-control" name="vehicle" id="vehicle" required>
+                                            <option value="">Select Vehicle</option>
+                                            <?php foreach ($vehicles as $veh): ?>
+                                                <option value="<?= $veh->id; ?>"><?= $veh->vehicle_no; ?></option>
                                             <?php endforeach; ?>
                                         </select>
                                     </div>
@@ -62,8 +62,8 @@
         <!-- Container-fluid Ends-->
     </div>
 </div>
-
 <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+
 <script>
     $(document).ready(function() {
         $('#selectionForm').on('submit', function(e) {
@@ -71,7 +71,7 @@
             $('#results').html('<p class="text-center">Loading...</p>');
 
             $.ajax({
-                url: '<?php echo base_url(); ?>/admin/get_driver_report_details',
+                url: '<?php echo base_url(); ?>/admin/get_vehicle_report_details',
                 type: 'POST',
                 data: $(this).serialize(),
                 success: function(response) {
@@ -85,21 +85,21 @@
     });
 
     function downloadExcel() {
-        var driver = $('#driver_data').val();
+        var vehicle = $('#vehicle').val();
         var from_date = $('#from_date').val();
         var to_date = $('#to_date').val();
 
-        if (!driver || !from_date || !to_date) {
-            alert('Please select Driver and Date Range first.');
+        if (!vehicle || !from_date || !to_date) {
+            alert('Please select Vehicle and Date Range first.');
             return;
         }
 
         var form = $('<form>', {
             'method': 'POST',
-            'action': '<?php echo base_url(); ?>/admin/get_driver_report_excel'
+            'action': '<?php echo base_url(); ?>/admin/get_vehicle_report_excel'
         }).append($('<input>', {
-            'name': 'driver',
-            'value': driver,
+            'name': 'vehicle',
+            'value': vehicle,
             'type': 'hidden'
         })).append($('<input>', {
             'name': 'from_date',

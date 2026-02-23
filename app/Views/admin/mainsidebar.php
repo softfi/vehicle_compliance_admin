@@ -195,6 +195,7 @@
                      <li><a  href="<?php echo base_url();?>/admin/Stock_Report">Stock Report</a></li>
                      <?php } ?>
                      <li><a  href="<?php echo base_url();?>/admin/Driver_Report">Driver Report</a></li>
+                     <li><a  href="<?php echo base_url();?>/admin/Vehicle_Report">Vehicle Report</a></li>
                      <?php if(in_array(23,$jobAssign)){ ?>
                      <li><a  href="<?php echo base_url();?>/admin/Vehicle_Ledger">Vehicle Ledger </a></li>
                      <?php } ?>
