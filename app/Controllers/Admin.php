@@ -3996,7 +3996,8 @@ class Admin extends BaseController
             'bank_cash' => $this->request->getPost('bank_cash'),
             'amount' => $this->request->getPost('amount'),
             'location_id' => $this->request->getPost('location_id'),
-            'upload_file' => $this->uploadFile('upload_file') // Handle file upload
+            'upload_file' => $this->uploadFile('upload_file'), // Handle file upload
+            'despatch_id' => $this->request->getPost('despatch_id')
         ];
             
         $this->db->table('staff_advance')->insert($data);
@@ -4127,7 +4128,8 @@ class Admin extends BaseController
             'bank_cash' => $this->request->getPost('bank_cash'),
             'adv_date' => $this->request->getPost('date'),
             'amount' => $this->request->getPost('amount'),
-            'location_id' => $this->request->getPost('location_id')
+            'location_id' => $this->request->getPost('location_id'),
+            'despatch_id' => $this->request->getPost('despatch_id')
         ];
 
         // Check if there is a file uploaded
@@ -5231,9 +5233,57 @@ public function get_vehicle_report_excel()
         // Get the number of days in the month
         $curent_monthday = $date->format('t');
 
+        // --- OPTIMIZATION: Batch Fetch Data to avoid N+1 Query Problem ---
+        $staff_ids = array_column($alldriver, 'id');
+        $vehicle_ids = array_filter(array_column($alldriver, 'assignment_vehicle_no'));
 
+        $advances_by_staff = [];
+        $adjustments_by_staff = [];
+        $payments_by_staff = [];
+        $diesel_by_vehicle = [];
+        $despatch_by_vehicle = [];
 
+        if (!empty($staff_ids)) {
+            $all_advances = $this->db->table('staff_advance')
+                ->whereIn('staff_id', $staff_ids)
+                ->where('adv_date >=', $first_datesam)
+                ->where('adv_date <=', $last_datesam)
+                ->get()->getResult();
+            foreach ($all_advances as $row) { $advances_by_staff[$row->staff_id][] = $row; }
 
+            $all_adjustments = $this->db->table('adjust_salary')
+                ->whereIn('driver_id', $staff_ids)
+                ->where('from_date >=', $first_datesam)
+                ->where('from_date <=', $last_datesam)
+                ->get()->getResult();
+            foreach ($all_adjustments as $row) { $adjustments_by_staff[$row->driver_id][] = $row; }
+
+            $all_payments = $this->db->table('salary_payment')
+                ->whereIn('driver_id', $staff_ids)
+                ->where('month', (int)$month)
+                ->where('year', (int)$year)
+                ->get()->getResult();
+            foreach ($all_payments as $row) { $payments_by_staff[$row->driver_id] = $row; }
+        }
+
+        if (!empty($vehicle_ids)) {
+            $all_diesel = $this->db->table('diselentry')
+                ->whereIn('vehicle_id', $vehicle_ids)
+                ->where('diesel_date >=', $first_datesam)
+                ->where('diesel_date <=', $last_datesam)
+                ->get()->getResult();
+            foreach ($all_diesel as $row) { $diesel_by_vehicle[$row->vehicle_id][] = $row; }
+
+            $all_despatch = $this->db->table('despatch')
+                ->select('despatch.*, do_registration.diesel_type as diesel_for_trip')
+                ->join('do_registration', 'do_registration.do_registration_id = despatch.do_no', 'left')
+                ->whereIn('despatch.vehicle_no', $vehicle_ids)
+                ->where('despatch.des_date >=', $first_datesam)
+                ->where('despatch.des_date <=', $last_datesam)
+                ->get()->getResult();
+            foreach ($all_despatch as $row) { $despatch_by_vehicle[$row->vehicle_no][] = $row; }
+        }
+        // --- END OPTIMIZATION ---
 
         ?>
 
@@ -5241,6 +5291,7 @@ public function get_vehicle_report_excel()
             <table class="uk-table uk-table-striped uk-table-small" id="row_create" style="width:100%">
                 <thead>
                     <tr>
+                        <th><input type="checkbox" id="selectAllDrivers" title="Select All"></th>
                         <th>Sl no</th>
                         <th>Name</th>
                         <th>Truck No.</th>
@@ -5250,168 +5301,161 @@ public function get_vehicle_report_excel()
                         <th>To Date</th>
                         <th>Working Day</th>
                         <th>Salary</th>
-                        <!-- <th>Opening Balance</th> -->
+                        <th>Opening Balance</th>
+                        <th>Trip Expence</th>
                         <th>Advance</th>
                         <th>HSD Ltr</th>
                         <th>HSD Amount</th>
-                        <th>Trip Expence</th>
                         <th>Adjust Amount</th>
+                        <th>Bonus</th>
                         <th>Net Salary</th>
-
+                        <th>Paid</th>
+                        <th>Account No</th>
+                        <th>IFSC Code</th>
+                        <th>Bank Name</th>
+                        <th>Action</th>
                     </tr>
                 </thead>
                 <tbody>
                     <?php
                     $i = 1;
-                    $HSD_LTR = 0;
 
                     foreach ($alldriver as $staf) {
-
-
-
                         $first_date = !empty($staf->from_date) ? $staf->from_date : $first_datesam;
                         $last_date = !empty($staf->to_date) ? $staf->to_date : $last_datesam;
 
-                        $hsd_details = $this->AdminModel->hsd_details($staf->id, $first_date, $last_date);
-
-
-                        // echo'<pre>';
-                        // print_r($staf->vehicle_no);
-                        // exit;
-                        $hsd_detailsDatas = $this->AdminModel->hsd_detailsData($staf->vehicle_no, $first_date, $last_date);
-
-
-                        $used_hsd = 0;
+                        // Calculate Diesel Stats from pre-fetched data
+                        $sum_diesel_qty = 0;
                         $diesel_rate = 0;
-                        if (!empty($hsd_details) && isset($hsd_details[0]->used_hsd)) {
-                            $used_hsd = $hsd_details[0]->used_hsd;
-                            $diesel_rate = $hsd_details[0]->diesel_rate;
-                        }
-
-
-
-                        $disel_entry = $this->AdminModel->vehicle_disel_details($staf->assignment_vehicle_no, $staf->from_date, $staf->to_date);
-
-                        //  echo'<pre>';
-                        // print_r($hsd_details);
-                        // exit;
-
-
-                        $disel_trip = 0;
-                        $total_d_req = 0;
-                        $trip_expence = 0;
-
-                        $hsd_amount = 0;
-                        if (!empty($disel_entry)) {
-                            foreach ($disel_entry as $entry) {
-                                $total_d_req += $entry->diesel_for_trip;
+                        if (isset($diesel_by_vehicle[$staf->assignment_vehicle_no])) {
+                            foreach ($diesel_by_vehicle[$staf->assignment_vehicle_no] as $entry) {
+                                if ($entry->diesel_date >= $first_date && $entry->diesel_date <= $last_date) {
+                                    $sum_diesel_qty += (float)$entry->qty;
+                                    if ($diesel_rate == 0) $diesel_rate = (float)$entry->rate;
+                                }
                             }
                         }
 
+                        $opening_hsd = (float)($staf->opening_hsd ?? 0);
+                        $closing_hsd = (float)($staf->closing_hsd ?? 0);
+                        $used_hsd = $opening_hsd + $sum_diesel_qty - $closing_hsd;
 
+                        // Despatch/Diesel Request stats from pre-fetched data
+                        $total_d_req = 0;
+                        if (isset($despatch_by_vehicle[$staf->assignment_vehicle_no])) {
+                            foreach ($despatch_by_vehicle[$staf->assignment_vehicle_no] as $entry) {
+                                if ($entry->des_date >= $staf->from_date && $entry->des_date <= $staf->to_date) {
+                                    $total_d_req += (float)$entry->diesel_for_trip;
+                                }
+                            }
+                        }
 
                         $HSD_LTR = $total_d_req - $used_hsd;
-                        if ($HSD_LTR > 0) {
-                            $HSD_LTR = 0;
-                        }
-
+                        if ($HSD_LTR > 0) $HSD_LTR = 0;
                         $hsd_amount = $HSD_LTR * $diesel_rate;
 
-
+                        // Trip Expense calculation (Still per driver due to complexity, but we've saved many other queries)
                         $trip_expence = $this->AdminModel->tripexpence1($staf->assignment_vehicle_no, $staf->id, $year, $month);
-
-                        //     echo"<pre>";
-                        //   print_r($trip_expence);exit;
-
                         $total_month_expence = 0;
-
-                        foreach ($trip_expence as $trex) {
-                            $total_month_expence += $trex->day_trip_expense;
+                        if (!empty($trip_expence)) {
+                            foreach ($trip_expence as $trex) {
+                                $total_month_expence += (float)$trex->day_trip_expense;
+                            }
                         }
 
-
-
+                        // Advances, Adjustments and Bonus from pre-fetched data
+                        $getSum = 0;
+                        $getSumAdjust = 0;
+                        $getBonusSum = 0;
+                        $days_count = 0;
 
                         if (!empty($staf->from_date) && !empty($staf->to_date)) {
-                            $getSum = 0;
-                            $getSumAdjust = 0;
                             $from_date_obj = new DateTime($staf->from_date);
                             $to_date_obj = new DateTime($staf->to_date);
-
                             $interval = $from_date_obj->diff($to_date_obj);
                             $days_count = $interval->days + 1;
 
-
-                            $id = $staf->id;
-                            $getMultiRow = $this->db->table('staff_advance')
-                                ->where('staff_id', $id)
-                                ->where('adv_date >=', $staf->from_date)
-                                ->where('adv_date <=', $staf->to_date)
-                                ->get()
-                                ->getResult(); // Use getResult() to fetch multiple rows
-
-                            foreach ($getMultiRow as $row) {
-                                $getSum += $row->amount; // Add each row's 'amount' to the total sum
+                            if (isset($advances_by_staff[$staf->id])) {
+                                foreach ($advances_by_staff[$staf->id] as $row) {
+                                    if ($row->adv_date >= $staf->from_date && $row->adv_date <= $staf->to_date) {
+                                        $getSum += (float)$row->amount;
+                                    }
+                                }
                             }
-                            // Calculate the sum of the 'amount' column
 
-                            $getMultiRowAdjust = $this->db->table('adjust_salary')
-                                ->where('driver_id', $id)
-                                ->where('from_date >=', $staf->from_date)
-                                ->where('from_date <=', $staf->to_date)
-                                ->get()
-                                ->getResult();
-                            //   echo'<pre>';
-                            //   print_r($getMultiRowAdjust);
-                            //   exit;            
-                            foreach ($getMultiRowAdjust as $row) {
-                                $getSumAdjust += $row->amount; // Add each row's 'amount' to the total sum
+                            if (isset($adjustments_by_staff[$staf->id])) {
+                                foreach ($adjustments_by_staff[$staf->id] as $row) {
+                                    if ($row->from_date >= $staf->from_date && $row->from_date <= $staf->to_date) {
+                                        if (stripos($row->remark, 'bonus') !== false) {
+                                            $getBonusSum += (float)$row->amount;
+                                        } else {
+                                            $getSumAdjust += (float)$row->amount;
+                                        }
+                                    }
+                                }
                             }
-                        } else {
-                            $days_count = 0;
                         }
-                        $d_salary = $staf->salary / $curent_monthday * $days_count;
 
+                        $d_salary = (float)$staf->salary / (float)$curent_monthday * $days_count;
 
+                        // Existing payment record from pre-fetched data
+                        $total_paid = 0;
+                        $display_opening = (float)$staf->opening_balance;
+                        if (isset($payments_by_staff[$staf->id])) {
+                            $paidRow = $payments_by_staff[$staf->id];
+                            $total_paid = (float)$paidRow->salary_amount;
+                            $display_opening = (float)$paidRow->opening_balance;
+                        }
+
+                        $tsalary = ($display_opening + $d_salary + $hsd_amount + $total_month_expence + $getBonusSum) - ($getSum + $getSumAdjust);
                     ?>
-
-
-
-
                         <tr>
+                            <td>
+                                <input type="checkbox" class="driver-select-cb"
+                                    data-mobile="<?= htmlspecialchars($staf->tel ?? '') ?>"
+                                    data-name="<?= htmlspecialchars($staf->name ?? '') ?>"
+                                    data-staff-id="<?= $staf->id ?>"
+                                    data-year="<?= $year ?>"
+                                    data-month="<?= $month ?>"
+                                    data-from-date="<?= $staf->from_date ?? '' ?>"
+                                    data-to-date="<?= $staf->to_date ?? '' ?>"
+                                >
+                            </td>
                             <td><?= $i++; ?></td>
                             <td><?= $staf->name ?> ( <?= $staf->staff_code ?> )</td>
                             <td> <?= $staf->vehicle_no ?></td>
                             <td><?= $staf->location_name ?></td>
-                            <td><?= $staf->salary ?></td>
+                            <td><?= number_format((float)$staf->salary, 2) ?></td>
                             <td><?= $staf->from_date ?></td>
                             <td><?= $staf->to_date ?></td>
                             <td><?= $days_count; ?></td>
-                            <td><?= $d_salary; ?></td>
-                            <!-- <td><?= $staf->opening_balance ?></td> -->
-                            <!--<td><?= $staf->total_advance ?></td>-->
-                            <td><?= $getSum ?></td>
-                            <td>(<?= $total_d_req ?> - <?= $used_hsd ?>) === <?= $HSD_LTR; ?></td>
-                            <td> <?= $hsd_amount; ?></td>
-                            <td><?= $total_month_expence ?></td>
-                            <!--<td><?= $staf->amount ?></td>-->
-                            <td><?= $getSumAdjust ?></td>
+                            <td><?= number_format($d_salary, 2); ?></td>
+                            <td><?= number_format($display_opening, 2) ?></td>
+                            <td><?= number_format($total_month_expence, 2) ?></td>
+                            <td><?= number_format($getSum, 2) ?></td>
+                            <td>(<?= number_format($total_d_req, 2) ?> - <?= number_format($used_hsd, 2) ?>) === <?= number_format($HSD_LTR, 2); ?></td>
+                            <td> <?= number_format($hsd_amount, 2); ?></td>
+                            <td><?= number_format($getSumAdjust, 2) ?></td>
+                            <td><?= number_format($getBonusSum, 2) ?></td>
+                            <td><?= number_format($tsalary, 2); ?></td>
+                            <td><?= number_format($total_paid, 2) ?></td>
+                            <td><?= $staf->ac_no ?></td>
+                            <td><?= $staf->ifsc ?></td>
+                            <td><?= $staf->name_bank ?></td>
                             <td>
-                                <?php
-                                $total_advance = str_replace(',', '', $staf->total_advance);
-                                $tsalary = ($d_salary + $hsd_amount + $total_month_expence + $staf->amount) - (int)$total_advance;
-                                echo $tsalary
-
-                                ?>
+                                <button class="btn btn-primary btn-sm" onclick='openPaymentModal("<?= $staf->id ?>", "<?= $staf->name ?>", "<?= $tsalary ?>", "<?= $display_opening ?>")'>
+                                    Payment
+                                </button>
+                                <a href="<?= base_url('Admin/salary_slip?staff_id=' . $staf->id . '&year=' . $year . '&month=' . $month . '&from_date=' . $staf->from_date . '&to_date=' . $staf->to_date) ?>" target="_blank" class="btn btn-info btn-sm">
+                                    Slip
+                                </a>
                             </td>
-
-
-
                         </tr>
                     <?php } ?>
 
                 </tbody>
                 <tfoot>
+                    <th></th>
                     <th>Sl no</th>
                     <th>Name</th>
                     <th>Truck No.</th>
@@ -5421,13 +5465,18 @@ public function get_vehicle_report_excel()
                     <th>To Date</th>
                     <th>Working Day</th>
                     <th>Salary</th>
-                    <!-- <th>Opening Balance</th> -->
+                    <th>Opening Balance</th>
+                    <th>Trip Expence</th>
                     <th>Advance</th>
                     <th>HSD Ltr</th>
                     <th>HSD Amount</th>
-                    <th>Trip Expence</th>
                     <th>Adjust Salary</th>
+                    <th>Bonus</th>
                     <th>Net Salary</th>
+                    <th>Paid</th>
+                    <th>Account No</th>
+                    <th>IFSC Code</th>
+                    <th>Bank Name</th>
                 </tfoot>
             </table>
 
@@ -5457,11 +5506,63 @@ public function get_vehicle_report_excel()
         $alldriver = $this->AdminModel->driver_salary_details($year, $month, $location);
         $curent_monthday = date('t', strtotime("$year-$month-01"));
 
+        // --- OPTIMIZATION: Batch Fetch Data to avoid N+1 Query Problem ---
+        $staff_ids = array_column($alldriver, 'id');
+        $vehicle_ids = array_filter(array_column($alldriver, 'assignment_vehicle_no'));
+
+        $advances_by_staff = [];
+        $adjustments_by_staff = [];
+        $payments_by_staff = [];
+        $diesel_by_vehicle = [];
+        $despatch_by_vehicle = [];
+
+        if (!empty($staff_ids)) {
+            $all_advances = $this->db->table('staff_advance')
+                ->whereIn('staff_id', $staff_ids)
+                ->where('adv_date >=', $first_datesam)
+                ->where('adv_date <=', $last_datesam)
+                ->get()->getResult();
+            foreach ($all_advances as $rowAdv) { $advances_by_staff[$rowAdv->staff_id][] = $rowAdv; }
+
+            $all_adjustments = $this->db->table('adjust_salary')
+                ->whereIn('driver_id', $staff_ids)
+                ->where('from_date >=', $first_datesam)
+                ->where('from_date <=', $last_datesam)
+                ->get()->getResult();
+            foreach ($all_adjustments as $rowAdj) { $adjustments_by_staff[$rowAdj->driver_id][] = $rowAdj; }
+
+            $all_payments = $this->db->table('salary_payment')
+                ->whereIn('driver_id', $staff_ids)
+                ->where('month', (int)$month)
+                ->where('year', (int)$year)
+                ->get()->getResult();
+            foreach ($all_payments as $rowPay) { $payments_by_staff[$rowPay->driver_id] = $rowPay; }
+        }
+
+        if (!empty($vehicle_ids)) {
+            $all_diesel = $this->db->table('diselentry')
+                ->whereIn('vehicle_id', $vehicle_ids)
+                ->where('diesel_date >=', $first_datesam)
+                ->where('diesel_date <=', $last_datesam)
+                ->get()->getResult();
+            foreach ($all_diesel as $rowDie) { $diesel_by_vehicle[$rowDie->vehicle_id][] = $rowDie; }
+
+            $all_despatch = $this->db->table('despatch')
+                ->select('despatch.*, do_registration.diesel_type as diesel_for_trip')
+                ->join('do_registration', 'do_registration.do_registration_id = despatch.do_no', 'left')
+                ->whereIn('despatch.vehicle_no', $vehicle_ids)
+                ->where('despatch.des_date >=', $first_datesam)
+                ->where('despatch.des_date <=', $last_datesam)
+                ->get()->getResult();
+            foreach ($all_despatch as $rowDes) { $despatch_by_vehicle[$rowDes->vehicle_no][] = $rowDes; }
+        }
+        // --- END OPTIMIZATION ---
+
         $spreadsheet = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
         $sheet = $spreadsheet->getActiveSheet();
 
         // Headers
-        $headers = ['Sl No', 'Name', 'Truck No.', 'Location', 'Salary', 'From Date', 'To Date', 'Working Days', 'Daily Salary', 'Opening Balance', 'Advance', 'HSD Ltr', 'HSD Amount', 'Trip Expense', 'Adjust Salary', 'Adjust Salary Remark', 'Net Salary', 'Staff Code', 'Account No', 'IFSC Code', 'Bank Name'];
+        $headers = ['Sl No', 'Name', 'Truck No.', 'Location', 'Salary', 'From Date', 'To Date', 'Working Days', 'Daily Salary', 'Opening Balance', 'Trip Expense', 'Advance', 'HSD Ltr', 'HSD Amount', 'Adjust Salary', 'Adjust Salary Remark', 'Bonus', 'Net Salary', 'Paid', 'Staff Code', 'Account No', 'IFSC Code', 'Bank Name'];
         $col = 'A';
         foreach ($headers as $header) {
             $sheet->setCellValue($col . '1', $header);
@@ -5473,13 +5574,53 @@ public function get_vehicle_report_excel()
         $sl_no = 1;
 
         foreach ($alldriver as $staf) {
-            $days_count = 0;
+            $first_date = !empty($staf->from_date) ? $staf->from_date : $first_datesam;
+            $last_date = !empty($staf->to_date) ? $staf->to_date : $last_datesam;
+
+            // Diesel Calculation from pre-fetched data
+            $sum_diesel_qty = 0;
+            $diesel_rate = 0;
+            if (isset($diesel_by_vehicle[$staf->assignment_vehicle_no])) {
+                foreach ($diesel_by_vehicle[$staf->assignment_vehicle_no] as $entry) {
+                    if ($entry->diesel_date >= $first_date && $entry->diesel_date <= $last_date) {
+                        $sum_diesel_qty += (float)$entry->qty;
+                        if ($diesel_rate == 0) $diesel_rate = (float)$entry->rate;
+                    }
+                }
+            }
+
+            $opening_hsd = (float)($staf->opening_hsd ?? 0);
+            $closing_hsd = (float)($staf->closing_hsd ?? 0);
+            $used_hsd = $opening_hsd + $sum_diesel_qty - $closing_hsd;
+
+            // Diesel for trip request from pre-fetched data
+            $total_d_req = 0;
+            if (isset($despatch_by_vehicle[$staf->assignment_vehicle_no])) {
+                foreach ($despatch_by_vehicle[$staf->assignment_vehicle_no] as $entry) {
+                    if ($entry->des_date >= $staf->from_date && $entry->des_date <= $staf->to_date) {
+                        $total_d_req += (float)$entry->diesel_for_trip;
+                    }
+                }
+            }
+
+            $HSD_LTR = $total_d_req - $used_hsd;
+            if ($HSD_LTR > 0) $HSD_LTR = 0;
+            $hsd_amount = $HSD_LTR * $diesel_rate;
+
+            // Trip Expenses Calculation
+            $trip_exp_res = $this->AdminModel->tripexpence1($staf->assignment_vehicle_no, $staf->id, $year, $month);
+            $trip_exp_sum = 0;
+            if (!empty($trip_exp_res)) {
+                foreach ($trip_exp_res as $trex) {
+                    $trip_exp_sum += (float)$trex->day_trip_expense;
+                }
+            }
+
+            // Advances, Adjustments from pre-fetched data
             $getSum = 0;
-            $d_salary = 0;
-            $HSD_LTR = 0;
-            $hsd_amount = 0;
-            $trip_expence_sum = 0;
-            $tsalary = 0;
+            $getSumAdjust = 0;
+            $getBonusSum = 0;
+            $days_count = 0;
 
             if (!empty($staf->from_date) && !empty($staf->to_date)) {
                 $from_date_obj = new DateTime($staf->from_date);
@@ -5487,87 +5628,64 @@ public function get_vehicle_report_excel()
                 $interval = $from_date_obj->diff($to_date_obj);
                 $days_count = $interval->days + 1;
 
-                // Fetch advance amount
-                $id = $staf->id;
-                $getMultiRow = $this->db->table('staff_advance')
-                    ->where('staff_id', $id)
-                    ->where('adv_date >=', $staf->from_date)
-                    ->where('adv_date <=', $staf->to_date)
-                    ->get()
-                    ->getResult();
+                if (isset($advances_by_staff[$staf->id])) {
+                    foreach ($advances_by_staff[$staf->id] as $rowAdv) {
+                        if ($rowAdv->adv_date >= $staf->from_date && $rowAdv->adv_date <= $staf->to_date) {
+                            $getSum += (float)$rowAdv->amount;
+                        }
+                    }
+                }
 
-                foreach ($getMultiRow as $rowData) {
-                    $getSum += (float) $rowData->amount;
+                if (isset($adjustments_by_staff[$staf->id])) {
+                    foreach ($adjustments_by_staff[$staf->id] as $rowAdj) {
+                        if ($rowAdj->from_date >= $staf->from_date && $rowAdj->from_date <= $staf->to_date) {
+                            if (stripos($rowAdj->remark, 'bonus') !== false) {
+                                $getBonusSum += (float)$rowAdj->amount;
+                            } else {
+                                $getSumAdjust += (float)$rowAdj->amount;
+                            }
+                        }
+                    }
                 }
             }
 
-            // Calculate daily salary
-            $salary = isset($staf->salary) ? (float) $staf->salary : 0;
-            $d_salary = ($salary / (float) $curent_monthday) * (float) $days_count;
+            $d_salary = ((float)($staf->salary ?? 0) / (float)$curent_monthday) * $days_count;
 
-            // Fetch additional details
-            $first_date = !empty($staf->from_date) ? $staf->from_date : $first_datesam;
-            $last_date = !empty($staf->to_date) ? $staf->to_date : $last_datesam;
-            $hsd_details = $this->AdminModel->hsd_details($staf->id, $first_date, $last_date);
-            $disel_entry = $this->AdminModel->vehicle_disel_details($staf->assignment_vehicle_no, $staf->from_date, $staf->to_date);
-            $trip_expence = $this->AdminModel->tripexpence1($staf->assignment_vehicle_no, $staf->id, $year, $month);
-
-            // HSD Details
-            $used_hsd = 0;
-            $diesel_rate = 0;
-            if (!empty($hsd_details) && isset($hsd_details[0]->used_hsd)) {
-                $used_hsd = (float) $hsd_details[0]->used_hsd;
-                $diesel_rate = (float) $hsd_details[0]->diesel_rate;
+            // Existing payment from pre-fetched data
+            $total_paid = 0;
+            $display_opening = (float)$staf->opening_balance;
+            if (isset($payments_by_staff[$staf->id])) {
+                $paidRow = $payments_by_staff[$staf->id];
+                $total_paid = (float)$paidRow->salary_amount;
+                $display_opening = (float)$paidRow->opening_balance;
             }
 
-            // Diesel Calculation
-            $total_d_req = 0;
-            if (!empty($disel_entry)) {
-                foreach ($disel_entry as $entry) {
-                    $total_d_req += (float) $entry->diesel_for_trip;
-                }
-            }
-
-            // Fix HSD Calculation
-            $HSD_LTR = (float) $total_d_req - (float) $used_hsd;
-            if ($HSD_LTR > 0) {
-                $HSD_LTR = 0; // Adjusted as per the HTML logic
-            }
-
-            $hsd_amount = $HSD_LTR * $diesel_rate; // Final HSD amount calculation
-
-            // Trip Expenses Calculation
-            if (!empty($trip_expence)) {
-                foreach ($trip_expence as $trex) {
-                    $trip_expence_sum += (float) $trex->day_trip_expense;
-                }
-            }
-
-            // Net Salary Calculation
-            $tsalary = ($d_salary + $hsd_amount + $trip_expence_sum + $staf->amount) - $getSum;
+            $tsalary = ($display_opening + $d_salary + $hsd_amount + $trip_exp_sum + $getBonusSum) - ($getSum + $getSumAdjust);
 
             // Write to Excel
             $sheet->setCellValue('A' . $row, (string) $sl_no++);
-            $sheet->setCellValue('B' . $row, (string) $staf->name);
-            $sheet->setCellValue('C' . $row, (string) $staf->vehicle_no);
-            $sheet->setCellValue('D' . $row, (string) $staf->location_name);
-            $sheet->setCellValue('E' . $row, (float) $salary);
-            $sheet->setCellValue('F' . $row, (string) $staf->from_date);
-            $sheet->setCellValue('G' . $row, (string) $staf->to_date);
+            $sheet->setCellValue('B' . $row, (string) ($staf->name ?? ''));
+            $sheet->setCellValue('C' . $row, (string) ($staf->vehicle_no ?? ''));
+            $sheet->setCellValue('D' . $row, (string) ($staf->location_name ?? ''));
+            $sheet->setCellValue('E' . $row, (float) ($staf->salary ?? 0));
+            $sheet->setCellValue('F' . $row, (string) ($staf->from_date ?? ''));
+            $sheet->setCellValue('G' . $row, (string) ($staf->to_date ?? ''));
             $sheet->setCellValue('H' . $row, (int) $days_count);
             $sheet->setCellValue('I' . $row, (float) $d_salary);
-            $sheet->setCellValue('J' . $row, (float) $staf->opening_balance);
-            $sheet->setCellValue('K' . $row, (float) $getSum);
-            $sheet->setCellValue('L' . $row, (float) $HSD_LTR);
-            $sheet->setCellValue('M' . $row, (float) $hsd_amount);
-            $sheet->setCellValue('N' . $row, (float) $trip_expence_sum);
-            $sheet->setCellValue('O' . $row, (string) $staf->amount);
-            $sheet->setCellValue('P' . $row, (string) $staf->remark);
-            $sheet->setCellValue('Q' . $row, (float) $tsalary);
-            $sheet->setCellValue('R' . $row, (string) $staf->staff_code);
-            $sheet->setCellValue('S' . $row, (int) $staf->ac_no);
-            $sheet->setCellValue('T' . $row, (string) $staf->ifsc);
-            $sheet->setCellValue('U' . $row, (string) $staf->name_bank);
+            $sheet->setCellValue('J' . $row, (float) $display_opening);
+            $sheet->setCellValue('K' . $row, (float) $trip_exp_sum);
+            $sheet->setCellValue('L' . $row, (float) $getSum);
+            $sheet->setCellValue('M' . $row, (float) $HSD_LTR);
+            $sheet->setCellValue('N' . $row, (float) $hsd_amount);
+            $sheet->setCellValue('O' . $row, (float) $getSumAdjust);
+            $sheet->setCellValue('P' . $row, (string) ($staf->remark ?? ''));
+            $sheet->setCellValue('Q' . $row, (float) $getBonusSum);
+            $sheet->setCellValue('R' . $row, (float) $tsalary);
+            $sheet->setCellValue('S' . $row, (float) $total_paid);
+            $sheet->setCellValue('T' . $row, (string) ($staf->staff_code ?? ''));
+            $sheet->setCellValue('U' . $row, (string) ($staf->ac_no ?? '')); // Changed to string for safety
+            $sheet->setCellValue('V' . $row, (string) ($staf->ifsc ?? ''));
+            $sheet->setCellValue('W' . $row, (string) ($staf->name_bank ?? ''));
 
             $row++;
         }
@@ -5586,6 +5704,375 @@ public function get_vehicle_report_excel()
         return $response->setBody($excelOutput);
     }
 
+    public function process_salary_payment()
+    {
+        if (!$this->session->get('user_id')) {
+            return $this->response->setJSON(['success' => false, 'message' => 'Session expired']);
+        }
+
+        $staff_id = $this->request->getPost('staff_id');
+        $calculated_net = (float)$this->request->getPost('calculated_net');
+        $paid_amount = (float)$this->request->getPost('paid_amount');
+        $opening_balance = (float)$this->request->getPost('opening_balance');
+        $year = $this->request->getPost('year');
+        $month = $this->request->getPost('month');
+
+        // Logic: New Closing Balance for this month = calculated_net - paid_amount
+        // This will be the opening balance for "next" month.
+        $closing_balance = $calculated_net - $paid_amount;
+
+        // Check if record exists for this month
+        $existing = $this->db->table('salary_payment')
+            ->where('driver_id', $staff_id)
+            ->where('month', (int)$month)
+            ->where('year', (int)$year)
+            ->get()
+            ->getRow();
+
+        // Record the payment details in salary_payment table
+        $data = [
+            'driver_id' => $staff_id,
+            'salary_amount' => $paid_amount,
+            'opening_balance' => $opening_balance,
+            'net_salary' => $calculated_net,
+            'month' => (int)$month,
+            'year' => (int)$year,
+            'status' => 1
+        ];
+        
+        try {
+            if ($existing) {
+                $this->db->table('salary_payment')->where('id', $existing->id)->update($data);
+            } else {
+                $this->db->table('salary_payment')->insert($data);
+            }
+
+            // Update staff table with the new closing balance
+            // WARNING: In a real system, we might want a more sophisticated ledger,
+            // but here we follow the user's request to update the opening balance.
+            $this->db->table('staff')
+                ->where('id', $staff_id)
+                ->update(['opening_balance' => $closing_balance]);
+
+            return $this->response->setJSON(['success' => true, 'message' => 'Salary processed successfully. Balance updated for next month.']);
+        } catch (\Exception $e) {
+            return $this->response->setJSON(['success' => false, 'message' => 'Error recording payment: ' . $e->getMessage()]);
+        }
+    }
+
+    /**
+     * Bulk WhatsApp Sender via UltraMsg API
+     * POST /admin/send_salary_whatsapp_bulk
+     * Body: { drivers: [{staff_id, year, month, from_date}], ... }
+     */
+    public function send_salary_whatsapp_bulk()
+    {
+        if (!$this->session->get('user_id')) {
+            return $this->response->setJSON(['success' => false, 'message' => 'Session expired']);
+        }
+
+        $instance_id = getenv('WHATSAPP_INSTANCE_ID');
+        $token       = getenv('WHATSAPP_TOKEN');
+
+        if (!$instance_id || $instance_id === 'YOUR_INSTANCE_ID_HERE' ||
+            !$token       || $token === 'YOUR_TOKEN_HERE') {
+            return $this->response->setJSON([
+                'success' => false,
+                'message' => 'WhatsApp API credentials not configured. Please update WHATSAPP_INSTANCE_ID and WHATSAPP_TOKEN in your .env file.'
+            ]);
+        }
+
+        $payload = $this->request->getJSON(true);
+        $drivers = $payload['drivers'] ?? [];
+
+        if (empty($drivers)) {
+            return $this->response->setJSON(['success' => false, 'message' => 'No drivers selected.']);
+        }
+
+        $base_url    = base_url();
+        $api_url     = "https://api.ultramsg.com/{$instance_id}/messages/chat";
+        $results     = [];
+        $success_cnt = 0;
+        $fail_cnt    = 0;
+
+        $months = ['', 'January', 'February', 'March', 'April', 'May', 'June',
+                   'July', 'August', 'September', 'October', 'November', 'December'];
+
+        foreach ($drivers as $drv) {
+            $staff_id  = (int)($drv['staff_id'] ?? 0);
+            $year      = $drv['year']      ?? '';
+            $month     = $drv['month']     ?? '';
+            $from_date = $drv['from_date'] ?? '';
+            $to_date   = $drv['to_date']   ?? '';
+
+            if (!$staff_id) continue;
+
+            // Fetch driver phone from DB
+            $staff = $this->db->table('staff')->where('id', $staff_id)->get()->getRow();
+            if (!$staff) {
+                $results[] = ['name' => "ID:$staff_id", 'status' => 'skipped', 'reason' => 'Driver not found'];
+                $fail_cnt++;
+                continue;
+            }
+
+            $name   = $staff->name ?? 'Driver';
+            $mobile = trim($staff->tel ?? '');
+
+            if (empty($mobile)) {
+                $results[] = ['name' => $name, 'status' => 'skipped', 'reason' => 'No mobile number'];
+                $fail_cnt++;
+                continue;
+            }
+
+            // Normalise — strip non-digits, add country code if 10-digit
+            $mobile = preg_replace('/\D/', '', $mobile);
+            if (strlen($mobile) === 10) {
+                $mobile = '91' . $mobile;
+            }
+
+            $slip_url   = $base_url . 'Admin/salary_slip?staff_id=' . $staff_id
+                        . '&year=' . $year . '&month=' . $month . '&from_date=' . $from_date . '&to_date=' . $to_date;
+            $month_name = $months[(int)$month] ?? $month;
+
+            $message = "Dear {$name},\n\n"
+                     . "Your Salary Slip for {$month_name} {$year} is ready.\n\n"
+                     . "View your slip here:\n{$slip_url}\n\n"
+                     . "Regards,\nYasuja Transport";
+
+            // Call UltraMsg API
+            $post_data = [
+                'token'  => $token,
+                'to'     => $mobile,
+                'body'   => $message,
+            ];
+
+            $ch = curl_init($api_url);
+            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+            curl_setopt($ch, CURLOPT_POST,           true);
+            curl_setopt($ch, CURLOPT_POSTFIELDS,     http_build_query($post_data));
+            curl_setopt($ch, CURLOPT_TIMEOUT,        15);
+            $response  = curl_exec($ch);
+            $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $curl_err  = curl_error($ch);
+            curl_close($ch);
+
+            if ($curl_err) {
+                $results[] = ['name' => $name, 'mobile' => $mobile, 'status' => 'failed', 'reason' => $curl_err];
+                $fail_cnt++;
+                continue;
+            }
+
+            $resp_data = json_decode($response, true);
+            // UltraMsg returns {"sent":"true"} on success
+            if ($http_code === 200 && isset($resp_data['sent']) && $resp_data['sent'] === 'true') {
+                $results[] = ['name' => $name, 'mobile' => $mobile, 'status' => 'sent'];
+                $success_cnt++;
+            } else {
+                $reason    = $resp_data['error'] ?? ($response ?: "HTTP $http_code");
+                $results[] = ['name' => $name, 'mobile' => $mobile, 'status' => 'failed', 'reason' => $reason];
+                $fail_cnt++;
+            }
+
+            // Small delay between messages to avoid rate-limiting (UltraMsg: ~10 msgs/sec)
+            usleep(300000); // 300ms
+        }
+
+        return $this->response->setJSON([
+            'success'     => $success_cnt > 0,
+            'message'     => "Sent: {$success_cnt}, Failed/Skipped: {$fail_cnt}",
+            'sent'        => $success_cnt,
+            'failed'      => $fail_cnt,
+            'details'     => $results,
+        ]);
+    }
+
+    public function salary_slip()
+    {
+        if (!$this->session->get('user_id')) {
+            return redirect()->to('Admin/');
+        }
+
+        $staff_id = $this->request->getVar('staff_id');
+        $year = $this->request->getVar('year');
+        $month = $this->request->getVar('month');
+        $from_date_param = $this->request->getVar('from_date');
+        $to_date_param = $this->request->getVar('to_date');
+
+        if (!$staff_id || !$year || !$month) {
+            return "Missing parameters.";
+        }
+
+        // Fetch Driver Details (Single record version of the core report logic)
+        $builder = $this->db->table('staff');
+        $builder->select('staff.*, location.location_name');
+        $builder->join('location', 'location.location_id = staff.address', 'left');
+        $builder->where('staff.id', $staff_id);
+        $driver = $builder->get()->getRow();
+
+        if (!$driver) {
+            return "Driver not found.";
+        }
+
+        // Date Calculations
+        $first_datesam = date("Y-m-01", strtotime("$year-$month-01"));
+        $last_datesam = date("Y-m-t", strtotime("$year-$month-01"));
+        $curent_monthday = date("t", strtotime($first_datesam));
+
+        // Assignment Data - Try to match the specific from_date if provided
+        $builder_as = $this->db->table('driver_assignment');
+        $builder_as->where('driver', $staff_id);
+        if ($from_date_param) {
+            $builder_as->where('from_date', $from_date_param);
+        } else {
+            $builder_as->where('from_date <=', $last_datesam);
+            $builder_as->where('from_date >=', $first_datesam);
+        }
+        $assignment = $builder_as->get()->getRow();
+
+        // Effective dates for calculations (Important for matching report row)
+        $eff_from = $assignment->from_date ?? $first_datesam;
+        $eff_to = $to_date_param ?: ($assignment->to_date ?? $last_datesam);
+
+        // Advance Data - Use effective dates
+        $adv_res = $this->db->table('staff_advance')
+            ->select('despatch_id, amount')
+            ->where('staff_id', $staff_id)
+            ->where('adv_date >=', $eff_from)
+            ->where('adv_date <=', $eff_to)
+            ->get()->getResult();
+
+        $salary_advance = 0;
+        $trip_advance = 0;
+        foreach ($adv_res as $adv) {
+            if ($adv->despatch_id) $trip_advance += (float)$adv->amount;
+            else $salary_advance += (float)$adv->amount;
+        }
+        $total_advance = $salary_advance + $trip_advance;
+
+        // HSD / Diesel Details - Use effective dates
+        $disel_entry = $this->AdminModel->vehicle_disel_details($assignment->vehicle_no ?? null, $eff_from, $eff_to);
+        $total_d_req = 0;
+        if (!empty($disel_entry)) {
+            foreach ($disel_entry as $entry) {
+                $total_d_req += (float)$entry->diesel_for_trip;
+            }
+        }
+        $hsd_details = $this->AdminModel->hsd_details($staff_id, $eff_from, $eff_to);
+        $used_hsd = 0; $diesel_rate = 0;
+        if (!empty($hsd_details) && isset($hsd_details[0]->used_hsd)) {
+            $used_hsd = (float)$hsd_details[0]->used_hsd;
+            $diesel_rate = (float)$hsd_details[0]->diesel_rate;
+        }
+        $HSD_LTR = (float)$total_d_req - $used_hsd;
+        if ($HSD_LTR > 0) $HSD_LTR = 0; 
+        $hsd_amount = $HSD_LTR * $diesel_rate;
+
+        // Trip Expenses & Trips - Use effective dates
+        $trips_res = $this->AdminModel->tripexpence1($assignment->vehicle_no ?? null, $staff_id, $year, $month);
+        // Note: tripexpence1 internally handles year/month filtering and joins driver_assignment
+        $trip_exp_sum = 0;
+        if (!empty($trips_res)) {
+            foreach ($trips_res as $trex) {
+                $trip_exp_sum += (float)$trex->day_trip_expense;
+            }
+        }
+
+        // For the trips list in the view, we still need the raw despatch records
+        $trips = $this->db->table('despatch')
+            ->select('despatch.*, vehicle.vehicle_no as reg_no, route.to_city as trip_location, route.from_city as from_city, route.location_shortname as route_name, do_registration.diesel_type as diesel_required, do_registration.do_no as do_reg_no')
+            ->join('vehicle', 'vehicle.id = despatch.vehicle_no', 'left')
+            ->join('do_registration', 'do_registration.do_registration_id = despatch.do_no', 'left')
+            ->join('route', 'route.id = do_registration.route_id', 'left')
+            ->join('driver_assignment', 'driver_assignment.vehicle_no = despatch.vehicle_no', 'left')
+            ->where('driver_assignment.driver', $staff_id)
+            ->where('despatch.des_date >=', $eff_from)
+            ->where('despatch.des_date <=', $eff_to)
+            ->where('despatch.des_date >= driver_assignment.from_date', null, false)
+            ->where('(despatch.des_date <= driver_assignment.to_date OR driver_assignment.to_date IS NULL OR driver_assignment.to_date = "0000-00-00" OR driver_assignment.to_date = "")', null, false)
+            ->groupBy('despatch.despatch_id')
+            ->orderBy('despatch.des_date', 'ASC')
+            ->get()->getResult();
+
+        // Fetch Diesel Entries for all vehicles assigned to this driver at any point in this month
+        $diesel_entries_list = $this->db->table('diselentry')
+            ->select('diselentry.*, vendor.name as vendor_name')
+            ->join('vendor', 'vendor.id = diselentry.vendor_id', 'left')
+            ->join('driver_assignment', 'driver_assignment.vehicle_no = diselentry.vehicle_id', 'left')
+            ->where('driver_assignment.driver', $staff_id)
+            ->where('diselentry.diesel_date >=', $eff_from)
+            ->where('diselentry.diesel_date <=', $eff_to)
+            ->where('diselentry.diesel_date >= driver_assignment.from_date', null, false)
+            ->where('(diselentry.diesel_date <= driver_assignment.to_date OR driver_assignment.to_date IS NULL OR driver_assignment.to_date = "0000-00-00" OR driver_assignment.to_date = "")', null, false)
+            ->where('diselentry.deleted_by', null)
+            ->groupBy('diselentry.diselentry_id')
+            ->orderBy('diselentry.diesel_date', 'ASC')
+            ->get()->getResult();
+
+        // Adjustments & Bonuses - Use effective dates
+        $adjustments = $this->db->table('adjust_salary')
+            ->where('driver_id', $staff_id)
+            ->where('from_date >=', $eff_from)
+            ->where('from_date <=', $eff_to)
+            ->get()->getResult();
+        
+        $bonus_sum = 0; $adjust_sum = 0;
+        foreach ($adjustments as $adj) {
+            if (stripos($adj->remark, 'bonus') !== false) $bonus_sum += (float)$adj->amount;
+            else $adjust_sum += (float)$adj->amount;
+        }
+
+        // Historical Balance Tracking
+        $paid_row = $this->db->table('salary_payment')
+            ->where('driver_id', $staff_id)
+            ->where('month', (int)$month)
+            ->where('year', (int)$year)
+            ->get()->getRow();
+
+        $display_opening = $paid_row ? (float)$paid_row->opening_balance : (float)$driver->opening_balance;
+        $total_paid = $paid_row ? (float)$paid_row->salary_amount : 0;
+
+        // Working Days & Basic Salary
+        $working_days = 0;
+        if ($assignment) {
+            $from = new DateTime($assignment->from_date);
+            $to = $assignment->to_date ? new DateTime($assignment->to_date) : new DateTime($last_datesam);
+            $working_days = $from->diff($to)->days + 1;
+        }
+        $d_salary = ($driver->salary / $curent_monthday) * $working_days;
+
+        // Final Net Calculation
+        $tsalary = ($display_opening + $d_salary + $hsd_amount + $trip_exp_sum + $bonus_sum) - ($total_advance + $adjust_sum);
+
+        $data = [
+            'driver' => $driver,
+            'year' => $year,
+            'month' => $month,
+            'month_name' => date("F", strtotime("$year-$month-01")),
+            'opening' => $display_opening,
+            'working_days' => $working_days,
+            'basic_salary' => $d_salary,
+            'hsd_ltr' => $HSD_LTR,
+            'hsd_amount' => $hsd_amount,
+            'trip_expenses' => $trip_exp_sum,
+            'trips' => $trips,
+            'salary_advance' => $salary_advance,
+            'trip_advance' => $trip_advance,
+            'total_advance' => $total_advance,
+            'bonus' => $bonus_sum,
+            'adjustment' => $adjust_sum,
+            'net_salary' => $tsalary,
+            'total_paid' => $total_paid,
+            'balance' => $tsalary - $total_paid,
+            'assignment' => $assignment,
+            'eff_from' => $eff_from,
+            'eff_to' => $eff_to,
+            'diesel_entries_list' => $diesel_entries_list,
+            'setting' => $this->AdminModel->Settingdata()
+        ];
+
+        return view('admin/salary_slip_vw', $data);
+    }
+
 
 
     // Function to display the adjust salary form
@@ -5598,6 +6085,7 @@ public function get_vehicle_report_excel()
 
             $data['drivers'] = $this->AdminModel->Getallstaf();
             $data['vehicles'] = $this->AdminModel->Getallvehicle();
+            
 
             $yearData = $this->request->getPost('year') ?: date('Y');
             $monthData = $this->request->getPost('month') ?: date('n');
@@ -5681,6 +6169,7 @@ public function get_vehicle_report_excel()
         $data = [
             'driver_id' => $driver_id,
             'driver_name' => $driver_name,
+            'vehicle_id' => $this->request->getVar('vehicle'),
             'location' => $location_name,
             'amount' => $this->request->getVar('amount'),
             'from_date' => $this->request->getVar('from_date'),
@@ -5768,6 +6257,7 @@ public function get_vehicle_report_excel()
         // Prepare the data to update
         $update_data = [
             'driver_name' => $driver_name,
+            'vehicle_id' => $this->request->getPost('vehicle'),
             'location' => $location,
             'amount' => $amount,
             'remark' => $remark,
@@ -10558,31 +11048,51 @@ public function exportPaymentExcel()
 
     public function getvehicledtls()
     {
-
         $driver_id = $this->request->getPost('staff_id');
         $date = $this->request->getPost('date');
 
-        $year = date('Y', strtotime($date));
-        $month = date('m', strtotime($date));
-
-        $query = $this->db->query("
-        SELECT v.vehicle_no 
-        FROM driver_assignment da
-        JOIN vehicle v ON da.vehicle_no = v.id
-        WHERE da.driver = ? AND YEAR(da.from_date) = ? AND MONTH(da.from_date) = ?
-    ", array($driver_id, $year, $month));
-
-        $result = $query->getResult();
-
-        if (!empty($result)) {
-            foreach ($result as $row) {
-                echo '<label>Vehicle</label>';
-                echo '<input type="text" readonly class="uk-input" value="' . htmlspecialchars($row->vehicle_no) . '"/>';
-            }
-        } else {
-            echo '<label>Vehicle</label>';
-            echo '<input type="text" readonly class="uk-input" value="No vehicle found"/>';
+        if (!$driver_id || !$date) {
+            return "";
         }
+
+        // 1. Fetch Vehicle (Assignment)
+        $query_v = $this->db->query("
+            SELECT v.vehicle_no, v.id as vehicle_id
+            FROM driver_assignment da
+            JOIN vehicle v ON da.vehicle_no = v.id
+            WHERE da.driver = ? AND da.from_date <= ? AND da.to_date >= ?
+        ", array($driver_id, $date, $date));
+
+        $v_result = $query_v->getRow();
+
+        // 2. Fetch Trips (Despatch records) for that driver around that date
+        $trips = $this->db->table('despatch')
+            ->select('despatch.despatch_id, despatch.ref_no, route.to_city as location')
+            ->join('do_registration', 'do_registration.do_registration_id = despatch.do_no', 'left')
+            ->join('route', 'route.id = do_registration.route_id', 'left')
+            ->where('despatch.des_date', $date)
+            ->get()->getResult();
+
+        echo '<div class="uk-grid-small uk-child-width-1-2" uk-grid>';
+        
+        echo '<div>';
+        echo '<label>Assigned Vehicle</label>';
+        $v_no = $v_result->vehicle_no ?? 'No vehicle found';
+        echo '<input type="text" readonly class="uk-input" value="' . htmlspecialchars($v_no) . '"/>';
+        echo '</div>';
+
+        echo '<div>';
+        echo '<label>Link to Trip (Optional)</label>';
+        echo '<select name="despatch_id" class="uk-select">';
+        echo '<option value="">Not Linked to Trip</option>';
+        foreach ($trips as $t) {
+            $label = "#" . $t->despatch_id . " " . ($t->ref_no ? "(".$t->ref_no.")" : "") . " - " . $t->location;
+            echo '<option value="' . $t->despatch_id . '">' . htmlspecialchars($label) . '</option>';
+        }
+        echo '</select>';
+        echo '</div>';
+
+        echo '</div>';
     }
 
 

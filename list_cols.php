@@ -3,8 +3,9 @@ $db = mysqli_connect('localhost', 'root', '', 'transport');
 if (!$db) die("Connection failed");
 
 $res = mysqli_query($db, "DESCRIBE `salary_payment`");
-echo "--- Table: salary_payment columns ---\n";
+$cols = [];
 while ($row = mysqli_fetch_assoc($res)) {
-    echo $row['Field'] . " (" . $row['Type'] . ")\n";
+    $cols[] = $row['Field'] . " (" . $row['Type'] . ")";
 }
+echo implode(", ", $cols);
 ?>

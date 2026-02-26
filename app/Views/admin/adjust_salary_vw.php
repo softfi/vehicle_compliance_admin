@@ -215,7 +215,7 @@
                         <div class="col-md-4">
                             <div class="form-group">
                                 <label for="vehicle_select">Vehicle <span class="text-danger">*</span></label>
-                                <select class="form-control select2-vehicle" name="vehicle" id="single" required>
+                                <select class="form-control select2" name="vehicle" id="vehicle_select" required>
                                     <option value="">Select Vehicle</option>
                                     <?php foreach ($vehicles ?? [] as $vehicle): ?>
                                         <option value="<?= htmlspecialchars($vehicle->id, ENT_QUOTES, 'UTF-8'); ?>">
@@ -435,12 +435,10 @@
 
 <script>
 $(document).ready(function() {
-    // Initialize Select2 for Driver dropdown
+    // Initialize Select2 for Driver and Vehicle dropdowns
     $('.select2').select2({
         theme: 'bootstrap',
-        placeholder: function() {
-            return $(this).data('placeholder') || 'Select an option';
-        },
+        placeholder: "Select an option",
         allowClear: true
     });
 

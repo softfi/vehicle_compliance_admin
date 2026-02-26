@@ -2247,6 +2247,8 @@ function staff_salary_details($year, $month, $location)
                           driver_assignment.from_date,
                           driver_assignment.to_date,
                           driver_assignment.vehicle_no as assignment_vehicle_no,
+                          driver_assignment.opening_hsd,
+                          driver_assignment.closing_hsd,
                           vehicle.vehicle_no,
                           adjust_salary.amount,adjust_salary.remark'); // Fetch the adjust_salary amount
                           
@@ -2268,7 +2270,9 @@ function staff_salary_details($year, $month, $location)
                                        ->select('driver AS staff_id, 
                                                  from_date, 
                                                  to_date, 
-                                                 vehicle_no')
+                                                 vehicle_no,
+                                                 opening_hsd,
+                                                 closing_hsd')
                                        ->where('driver_assignment.from_date <=', $lastDayOfMonth)
                                        ->where('driver_assignment.from_date >=', $firstDayOfMonth)
                                        ->getCompiledSelect();

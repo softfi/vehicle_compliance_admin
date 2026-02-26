@@ -49,13 +49,11 @@
                                                             <?php } ?>
                                                         </select>
                                                     </div>
-                                                <!--<div id="responseContainer">-->
-                                                <!--      <label>Vehicle</label>-->
-                                                <!--     <input type="text" readonly  class="uk-input"/> -->
-                                                <!-- </div>  -->
-                                                <div class="">
-                                                     <label>Date</label>
-                                                     <input type="date" id="date" name="date" class="uk-input" value="<?php echo date('Y-m-d'); ?>"/> 
+                                                 <div class="">
+                                                      <label>Date</label>
+                                                      <input type="date" id="date" name="date" class="uk-input" value="<?php echo date('Y-m-d'); ?>"/> 
+                                                  </div>
+                                                 <div id="responseContainer">
                                                  </div>
                                                 <div class="uk-form-controls">
                                                          <label>Bank/Cash</label>
