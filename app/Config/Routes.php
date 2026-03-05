@@ -10,3 +10,4 @@ $routes->get('admin', 'Admin::index');
 $routes->post('admin/login', 'Admin::loginAuth');
 $routes->get('logout', 'Admin::logout');
 $routes->get('subadmin','Admin::addsubadmin');
+$routes->get('salary-pdf/(:num)', 'Admin::salary_pdf/$1');
