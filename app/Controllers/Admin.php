@@ -4686,6 +4686,7 @@ class Admin extends BaseController
             $data['setting'] = $this->AdminModel->Settingdata();
             $data['singleuser'] = $this->AdminModel->userdata($user_id);
             $data['location'] = $this->db->query("SELECT * FROM location")->getResult();
+            $data['drivers'] = $this->db->query("SELECT * FROM staff WHERE user_type = 'DRIVER'")->getResult();
             return view('admin/Driver_Salary_vw', $data);
         } else {
             return redirect()->to('Admin/');
@@ -5214,8 +5215,9 @@ public function get_vehicle_report_excel()
 
 
         $location = $this->request->getVar('location');
+        $driver_id = $this->request->getVar('driver_id');
 
-        $alldriver = $this->AdminModel->driver_salary_details($year, $month, $location);
+        $alldriver = $this->AdminModel->driver_salary_details($year, $month, $location, $driver_id);
         //   echo'<pre>';
         //   print_r($alldriver);
         //   exit;
@@ -5448,7 +5450,7 @@ public function get_vehicle_report_excel()
                                 <button class="btn btn-primary btn-sm" onclick='openPaymentModal("<?= $staf->id ?>", "<?= $staf->name ?>", "<?= $tsalary ?>", "<?= $display_opening ?>")'>
                                     Payment
                                 </button>
-                                <a href="<?= base_url('Admin/salary_slip?staff_id=' . $staf->id . '&year=' . $year . '&month=' . $month . '&from_date=' . $staf->from_date . '&to_date=' . $staf->to_date) ?>" target="_blank" class="btn btn-info btn-sm">
+                                <a href="<?= base_url('Admin/salary_slip?staff_id=' . $staf->id . '&year=' . $year . '&month=' . $month) ?>" target="_blank" class="btn btn-info btn-sm">
                                     Slip
                                 </a>
                             </td>
@@ -5496,6 +5498,7 @@ public function get_vehicle_report_excel()
         $year = $this->request->getVar('year');
         $month = $this->request->getVar('month');
         $location = $this->request->getVar('location');
+        $driver_id = $this->request->getVar('driver_id');
 
         // First and last day of the month
         $first_datesam = date("Y-m-01", strtotime("$year-$month-01"));
@@ -5505,7 +5508,7 @@ public function get_vehicle_report_excel()
             return $this->response->setStatusCode(400)->setBody("Invalid input. Please provide a valid year and month.");
         }
 
-        $alldriver = $this->AdminModel->driver_salary_details($year, $month, $location);
+        $alldriver = $this->AdminModel->driver_salary_details($year, $month, $location, $driver_id);
         $curent_monthday = date('t', strtotime("$year-$month-01"));
 
         // --- OPTIMIZATION: Batch Fetch Data to avoid N+1 Query Problem ---
@@ -6208,20 +6211,50 @@ public function get_vehicle_report_excel()
     $last_datesam    = date("Y-m-t",  strtotime("$year-$month-01"));
     $curent_monthday = date("t", strtotime($first_datesam));
 
-    // ── Assignment Data ───────────────────────────────────────────────────
+    // ── Assignments Data ─────────────────────────────────────────────────
     $builder_as = $this->db->table('driver_assignment');
     $builder_as->where('driver', $staff_id);
     if ($from_date_param) {
         $builder_as->where('from_date', $from_date_param);
     } else {
         $builder_as->where('from_date <=', $last_datesam);
-        $builder_as->where('from_date >=', $first_datesam);
+        $builder_as->where('((to_date >= ' . $this->db->escape($first_datesam) . ' OR to_date IS NULL OR to_date = "0000-00-00" OR to_date = ""))', null, false);
     }
-    $assignment = $builder_as->get()->getRow();
+    $assignments = $builder_as->get()->getResult();
 
-    // ── Effective Dates ───────────────────────────────────────────────────
-    $eff_from = $assignment->from_date ?? $first_datesam;
-    $eff_to   = $to_date_param ?: ($assignment->to_date ?? $last_datesam);
+    $working_days       = 0;
+    $trip_expenses_sum  = 0;
+    $assigned_vehicles  = [];
+    $assignment_last    = null;
+
+    foreach ($assignments as $asgn) {
+        $assignment_last = $asgn;
+        // Calculate overlap days with the month/period
+        $asgn_start = max($asgn->from_date, ($from_date_param ?: $first_datesam));
+        $asgn_end   = (!empty($asgn->to_date) && $asgn->to_date != '0000-00-00') ? min($asgn->to_date, ($to_date_param ?: $last_datesam)) : ($to_date_param ?: $last_datesam);
+        
+        $d1 = new DateTime($asgn_start);
+        $d2 = new DateTime($asgn_end);
+        if ($d1 <= $d2) {
+            $working_days += $d1->diff($d2)->days + 1;
+        }
+
+        if (!in_array($asgn->vehicle_no, $assigned_vehicles)) {
+            $assigned_vehicles[] = $asgn->vehicle_no;
+        }
+
+        // Trip expenses for this assignment
+        $trips_res = $this->AdminModel->tripexpence1($asgn->vehicle_no, $staff_id, $year, $month);
+        if (!empty($trips_res)) {
+            foreach ($trips_res as $trex) {
+                // Note: tripexpence1 already joins with driver_assignment internally
+                $trip_expenses_sum += (float)$trex->day_trip_expense;
+            }
+        }
+    }
+
+    $eff_from = $from_date_param ?: $first_datesam;
+    $eff_to   = $to_date_param   ?: $last_datesam;
 
     // ── Advance Data ──────────────────────────────────────────────────────
     $adv_res = $this->db->table('staff_advance')
@@ -6239,38 +6272,9 @@ public function get_vehicle_report_excel()
     }
     $total_advance = $salary_advance + $trip_advance;
 
-    // ── HSD / Diesel Details ──────────────────────────────────────────────
-    $disel_entry = $this->AdminModel->vehicle_disel_details($assignment->vehicle_no ?? null, $eff_from, $eff_to);
-    $total_d_req = 0;
-    if (!empty($disel_entry)) {
-        foreach ($disel_entry as $entry) {
-            $total_d_req += (float)$entry->diesel_for_trip;
-        }
-    }
-
-    $hsd_details = $this->AdminModel->hsd_details($staff_id, $eff_from, $eff_to);
-    $used_hsd    = 0;
-    $diesel_rate = 0;
-    if (!empty($hsd_details) && isset($hsd_details[0]->used_hsd)) {
-        $used_hsd    = (float)$hsd_details[0]->used_hsd;
-        $diesel_rate = (float)$hsd_details[0]->diesel_rate;
-    }
-
-    $HSD_LTR = (float)$total_d_req - $used_hsd;
-    if ($HSD_LTR > 0) $HSD_LTR = 0;
-    $hsd_amount = $HSD_LTR * $diesel_rate;
-
-    // ── Trip Expenses ─────────────────────────────────────────────────────
-    $trips_res    = $this->AdminModel->tripexpence1($assignment->vehicle_no ?? null, $staff_id, $year, $month);
-    $trip_exp_sum = 0;
-    if (!empty($trips_res)) {
-        foreach ($trips_res as $trex) {
-            $trip_exp_sum += (float)$trex->day_trip_expense;
-        }
-    }
-
-    // ── Raw Despatch Records ──────────────────────────────────────────────
-    $trips = $this->db->table('despatch')
+    // ── Raw Trips & Diesel Required ──────────────────────────────────────
+    // We already have $assigned_vehicles. Let's fetch trips for the whole month for this driver.
+    $trips_builder = $this->db->table('despatch')
         ->select('
             despatch.*,
             vehicle.vehicle_no             AS reg_no,
@@ -6283,19 +6287,23 @@ public function get_vehicle_report_excel()
         ->join('vehicle',          'vehicle.id = despatch.vehicle_no',                    'left')
         ->join('do_registration',  'do_registration.do_registration_id = despatch.do_no', 'left')
         ->join('route',            'route.id = do_registration.route_id',                 'left')
-        ->join('driver_assignment','driver_assignment.vehicle_no = despatch.vehicle_no',  'left')
+        // Match trips to assignments
+        ->join('driver_assignment', 'driver_assignment.vehicle_no = despatch.vehicle_no', 'left')
         ->where('driver_assignment.driver', $staff_id)
         ->where('despatch.des_date >=', $eff_from)
         ->where('despatch.des_date <=', $eff_to)
         ->where('despatch.des_date >= driver_assignment.from_date', null, false)
         ->where('(despatch.des_date <= driver_assignment.to_date OR driver_assignment.to_date IS NULL OR driver_assignment.to_date = "0000-00-00" OR driver_assignment.to_date = "")', null, false)
         ->groupBy('despatch.despatch_id')
-        ->orderBy('despatch.des_date', 'ASC')
-        ->get()->getResult();
+        ->orderBy('despatch.des_date', 'ASC');
+    
+    $trips = $trips_builder->get()->getResult();
 
-    // ── DO-wise Grouping ──────────────────────────────────────────────────
-    $do_grouped = [];
+    $total_d_req = 0;
+    $do_grouped  = [];
     foreach ($trips as $trip) {
+        $total_d_req += (float)$trip->diesel_required;
+
         $do_key = $trip->do_no;
         if (!isset($do_grouped[$do_key])) {
             $route_label = ($trip->from_city && $trip->trip_location)
@@ -6318,15 +6326,20 @@ public function get_vehicle_report_excel()
         $do_grouped[$do_key]['dates'][] = date('d-M-y', strtotime($trip->des_date));
     }
 
-    // ══════════════════════════════════════════════════════════════════════
-    // VEHICLE-WISE DIESEL STATEMENT
-    // Opening / Closing — driver_assignment se (opening_hsd / closing_hsd)
-    // KM tracking removed
-    // ══════════════════════════════════════════════════════════════════════
+    // ── HSD Consumed / Extra Usage ────────────────────────────────────────
+    $hsd_details = $this->AdminModel->hsd_details($staff_id, $eff_from, $eff_to);
+    $used_hsd_total = 0;
+    $diesel_rate    = 0;
+    foreach ($hsd_details as $hsd_row) {
+        $used_hsd_total += (float)$hsd_row->used_hsd;
+        if ($diesel_rate == 0) $diesel_rate = (float)$hsd_row->diesel_rate;
+    }
 
-    // Step 1: Is driver ke liye period ke andar saari diesel entries fetch karo
-    // NOTE: diselentry table mein closing_diesel/closing_km nahi hain
-    //       isliye sirf fill entries hi fetch kar rahe hain
+    $HSD_LTR = (float)$total_d_req - $used_hsd_total;
+    if ($HSD_LTR > 0) $HSD_LTR = 0;
+    $hsd_amount = $HSD_LTR * $diesel_rate;
+
+    // ── Diesel Entries (Vehicle-Wise) ─────────────────────────────────────
     $diesel_entries_raw = $this->db->table('diselentry')
         ->select('diselentry.*, vendor.name as vendor_name, diselentry.vehicle_id as veh_id')
         ->join('vendor',           'vendor.id = diselentry.vendor_id',                    'left')
@@ -6341,28 +6354,19 @@ public function get_vehicle_report_excel()
         ->orderBy('diselentry.diesel_date', 'ASC')
         ->get()->getResult();
 
-    // Step 2: Vehicle-wise group karo
-    // Opening/Closing diesel — driver_assignment.opening_hsd / closing_hsd se lena
     $diesel_by_vehicle = [];
-
     foreach ($diesel_entries_raw as $de) {
         $vid = $de->veh_id;
-
         if (!isset($diesel_by_vehicle[$vid])) {
-
-            // Vehicle number fetch karo
-            $veh_row = $this->db->table('vehicle')
-                ->select('vehicle_no')
-                ->where('id', $vid)
-                ->get()->getRow();
-
-            // ✅ Opening/Closing driver_assignment se fetch karo (sirf diesel, KM nahi)
+            $veh_row = $this->db->table('vehicle')->select('vehicle_no')->where('id', $vid)->get()->getRow();
+            
+            // Get assignment info for THIS specific vehicle+driver overlap
             $assignment_row = $this->db->table('driver_assignment')
                 ->select('opening_hsd, closing_hsd')
                 ->where('vehicle_no', $vid)
                 ->where('driver', $staff_id)
                 ->where('from_date <=', $eff_to)
-                ->where('(to_date >= ' . $this->db->escape($eff_from) . ' OR to_date IS NULL OR to_date = "0000-00-00" OR to_date = "")', null, false)
+                ->where('((to_date >= ' . $this->db->escape($eff_from) . ' OR to_date IS NULL OR to_date = "0000-00-00" OR to_date = ""))', null, false)
                 ->orderBy('from_date', 'DESC')
                 ->limit(1)
                 ->get()->getRow();
@@ -6375,8 +6379,6 @@ public function get_vehicle_report_excel()
                 'total_filled'   => 0,
             ];
         }
-
-        // Fill entry add karo
         $diesel_by_vehicle[$vid]['entries'][]    = $de;
         $diesel_by_vehicle[$vid]['total_filled'] += (float)$de->qty;
     }
@@ -6405,17 +6407,11 @@ public function get_vehicle_report_excel()
     $display_opening = $paid_row ? (float)$paid_row->opening_balance : (float)$driver->opening_balance;
     $total_paid      = $paid_row ? (float)$paid_row->salary_amount   : 0;
 
-    // ── Working Days & Basic Salary ───────────────────────────────────────
-    $working_days = 0;
-    if ($assignment) {
-        $from = new DateTime($assignment->from_date);
-        $to   = $assignment->to_date ? new DateTime($assignment->to_date) : new DateTime($last_datesam);
-        $working_days = $from->diff($to)->days + 1;
-    }
+    // ── Basic Salary for overlap period ───────────────────────────────────
     $d_salary = ($driver->salary / $curent_monthday) * $working_days;
 
     // ── Net Salary ────────────────────────────────────────────────────────
-    $tsalary = ($display_opening + $d_salary + $hsd_amount + $trip_exp_sum + $bonus_sum)
+    $tsalary = ($display_opening + $d_salary + $hsd_amount + $trip_expenses_sum + $bonus_sum)
              - ($total_advance + $adjust_sum);
 
     // ── View Data ─────────────────────────────────────────────────────────
@@ -6429,7 +6425,7 @@ public function get_vehicle_report_excel()
         'basic_salary'        => $d_salary,
         'hsd_ltr'             => $HSD_LTR,
         'hsd_amount'          => $hsd_amount,
-        'trip_expenses'       => $trip_exp_sum,
+        'trip_expenses'       => $trip_expenses_sum,
         'trips'               => $trips,
         'do_grouped'          => $do_grouped,
         'salary_advance'      => $salary_advance,
@@ -6440,7 +6436,7 @@ public function get_vehicle_report_excel()
         'net_salary'          => $tsalary,
         'total_paid'          => $total_paid,
         'balance'             => $tsalary - $total_paid,
-        'assignment'          => $assignment,
+        'assignment'          => $assignment_last,
         'eff_from'            => $eff_from,
         'eff_to'              => $eff_to,
         'diesel_entries_list' => $diesel_entries_raw,   // backward compat

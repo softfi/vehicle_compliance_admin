@@ -2238,7 +2238,7 @@ function staff_salary_details($year, $month, $location)
 //     return $builder->get()->getResult();
 // }
 
-    function driver_salary_details($year, $month, $location)
+    function driver_salary_details($year, $month, $location, $driver_id = null)
     {
         $builder = $this->db->table('staff');
         $builder->select('staff.*, 
@@ -2260,6 +2260,9 @@ function staff_salary_details($year, $month, $location)
         $builder->where('staff.user_type', 'DRIVER');
         if (!empty($location)) {
             $builder->where('staff.address', $location);  
+        }
+        if (!empty($driver_id)) {
+            $builder->where('staff.id', $driver_id);  
         }
         
         $firstDayOfMonth = "$year-$month-01";

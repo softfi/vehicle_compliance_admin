@@ -197,7 +197,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/select2/4.0.6-rc.0/js/select2.min.js"></script>
     <script>
         // Initialize Select2 for various inputs
-        $("#single, #single1, #single2, #driver_data, #vehicle, #vehicle_no, #multiple, #staffFilter, .select2-search").select2({
+        $("#single, #single1, #single2, #driver_data, #driver_id, #vehicle, #vehicle_no, #multiple, #staffFilter, .select2-search").select2({
             placeholder: "Select an option",
             allowClear: true,
             width: '100%'
