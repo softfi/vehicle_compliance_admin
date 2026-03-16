@@ -1,4 +1,4 @@
-<?php include("header.php");?>
+<?php include("header.php"); ?>
       <!-- Page Body Start-->
       <div class="page-body-wrapper" style="background:#f9f9f9;">
             <?php include("mainsidebar.php"); ?>
@@ -26,11 +26,12 @@
                                 <div class="form-group">
                                     <label for="year">Year</label>
                                     <select class="form-control" name="year" id="year">
-                                        <?php 
-                                        $currentYear = date('Y');
-                                        for ($y = 2023; $y <= 2040; $y++): ?>
+                                        <?php
+$currentYear = date('Y');
+for ($y = 2023; $y <= 2040; $y++): ?>
                                             <option value="<?= $y; ?>" <?= $y == $currentYear ? 'selected' : ''; ?>><?= $y; ?></option>
-                                        <?php endfor; ?>
+                                        <?php
+endfor; ?>
                                     </select>
                                 </div>
                                 
@@ -38,14 +39,15 @@
                                     <label for="month">Month</label>
                                     <select class="form-control" name="month" id="month">
                                         <?php
-                                        $currentMonth = date('n');
-                                        $months = [
-                                            "January", "February", "March", "April", "May", "June",
-                                            "July", "August", "September", "October", "November", "December"
-                                        ];
-                                        foreach ($months as $index => $month): ?>
-                                            <option value="<?= $index + 1; ?>" <?= ($index + 1) == $currentMonth ? 'selected' : ''; ?>><?= $month; ?></option>
-                                        <?php endforeach; ?>
+$currentMonth = date('n');
+$months = [
+    "January", "February", "March", "April", "May", "June",
+    "July", "August", "September", "October", "November", "December"
+];
+foreach ($months as $index => $month): ?>
+                                            <option value="<?= $index + 1; ?>" <?=($index + 1) == $currentMonth ? 'selected' : ''; ?>><?= $month; ?></option>
+                                        <?php
+endforeach; ?>
                                     </select>
                                 </div>
                                 
@@ -55,17 +57,19 @@
                                         <option value="">Select location</option>
                                         <?php foreach ($location as $loc): ?>
                                             <option value="<?= $loc->location_id; ?>"><?= $loc->location_name; ?></option>
-                                        <?php endforeach; ?>
+                                        <?php
+endforeach; ?>
                                     </select>
                                 </div>
 
                                 <div class="form-group">
-                                    <label for="driver_id">Driver</label>
-                                    <select name="driver_id" id="driver_id" class="form-control select2-search">
+                                    <label for="driver_id">Driver <span class="text-danger">*</span></label>
+                                    <select name="driver_id" id="driver_id" class="form-control select2-search" required>
                                         <option value="">Select driver</option>
                                         <?php foreach ($drivers as $driver): ?>
                                             <option value="<?= $driver->id; ?>"><?= $driver->name; ?></option>
-                                        <?php endforeach; ?>
+                                        <?php
+endforeach; ?>
                                     </select>
                                 </div>
                                 
@@ -73,11 +77,10 @@
                                     <label>.</label><br>
                                     <button type="submit" class="btn btn-primary">Submit</button>
                                     <button class="btn btn-primary" type="button" onclick="downloadExcel()">Download Excel</button>
-                                    <button class="btn btn-info" type="button" onclick="printSalarySlip()">Print Slip</button>
-                                    <button class="btn btn-success" type="button" onclick="sendWhatsAppBulk()">
+                                    <!-- <button class="btn btn-success" type="button" onclick="sendWhatsAppBulk()">
                                         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16" style="vertical-align:middle;margin-right:4px"><path d="M13.601 2.326A7.854 7.854 0 0 0 7.994 0C3.627 0 .068 3.558.064 7.926c0 1.399.366 2.76 1.057 3.965L0 16l4.204-1.102a7.933 7.933 0 0 0 3.79.965h.004c4.368 0 7.926-3.558 7.93-7.93A7.898 7.898 0 0 0 13.6 2.326zM7.994 14.521a6.573 6.573 0 0 1-3.356-.92l-.24-.144-2.494.654.666-2.433-.156-.251a6.56 6.56 0 0 1-1.007-3.505c0-3.626 2.957-6.584 6.591-6.584a6.56 6.56 0 0 1 4.66 1.931 6.557 6.557 0 0 1 1.928 4.66c-.004 3.639-2.961 6.592-6.592 6.592zm3.615-4.934c-.197-.099-1.17-.578-1.353-.646-.182-.065-.315-.099-.445.099-.133.197-.513.646-.627.775-.114.133-.232.148-.43.05-.197-.1-.836-.308-1.592-.985-.59-.525-.985-1.175-1.103-1.372-.114-.198-.011-.304.088-.403.087-.088.197-.232.296-.346.1-.114.133-.198.198-.33.065-.134.034-.248-.015-.347-.05-.099-.445-1.076-.612-1.47-.16-.389-.323-.335-.445-.34-.114-.007-.247-.007-.38-.007a.729.729 0 0 0-.529.247c-.182.198-.691.677-.691 1.654 0 .977.71 1.916.81 2.049.098.133 1.394 2.132 3.383 2.992.47.205.84.326 1.129.418.475.152.904.129 1.246.08.38-.058 1.171-.48 1.338-.943.164-.464.164-.86.114-.943-.049-.084-.182-.133-.38-.232z"/></svg>
                                         Send WhatsApp
-                                    </button>
+                                    </button> -->
                                 </div>
     </div>
                         </form>
@@ -87,6 +90,12 @@
                         <div id="loader" class="uk-text-center" style="display: none;">
                             <div uk-spinner="ratio: 2"></div>
                             <p>Loading...</p>
+                        </div>
+                        <!-- Print Slip — above the select-all checkbox/table -->
+                        <div style="display:flex; justify-content:flex-start; margin-bottom:8px;">
+                            <button class="btn btn-info" type="button" onclick="printSalarySlip()">
+                                🖨 Print Slip
+                            </button>
                         </div>
                         <div id="results"></div>
                     </div>
@@ -217,6 +226,12 @@ background:rgba(0,0,0,0.5);z-index:99999;display:flex;align-items:center;justify
 $(document).ready(function() {
     $('#selectionForm').on('submit', function(e) {
         e.preventDefault(); // Prevent the default form submission
+
+        // Driver is required — block if not selected
+        if (!$('#driver_id').val()) {
+            alert('Please select a driver first.');
+            return;
+        }
 
         // Show loader before making AJAX request
         $('#loader').show();
@@ -439,4 +454,4 @@ function submitSalaryPayment() {
 </script>
 
         <!-- footer start-->
-       <?php include("footer.php");?>
+       <?php include("footer.php"); ?>

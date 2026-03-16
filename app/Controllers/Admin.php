@@ -6222,21 +6222,31 @@ public function get_vehicle_report_excel()
     }
     $assignments = $builder_as->get()->getResult();
 
-    $working_days       = 0;
     $trip_expenses_sum  = 0;
     $assigned_vehicles  = [];
     $assignment_last    = null;
+    $unique_working_dates = []; // ← unique date set to prevent double-counting
 
     foreach ($assignments as $asgn) {
         $assignment_last = $asgn;
-        // Calculate overlap days with the month/period
+
+        // Calculate overlap of this assignment with the month/period
         $asgn_start = max($asgn->from_date, ($from_date_param ?: $first_datesam));
-        $asgn_end   = (!empty($asgn->to_date) && $asgn->to_date != '0000-00-00') ? min($asgn->to_date, ($to_date_param ?: $last_datesam)) : ($to_date_param ?: $last_datesam);
-        
+        $asgn_end   = (!empty($asgn->to_date) && $asgn->to_date != '0000-00-00')
+                        ? min($asgn->to_date, ($to_date_param ?: $last_datesam))
+                        : ($to_date_param ?: $last_datesam);
+
         $d1 = new DateTime($asgn_start);
         $d2 = new DateTime($asgn_end);
+
         if ($d1 <= $d2) {
-            $working_days += $d1->diff($d2)->days + 1;
+            // Collect every date in this assignment window into a unique set.
+            // Using associative keys ensures day-16 shared by two vehicles is counted only once.
+            $cur = clone $d1;
+            while ($cur <= $d2) {
+                $unique_working_dates[$cur->format('Y-m-d')] = true;
+                $cur->modify('+1 day');
+            }
         }
 
         if (!in_array($asgn->vehicle_no, $assigned_vehicles)) {
@@ -6247,11 +6257,14 @@ public function get_vehicle_report_excel()
         $trips_res = $this->AdminModel->tripexpence1($asgn->vehicle_no, $staff_id, $year, $month);
         if (!empty($trips_res)) {
             foreach ($trips_res as $trex) {
-                // Note: tripexpence1 already joins with driver_assignment internally
                 $trip_expenses_sum += (float)$trex->day_trip_expense;
             }
         }
     }
+
+    // Working days = count of UNIQUE dates across all assignments
+    // (prevents double-counting when two vehicles share the same handover day)
+    $working_days = count($unique_working_dates);
 
     $eff_from = $from_date_param ?: $first_datesam;
     $eff_to   = $to_date_param   ?: $last_datesam;
