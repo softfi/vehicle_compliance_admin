@@ -4404,6 +4404,194 @@ class Admin extends BaseController
             return redirect()->to('admin/');
         }
     }
+
+    public function material_issue()
+    {
+        if ($this->session->get('user_id')) {
+            $user_id = $this->session->get('user_id');
+            $filter_driver = $this->request->getVar('filter_driver');
+            
+            $data['setting'] = $this->AdminModel->Settingdata();
+            $data['singleuser'] = $this->AdminModel->userdata($user_id);
+            $data['drivers'] = $this->AdminModel->Getallstaf();
+            $data['issues'] = $this->AdminModel->get_all_material_issues($filter_driver);
+            return view('admin/material_issue_vw', $data);
+        } else {
+            return redirect()->to('admin/');
+        }
+    }
+
+    public function update_material_issue()
+    {
+        if ($this->session->get('user_id')) {
+            $issue_id = $this->request->getPost('issue_id');
+            $items = $this->request->getPost('items');
+            $issued_date = $this->request->getPost('issued_date');
+
+            if (!empty($items)) {
+                $item_string = implode(', ', $items);
+                $data = [
+                    'item_name' => $item_string,
+                    'issued_date' => $issued_date
+                ];
+                $this->db->table('driver_material_issue')->where('id', $issue_id)->update($data);
+            }
+            return redirect()->to('admin/material_issue');
+        } else {
+            return redirect()->to('admin/');
+        }
+    }
+
+    public function save_material_issue()
+    {
+        if ($this->session->get('user_id')) {
+            $driver_id = $this->request->getPost('driver_id');
+            $items = $this->request->getPost('items');
+            $issued_date = $this->request->getPost('issued_date');
+
+            if (!empty($items)) {
+                $item_string = implode(', ', $items);
+                $data = [
+                    'driver_id' => $driver_id,
+                    'item_name' => $item_string,
+                    'issued_date' => $issued_date,
+                    'status' => 'Active'
+                ];
+                $this->db->table('driver_material_issue')->insert($data);
+            }
+            return redirect()->to('admin/material_issue');
+        } else {
+            return redirect()->to('admin/');
+        }
+    }
+
+    public function re_issue()
+    {
+        if ($this->session->get('user_id')) {
+            $user_id = $this->session->get('user_id');
+            $data['setting'] = $this->AdminModel->Settingdata();
+            $data['singleuser'] = $this->AdminModel->userdata($user_id);
+            $data['drivers'] = $this->AdminModel->Getallstaf();
+            $data['reissues'] = $this->AdminModel->get_all_material_reissues();
+            return view('admin/re_issue_vw', $data);
+        } else {
+            return redirect()->to('admin/');
+        }
+    }
+
+    public function get_driver_active_materials()
+    {
+        $driver_id = $this->request->getPost('driver_id');
+        $active_rows = $this->AdminModel->get_active_driver_materials($driver_id);
+        
+        $all_items = [];
+        foreach($active_rows as $row) {
+            $items = explode(', ', $row->item_name);
+            foreach($items as $item) {
+                $all_items[] = [
+                    'id' => $row->id, // We'll use the row ID but identify the item text
+                    'item_name' => $item
+                ];
+            }
+        }
+        return $this->response->setJSON($all_items);
+    }
+
+    public function save_re_issue()
+    {
+        if ($this->session->get('user_id')) {
+            $driver_id = $this->request->getPost('driver_id');
+            $item_id = $this->request->getPost('item_id'); // This is the ID from driver_material_issue
+            $item_name = $this->request->getPost('item_name');
+            $reissue_date = $this->request->getPost('reissue_date');
+            $remarks = $this->request->getPost('remarks');
+
+            $old_pic_name = '';
+            $new_pic_name = '';
+
+            $old_file = $this->request->getFile('old_item_pic');
+            if ($old_file->isValid() && !$old_file->hasMoved()) {
+                $old_pic_name = $old_file->getRandomName();
+                if(!is_dir('uploads/material/')){
+                    mkdir('uploads/material/', 0777, true);
+                }
+                $old_file->move('uploads/material/', $old_pic_name);
+            }
+
+            $new_file = $this->request->getFile('new_item_pic');
+            if ($new_file->isValid() && !$new_file->hasMoved()) {
+                $new_pic_name = $new_file->getRandomName();
+                if(!is_dir('uploads/material/')){
+                    mkdir('uploads/material/', 0777, true);
+                }
+                $new_file->move('uploads/material/', $new_pic_name);
+            }
+
+            $reissue_data = [
+                'driver_id' => $driver_id,
+                'item_name' => $item_name,
+                'old_item_pic' => $old_pic_name,
+                'new_item_pic' => $new_pic_name,
+                'reissue_date' => $reissue_date,
+                'remarks' => $remarks
+            ];
+
+            $this->db->table('driver_material_reissue')->insert($reissue_data);
+
+            // Update status of old item if we tracked by ID
+            if ($item_id) {
+                $this->db->table('driver_material_issue')->where('id', $item_id)->update(['status' => 'Replaced']);
+                
+                // Also insert a new "Active" entry for the new item so it can be re-issued again later
+                $new_issue_data = [
+                    'driver_id' => $driver_id,
+                    'item_name' => $item_name,
+                    'issued_date' => $reissue_date,
+                    'status' => 'Active'
+                ];
+                $this->db->table('driver_material_issue')->insert($new_issue_data);
+            }
+
+            return redirect()->to('admin/re_issue');
+        } else {
+            return redirect()->to('admin/');
+        }
+    }
+    public function update_re_issue()
+    {
+        if ($this->session->get('user_id')) {
+            $id = $this->request->getPost('id');
+            $reissue_date = $this->request->getPost('reissue_date');
+            $remarks = $this->request->getPost('remarks');
+
+            $data = [
+                'reissue_date' => $reissue_date,
+                'remarks' => $remarks
+            ];
+
+            // Handle file uploads if any
+            $old_file = $this->request->getFile('old_item_pic');
+            if ($old_file && $old_file->isValid() && !$old_file->hasMoved()) {
+                $old_pic_name = $old_file->getRandomName();
+                $old_file->move('uploads/material/', $old_pic_name);
+                $data['old_item_pic'] = $old_pic_name;
+            }
+
+            $new_file = $this->request->getFile('new_item_pic');
+            if ($new_file && $new_file->isValid() && !$new_file->hasMoved()) {
+                $new_pic_name = $new_file->getRandomName();
+                $new_file->move('uploads/material/', $new_pic_name);
+                $data['new_item_pic'] = $new_pic_name;
+            }
+
+            $this->db->table('driver_material_reissue')->where('id', $id)->update($data);
+
+            return redirect()->to('admin/re_issue');
+        } else {
+            return redirect()->to('admin/');
+        }
+    }
+
     public function downloadExcel()
     {
         // Get the year and month from the request
@@ -13861,10 +14049,16 @@ public function exportPaymentExcel()
         if ($this->session->get('user_id') == '') {
             return redirect()->to('Admin/');
         }
+        $group_id =  $this->request->getPost('group_id');
         $data = [
             'group_name' => $this->request->getPost('group_name')
         ];
-        $this->db->table('group')->insert($data);
+        
+        if(!empty($group_id)) {
+            $this->db->table('group')->where('group_id', $group_id)->update($data);
+        } else {
+            $this->db->table('group')->insert($data);
+        }
         return redirect()->to('admin/group');
     }
     public function toggleGroupStatus($group_id)
@@ -13924,48 +14118,320 @@ public function exportPaymentExcel()
         return redirect()->to('admin/financial_year');
     }
 
-    public function ledger(){
-        if(($this->session->get('user_id')=='')){
+
+    public function payment_voucher_new()
+    {
+        if ($this->session->get('user_id') == '') {
             return redirect()->to('Admin/');
         }
         $user_id = $this->session->get('user_id');
         $data['setting'] = $this->AdminModel->Settingdata();
         $data['singleuser'] = $this->AdminModel->userdata($user_id);
+        
         $data['financial_years'] = $this->AdminModel->getyearsDetails();
         $data['groups'] = $this->AdminModel->getGroupDetails();
-        $data['ledgers'] = $this->AdminModel->getLedgerDetails();
-        
-        return view ('admin/ledger_vw',$data);
+        $data['next_no'] = $this->AdminModel->getNextVoucherNo('Payment');
+
+        return view('admin/payment_voucher_new_vw', $data);
     }
-   public function insertLedger()
+
+    public function getParticularsByGroup()
     {
-        // Validate form input
-        $validation = \Config\Services::validation();
-        $validation->setRules([
-            'fy_id'          => 'required|integer',
-            'group_id'       => 'required|integer',
-            'ledger_name'    => 'required|string|max_length[255]',
-            'balance'        => 'required|decimal',
-            'transaction_type' => 'required|in_list[CR,DR]',
-        ]);
-    
-        if (!$this->validate($validation->getRules())) {
-            return redirect()->back()->withInput()->with('error', $this->validator->listErrors());
+        $group_id = $this->request->getPost('group_id');
+        if (empty($group_id)) return $this->response->setJSON([]);
+
+        $data = [];
+        
+        if ($group_id == 6) { // Vendor
+            $res = $this->AdminModel->Get_vendor();
+            foreach($res as $r) $data[] = ['id' => $r->id, 'name' => $r->name];
+        } elseif ($group_id == 5) { // Staff
+            $res = $this->db->table('staff')->where('user_type', 'STAFF')->get()->getResult();
+            foreach($res as $r) $data[] = ['id' => $r->id, 'name' => $r->name];
+        } elseif ($group_id == 4) { // Driver
+            $res = $this->db->table('staff')->where('user_type', 'DRIVER')->get()->getResult();
+            foreach($res as $r) $data[] = ['id' => $r->id, 'name' => $r->name];
+        } elseif ($group_id == 3) { // Vehicle
+            $res = $this->AdminModel->Getvehicle();
+            foreach($res as $r) $data[] = ['id' => $r->id, 'name' => $r->vehicle_no];
+        } elseif ($group_id == 2) { // Cash Book
+            $res = $this->AdminModel->bank();
+            foreach($res as $r) $data[] = ['id' => $r->bank_id, 'name' => $r->bank_name];
+        } else {
+            // No default ledger table anymore
         }
-    
-        // Collect data
-        $data = [
-            'fy_id'            => $this->request->getPost('fy_id'),
-            'group_id'         => $this->request->getPost('group_id'),
-            'ledger_name'      => $this->request->getPost('ledger_name'),
-            'balance'          => $this->request->getPost('balance'),
-            'transaction_type' => $this->request->getPost('transaction_type'),
+        
+        return $this->response->setJSON($data);
+    }
+
+
+    public function receipt_voucher_new()
+    {
+        if ($this->session->get('user_id') == '') {
+            return redirect()->to('Admin/');
+        }
+        $user_id = $this->session->get('user_id');
+        $data['setting'] = $this->AdminModel->Settingdata();
+        $data['singleuser'] = $this->AdminModel->userdata($user_id);
+        
+        $data['financial_years'] = $this->AdminModel->getyearsDetails();
+        $data['groups'] = $this->AdminModel->getGroupDetails();
+        $data['next_no'] = $this->AdminModel->getNextVoucherNo('Receipt');
+
+        return view('admin/receipt_voucher_new_vw', $data);
+    }
+
+    public function journal_voucher_new()
+    {
+        if ($this->session->get('user_id') == '') {
+            return redirect()->to('Admin/');
+        }
+        $user_id = $this->session->get('user_id');
+        $data['setting'] = $this->AdminModel->Settingdata();
+        $data['singleuser'] = $this->AdminModel->userdata($user_id);
+        
+        $data['financial_years'] = $this->AdminModel->getyearsDetails();
+        $data['groups'] = $this->AdminModel->getGroupDetails();
+        $data['next_no'] = $this->AdminModel->getNextVoucherNo('Journal');
+
+        return view('admin/journal_voucher_new_vw', $data);
+    }
+
+
+    public function saveVoucher()
+    {
+        if ($this->session->get('user_id') == '') {
+            return redirect()->to('Admin/');
+        }
+
+        $user_id = $this->session->get('user_id');
+        $voucher_type = $this->request->getPost('voucher_type');
+        $voucher_date = $this->request->getPost('voucher_date');
+        $fy_id = $this->request->getPost('fy_id');
+        $narration = $this->request->getPost('narration');
+
+        $types = $this->request->getPost('type');
+        $groups = $this->request->getPost('group_id');
+        $ledgers = $this->request->getPost('ledger_id');
+        $amounts = $this->request->getPost('amount');
+        $entry_narrations = $this->request->getPost('entry_narration');
+
+        $total_amount = 0;
+        $entries = [];
+
+        foreach ($amounts as $key => $amount) {
+            if ($amount > 0) {
+                $entries[] = [
+                    'group_id' => $groups[$key],
+                    'ledger_id' => $ledgers[$key],
+                    'entry_type' => $types[$key],
+                    'amount' => $amount,
+                    'narration' => $entry_narrations[$key] ?? ''
+                ];
+                if ($types[$key] == 1) { // Debit side total
+                    $total_amount += $amount;
+                }
+            }
+        }
+
+        $voucherData = [
+            'voucher_no' => $this->AdminModel->getNextVoucherNo($voucher_type),
+            'voucher_type' => $voucher_type,
+            'voucher_date' => $voucher_date,
+            'fy_id' => $fy_id,
+            'narration' => $narration,
+            'total_amount' => $total_amount,
+            'created_by' => $user_id
+        ];
+
+        if ($this->AdminModel->saveVoucher($voucherData, $entries)) {
+            return redirect()->back()->with('success', 'Voucher saved successfully');
+        } else {
+            return redirect()->back()->with('error', 'Failed to save voucher');
+        }
+    }
+
+    public function account_vouchers()
+    {
+        if ($this->session->get('user_id') == '') {
+            return redirect()->to('Admin/');
+        }
+        $user_id = $this->session->get('user_id');
+        $data['setting'] = $this->AdminModel->Settingdata();
+        $data['singleuser'] = $this->AdminModel->userdata($user_id);
+
+        $filters = [
+            'from_date' => $this->request->getGet('from_date'),
+            'to_date' => $this->request->getGet('to_date'),
+            'voucher_type' => $this->request->getGet('voucher_type')
         ];
         
-        $this->db->table('ledger')->insert($data);
-        // Insert into ledger table
-        return redirect()->to('admin/ledger');
+        $data['vouchers'] = $this->AdminModel->getVouchers($filters);
+        $data['filters'] = $filters;
+
+        return view('admin/account_vouchers_vw', $data);
     }
+
+    public function ledger_statement()
+    {
+        if ($this->session->get('user_id') == '') {
+            return redirect()->to('Admin/');
+        }
+        $user_id = $this->session->get('user_id');
+        $data['setting'] = $this->AdminModel->Settingdata();
+        $data['singleuser'] = $this->AdminModel->userdata($user_id);
+
+        $ledger_id = $this->request->getGet('ledger_id');
+        $group_id = $this->request->getGet('group_id');
+        $voucher_type = $this->request->getGet('voucher_type');
+        $from_date = $this->request->getGet('from_date') ?: date('Y-m-01');
+        $to_date = $this->request->getGet('to_date') ?: date('Y-m-d');
+
+        $data['groups'] = $this->AdminModel->getGroupDetails();
+        $data['statement'] = null;
+        $data['particulars'] = [];
+
+        if ($group_id) {
+            // Populate particulars for the selected group
+            if ($group_id == 6) { // Vendor
+                $res = $this->AdminModel->Get_vendor();
+                foreach($res as $r) $data['particulars'][] = ['id' => $r->id, 'name' => $r->name];
+            } elseif ($group_id == 5) { // Staff
+                $res = $this->db->table('staff')->where('user_type', 'STAFF')->get()->getResult();
+                foreach($res as $r) $data['particulars'][] = ['id' => $r->id, 'name' => $r->name];
+            } elseif ($group_id == 4) { // Driver
+                $res = $this->db->table('staff')->where('user_type', 'DRIVER')->get()->getResult();
+                foreach($res as $r) $data['particulars'][] = ['id' => $r->id, 'name' => $r->name];
+            } elseif ($group_id == 3) { // Vehicle
+                $res = $this->AdminModel->Getvehicle();
+                foreach($res as $r) $data['particulars'][] = ['id' => $r->id, 'name' => $r->vehicle_no];
+            } elseif ($group_id == 2) { // Cash Book
+                $res = $this->AdminModel->bank();
+                foreach($res as $r) $data['particulars'][] = ['id' => $r->bank_id, 'name' => $r->bank_name];
+            }
+        }
+
+        if ($ledger_id && $group_id) {
+            $data['statement'] = $this->AdminModel->getLedgerStatement($group_id, $ledger_id, $from_date, $to_date, $voucher_type);
+        }
+
+        $data['filters'] = [
+            'ledger_id' => $ledger_id,
+            'group_id' => $group_id,
+            'voucher_type' => $voucher_type,
+            'from_date' => $from_date,
+            'to_date' => $to_date
+        ];
+
+        return view('admin/ledger_statement_vw', $data);
+    }
+
+
+    public function view_voucher($id)
+    {
+        $data['details'] = $this->AdminModel->getVoucherDetails($id);
+        if (!$data['details']) {
+            return "Voucher not found.";
+        }
+        return view('admin/view_voucher_ajax', $data);
+    }
+
+    public function print_voucher($id)
+    {
+        $data['details'] = $this->AdminModel->getVoucherDetails($id);
+        if (!$data['details']) {
+            return redirect()->back()->with('error', 'Voucher not found.');
+        }
+        $data['setting'] = $this->AdminModel->Settingdata();
+        return view('admin/print_voucher_vw', $data);
+    }
+
+
+
+
+
+    public function export_ledger_excel()
+    {
+        $ledger_id = $this->request->getGet('ledger_id');
+        $group_id = $this->request->getGet('group_id');
+        $voucher_type = $this->request->getGet('voucher_type');
+        $from_date = $this->request->getGet('from_date');
+        $to_date = $this->request->getGet('to_date');
+
+        if (!$ledger_id || !$group_id) {
+            return "Please select a ledger and group.";
+        }
+
+        $statement = $this->AdminModel->getLedgerStatement($group_id, $ledger_id, $from_date, $to_date, $voucher_type);
+        if (!$statement) {
+            return "No data found.";
+        }
+
+        $filename = "Ledger_Statement_" . str_replace(' ', '_', $statement['ledger']->ledger_name) . ".xls";
+        header("Content-Type: application/vnd.ms-excel");
+        header("Content-Disposition: attachment; filename=\"$filename\"");
+
+        echo "<table border='1'>
+                <thead>
+                    <tr><th colspan='7'>Ledger Statement: " . $statement['ledger']->ledger_name . " (" . $from_date . " to " . $to_date . ")</th></tr>
+                    <tr>
+                        <th>Date</th>
+                        <th>Voucher No</th>
+                        <th>Type</th>
+                        <th>Particulars</th>
+                        <th>Debit</th>
+                        <th>Credit</th>
+                        <th>Balance</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>$from_date</td>
+                        <td colspan='3'>Opening Balance</td>
+                        <td align='right'>" . ($statement['opening_bal'] > 0 ? number_format(abs($statement['opening_bal']), 2, '.', '') : '0.00') . "</td>
+                        <td align='right'>" . ($statement['opening_bal'] < 0 ? number_format(abs($statement['opening_bal']), 2, '.', '') : '0.00') . "</td>
+                        <td align='right'>" . number_format(abs($statement['opening_bal']), 2, '.', '') . " " . ($statement['opening_bal'] >= 0 ? 'Dr' : 'Cr') . "</td>
+                    </tr>";
+
+        $running_bal = $statement['opening_bal'];
+        $total_dr = ($statement['opening_bal'] > 0) ? abs($statement['opening_bal']) : 0;
+        $total_cr = ($statement['opening_bal'] < 0) ? abs($statement['opening_bal']) : 0;
+
+        foreach ($statement['entries'] as $entry) {
+            $dr = ($entry->entry_type == 1) ? $entry->amount : 0;
+            $cr = ($entry->entry_type == 2) ? $entry->amount : 0;
+            $running_bal += ($dr - $cr);
+            $total_dr += $dr;
+            $total_cr += $cr;
+            
+            echo "<tr>
+                    <td>" . date('d-m-Y', strtotime($entry->voucher_date)) . "</td>
+                    <td>$entry->voucher_no</td>
+                    <td>$entry->voucher_type</td>
+                    <td>" . htmlspecialchars($entry->narration . ' ' . ($entry->voucher_narration ?? '')) . "</td>
+                    <td align='right'>" . ($dr > 0 ? number_format($dr, 2, '.', '') : '') . "</td>
+                    <td align='right'>" . ($cr > 0 ? number_format($cr, 2, '.', '') : '') . "</td>
+                    <td align='right'>" . number_format(abs($running_bal), 2, '.', '') . " " . ($running_bal >= 0 ? 'Dr' : 'Cr') . "</td>
+                  </tr>";
+        }
+
+        echo "</tbody>
+                <tfoot>
+                    <tr style='font-weight:bold;'>
+                        <td colspan='4' align='right'>TOTALS</td>
+                        <td align='right'>" . number_format($total_dr, 2, '.', '') . "</td>
+                        <td align='right'>" . number_format($total_cr, 2, '.', '') . "</td>
+                        <td></td>
+                    </tr>
+                    <tr style='font-weight:bold; background-color: #f8f9fa;'>
+                        <td colspan='6' align='right'>Closing Balance</td>
+                        <td align='right'>" . number_format(abs($running_bal), 2, '.', '') . " " . ($running_bal >= 0 ? 'Dr' : 'Cr') . "</td>
+                    </tr>
+                </tfoot>
+            </table>";
+        exit;
+    }
+
     public function task_Assignment(){
         if(($this->session->get('user_id')=='')){
             return redirect()->to('Admin/');

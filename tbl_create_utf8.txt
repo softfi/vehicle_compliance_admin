@@ -1,0 +1,2 @@
+﻿Table	Create Table
+account_voucher_entries	CREATE TABLE `account_voucher_entries` (\n  `id` int(11) NOT NULL AUTO_INCREMENT,\n  `voucher_id` int(11) NOT NULL,\n  `ledger_id` int(11) NOT NULL,\n  `entry_type` tinyint(4) NOT NULL COMMENT '1=Debit, 2=Credit',\n  `amount` decimal(15,2) NOT NULL DEFAULT 0.00,\n  PRIMARY KEY (`id`),\n  KEY `voucher_id` (`voucher_id`),\n  KEY `ledger_id` (`ledger_id`)\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci

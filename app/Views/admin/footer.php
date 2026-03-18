@@ -18,32 +18,6 @@
     </div>
     
     
-    <!-- Select 2 CSS moved to top if possible, or just keep here for now but without JS -->
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/select2/4.0.6-rc.0/css/select2.min.css" rel="stylesheet" />
-    <style>
-        .select2-container--default .select2-selection--single .select2-selection__arrow {
-            height: 24px !important;
-            position: absolute;
-            top: 1px;
-            right: 1px;
-            width: 20px;
-            top: 10px!important;
-        }
-
-        .select2-container--open .select2-dropdown--below {
-            border-top: none;
-            border-top-left-radius: 0;
-            border-top-right-radius: 0;
-            margin: -20px 0 0 0;
-        }
-    </style>
-
-    
-    
-    
-    
-    <!-- latest jquery-->
-    <script src="<?php echo base_url();?>/assets/admin/js/jquery.min.js"></script>
     <!-- Bootstrap js-->
     <script src="<?php echo base_url();?>/assets/admin/js/bootstrap/bootstrap.bundle.min.js"></script>
     <!-- feather icon js-->
@@ -193,8 +167,7 @@
 });
 </script>
 
-    <!-- Select2 JS (Loaded after Main jQuery) -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/select2/4.0.6-rc.0/js/select2.min.js"></script>
+    <!-- Plugin used-->
     <script>
         // Initialize Select2 for various inputs
         $("#single, #single1, #single2, #driver_data, #driver_id, #vehicle, #vehicle_no, #multiple, #staffFilter, .select2-search").select2({

@@ -17,12 +17,13 @@
             <!-- Group Form -->
             <div class="card mb-4">
                 <div class="card-body">
-                    <form action="<?= base_url(); ?>admin/insertGroup" method="post" class="form-inline">
+                    <form action="<?= base_url(); ?>admin/insertGroup" method="post" class="form-inline" id="groupForm">
+                        <input type="hidden" name="group_id" id="group_id" value="">
                         <div class="form-group mr-3">
                             <label for="group_name" class="mr-2">Group Name</label>
                             <input type="text" name="group_name" id="group_name" class="form-control" required>
                         </div>
-                        <button type="submit" class="btn btn-primary">Add Group</button>
+                        <button type="submit" class="btn btn-primary" id="saveBtn">Add Group</button>
                     </form>
                 </div>
             </div>
@@ -57,6 +58,9 @@
                                             </td>
                                             <td>
                                                 <!-- Action Buttons -->
+                                                <button type="button" class="btn btn-primary btn-sm edit-group" data-id="<?= $g->group_id ?>" data-name="<?= $g->group_name ?>" title="Edit">
+                                                    <i class="fa fa-pencil"></i>
+                                                </button>
                                                 <a href="<?= base_url('admin/deleteGroup/'.$g->group_id) ?>" class="btn btn-danger btn-sm" onclick="return confirm('Are you sure want to delete this group?')" title="Delete">
                                                     <i class="fa fa-trash"></i>
                                                 </a>
@@ -76,5 +80,21 @@
     </div>
 </div>
 <!-- Page Body End-->
+
+<script>
+    document.addEventListener("DOMContentLoaded", function() {
+        var editBtns = document.querySelectorAll(".edit-group");
+        editBtns.forEach(function(btn) {
+            btn.addEventListener("click", function() {
+                var groupId = this.getAttribute("data-id");
+                var groupName = this.getAttribute("data-name");
+                
+                document.getElementById("group_id").value = groupId;
+                document.getElementById("group_name").value = groupName;
+                document.getElementById("saveBtn").innerText = "Update Group";
+            });
+        });
+    });
+</script>
 
 <?php include("footer.php"); ?>

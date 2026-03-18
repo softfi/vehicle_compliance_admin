@@ -16,6 +16,37 @@ class AdminModel extends Model
 		$builder->where('settingg_id', 1);
 		return $builder->get()->getResult();
 	}
+
+    public function get_active_driver_materials($driver_id)
+    {
+        return $this->db->table('driver_material_issue')
+            ->where('driver_id', $driver_id)
+            ->where('status', 'Active')
+            ->get()->getResult();
+    }
+
+    public function get_all_material_issues($driver_id = null)
+    {
+        $builder = $this->db->table('driver_material_issue')
+            ->select('driver_material_issue.*, staff.name as driver_name')
+            ->join('staff', 'staff.id = driver_material_issue.driver_id', 'left');
+            
+        if ($driver_id) {
+            $builder->where('driver_material_issue.driver_id', $driver_id);
+        }
+        
+        return $builder->orderBy('issued_date', 'DESC')
+            ->get()->getResult();
+    }
+
+    public function get_all_material_reissues()
+    {
+        return $this->db->table('driver_material_reissue')
+            ->select('driver_material_reissue.*, staff.name as driver_name')
+            ->join('staff', 'staff.id = driver_material_reissue.driver_id', 'left')
+            ->orderBy('reissue_date', 'DESC')
+            ->get()->getResult();
+    }
 	
 	function Vehicle()
 	{
@@ -3119,13 +3150,6 @@ function satury_data($from_date, $to_date, $vehicle)
         ->get()
         ->getResult();
     }
-    public function getLedgerDetails(){
-        return $this->db->table('ledger l')
-            ->select('l.*,g.group_name,')
-            ->join('group g','g.group_id = l.ledger_id')
-            ->get()
-            ->getResult();
-    }
     public function getAllUser(){
         return $this->db->table('user')
             ->select('user.*')
@@ -3464,6 +3488,180 @@ function satury_data($from_date, $to_date, $vehicle)
         return $result;
     }
 
+    public function getNextVoucherNo($type)
+    {
+        $prefix = '';
+        if ($type == 'Payment') $prefix = 'PAYV-';
+        elseif ($type == 'Receipt') $prefix = 'RECV-';
+        elseif ($type == 'Journal') $prefix = 'JRNL-';
+
+        $builder = $this->db->table('account_vouchers');
+        $builder->select('voucher_no');
+        $builder->where('voucher_type', $type);
+        $builder->orderBy('id', 'DESC');
+        $builder->limit(1);
+        $row = $builder->get()->getRow();
+
+        if ($row) {
+            $lastNo = (int)str_replace($prefix, '', $row->voucher_no);
+            $nextNo = $lastNo + 1;
+        } else {
+            $nextNo = 1;
+        }
+
+        return $prefix . str_pad($nextNo, 5, '0', STR_PAD_LEFT);
+    }
+
+    public function saveVoucher($voucherData, $entries)
+    {
+        $this->db->transStart();
+
+        $this->db->table('account_vouchers')->insert($voucherData);
+        $voucherId = $this->db->insertID();
+
+        foreach ($entries as $entry) {
+            $entry['voucher_id'] = $voucherId;
+            $this->db->table('account_voucher_entries')->insert($entry);
+        }
+
+        $this->db->transComplete();
+        return $this->db->transStatus();
+    }
+
+    public function getVouchers($filters = [])
+    {
+        $builder = $this->db->table('account_vouchers v');
+        $builder->select('v.*, fy.from_date as fy_from, fy.to_date as fy_to');
+        $builder->join('financial_year fy', 'fy.fy_id = v.fy_id', 'left');
+        
+        if (!empty($filters['from_date'])) {
+            $builder->where('v.voucher_date >=', $filters['from_date']);
+        }
+        if (!empty($filters['to_date'])) {
+            $builder->where('v.voucher_date <=', $filters['to_date']);
+        }
+        if (!empty($filters['voucher_type'])) {
+            $builder->where('v.voucher_type', $filters['voucher_type']);
+        }
+        
+        $builder->orderBy('v.voucher_date', 'DESC');
+        $builder->orderBy('v.id', 'DESC');
+        
+        return $builder->get()->getResult();
+    }
+
+    public function getVoucherDetails($voucher_id)
+    {
+        $voucher = $this->db->table('account_vouchers v')
+            ->select('v.*, fy.from_date as fy_from, fy.to_date as fy_to')
+            ->join('financial_year fy', 'fy.fy_id = v.fy_id')
+            ->where('v.id', $voucher_id)
+            ->get()->getRow();
+
+        if ($voucher) {
+            $entries = $this->db->table('account_voucher_entries e')
+                ->select('e.*')
+                ->where('e.voucher_id', $voucher_id)
+                ->get()->getResult();
+
+            foreach($entries as &$entry) {
+                $entry->ledger_name = 'Unknown';
+                $entry->group_name = 'Unknown';
+                $group = $this->db->table('group_master')->where('group_id', $entry->group_id)->get()->getRow();
+                if($group) $entry->group_name = $group->group_name;
+                
+                switch ($entry->group_id) {
+                    case 6: $row = $this->db->table('vendor')->where('id', $entry->ledger_id)->get()->getRow(); if($row) $entry->ledger_name = $row->name; break;
+                    case 5: case 4: $row = $this->db->table('staff')->where('id', $entry->ledger_id)->get()->getRow(); if($row) $entry->ledger_name = $row->name; break;
+                    case 3: $row = $this->db->table('vehicle')->where('id', $entry->ledger_id)->get()->getRow(); if($row) $entry->ledger_name = $row->vehicle_no; break;
+                    case 2: $row = $this->db->table('bank')->where('bank_id', $entry->ledger_id)->get()->getRow(); if($row) $entry->ledger_name = $row->bank_name; break;
+                }
+            }
+            
+            return [
+                'voucher' => $voucher,
+                'entries' => $entries
+            ];
+        }
+        return null;
+    }
+
+    public function getLedgerStatement($group_id, $ledger_id, $from_date, $to_date, $voucher_type = null)
+    {
+        // 1. Get Opening Balance from base table
+        $initial_opening_bal = 0;
+        $ledger_name = 'Unknown';
+
+        switch ($group_id) {
+            case 6: // Vendor
+                $row = $this->db->table('vendor')->where('id', $ledger_id)->get()->getRow();
+                if ($row) { 
+                    $bal = isset($row->bal) ? $row->bal : 0;
+                    $type = isset($row->transaction_type) ? $row->transaction_type : (isset($row->type) ? $row->type : 'CR');
+                    $initial_opening_bal = ($type == 'DR' ? $bal : -$bal); 
+                    $ledger_name = $row->name; 
+                }
+                break;
+            case 5: // Staff
+            case 4: // Driver
+                $row = $this->db->table('staff')->where('id', $ledger_id)->get()->getRow();
+                if ($row) { 
+                    $bal = isset($row->opening_balance) ? $row->opening_balance : 0;
+                    $type = isset($row->transaction_type) ? $row->transaction_type : 'DR';
+                    $initial_opening_bal = ($type == 'DR' ? $bal : -$bal); 
+                    $ledger_name = $row->name; 
+                }
+                break;
+            case 3: // Vehicle
+                $row = $this->db->table('vehicle')->where('id', $ledger_id)->get()->getRow();
+                if ($row) { 
+                    $bal = isset($row->opening_balance) ? $row->opening_balance : 0;
+                    $initial_opening_bal = $bal; // Default DR for vehicle?
+                    $ledger_name = $row->vehicle_no; 
+                }
+                break;
+            case 2: // Cash Bank
+                $row = $this->db->table('bank')->where('bank_id', $ledger_id)->get()->getRow();
+                if ($row) { 
+                    $bal = isset($row->opening_balance) ? $row->opening_balance : 0;
+                    $type = isset($row->transaction_type) ? $row->transaction_type : 'DR';
+                    $initial_opening_bal = ($type == 'DR' ? $bal : -$bal); 
+                    $ledger_name = $row->bank_name; 
+                }
+                break;
+        }
+
+        // 2. Sum transactions BEFORE from_date to get current opening balance
+        $prev_transactions = $this->db->table('account_voucher_entries e')
+            ->select('SUM(CASE WHEN e.entry_type = 1 THEN e.amount ELSE -e.amount END) as total')
+            ->join('account_vouchers v', 'v.id = e.voucher_id')
+            ->where('e.group_id', $group_id)
+            ->where('e.ledger_id', $ledger_id)
+            ->where('v.voucher_date <', $from_date)
+            ->get()->getRow();
+
+        $opening_bal = $initial_opening_bal + ($prev_transactions->total ?? 0);
+
+        // 3. Get transactions within date range
+        $builder = $this->db->table('account_voucher_entries e')
+            ->select('e.*, v.voucher_no, v.voucher_type, v.voucher_date, v.narration as voucher_narration')
+            ->join('account_vouchers v', 'v.id = e.voucher_id')
+            ->where('e.group_id', $group_id)
+            ->where('e.ledger_id', $ledger_id)
+            ->where('v.voucher_date >=', $from_date)
+            ->where('v.voucher_date <=', $to_date);
+
+        if ($voucher_type) {
+            $builder->where('v.voucher_type', $voucher_type);
+        }
+
+        $entries = $builder->orderBy('v.voucher_date', 'ASC')->orderBy('v.id', 'ASC')->get()->getResult();
+
+        return [
+            'ledger' => (object)['ledger_name' => $ledger_name],
+            'opening_bal' => $opening_bal,
+            'entries' => $entries
+        ];
+    }
+
 }
-
-

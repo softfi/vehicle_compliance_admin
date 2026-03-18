@@ -99,7 +99,16 @@
                    </li>
                     <?php } ?>
                     <?php if(in_array(8,$jobAssign)){ ?>
-                    <li class="sidebar-list"><a class="sidebar-link sidebar-title link-nav " href="<?php echo base_url();?>/admin/Driver_Assignment"><span>Driver Assignment  </span></a></li> 
+                    <li class="sidebar-list">
+                      <a class="sidebar-link sidebar-title" href="#">
+                        <span>Driver Assignment</span>
+                      </a>
+                      <ul class="sidebar-submenu">
+                        <li><a href="<?php echo base_url();?>/admin/Driver_Assignment">Assignment</a></li>
+                        <li><a href="<?php echo base_url();?>/admin/material_issue">Materil Issue</a></li>
+                        <li><a href="<?php echo base_url();?>/admin/re_issue">Re-Issue</a></li>
+                      </ul>
+                    </li> 
                     <?php } ?>
                     <?php if(in_array(37,$jobAssign)){ ?>
                     <li class="sidebar-list"><a class="sidebar-link sidebar-title link-nav " href="<?php echo base_url();?>/admin/task_Assignment"><span>Task Assignment  </span></a></li>
@@ -123,6 +132,14 @@
                     <?php if(in_array(40,$jobAssign)){ ?>
                     <li class="sidebar-list"><a class="sidebar-link sidebar-title link-nav " href="<?php echo base_url();?>/admin/payment_voucher"><span>Payment Voucher</span></a></li>
                     <?php } ?>
+                    <li class="sidebar-list">
+                        <a class="sidebar-link sidebar-title" href="#"><span>Accounting</span></a>
+                        <ul class="sidebar-submenu">
+                            <li><a href="<?= base_url(); ?>admin/payment_voucher_new">Payment Voucher</a></li>
+                            <li><a href="<?= base_url(); ?>admin/receipt_voucher_new">Receipt Voucher</a></li>
+                            <li><a href="<?= base_url(); ?>admin/journal_voucher_new">Journal Voucher</a></li>
+                        </ul> 
+                    </li>
                     <li class="sidebar-list">
                     <?php if(in_array(41,$jobAssign)){ ?>
                     <a class="sidebar-link sidebar-title" href="#"><span >Payment Report</span></a>
@@ -183,12 +200,14 @@
                             <?php if(in_array(21,$jobAssign)){ ?>
                             <li><a  href="<?php echo base_url();?>/admin/bank">Bank</a></li>
                             <?php } ?>
+                            <li><a  href="<?php echo base_url();?>/admin/group">Master Group</a></li>
+                            <li><a  href="<?php echo base_url();?>/admin/financial_year">Financial Year</a></li>
                         </ul>
                     </li>
                       
                    <li class="sidebar-list">
                        <?php if(in_array(31,$jobAssign)){ ?>
-                      <a class="sidebar-link sidebar-title" href="#"><span >Repots </span></a>
+                      <a class="sidebar-link sidebar-title" href="#"><span >Reports </span></a>
                        <?php } ?>
                       <ul class="sidebar-submenu">
                      <?php if(in_array(22,$jobAssign)){ ?>
@@ -196,9 +215,10 @@
                      <?php } ?>
                      <li><a  href="<?php echo base_url();?>/admin/Driver_Report">Driver Report</a></li>
                      <li><a  href="<?php echo base_url();?>/admin/Vehicle_Report">Vehicle Report</a></li>
-                     <?php if(in_array(23,$jobAssign)){ ?>
+                      <?php if(in_array(23,$jobAssign)){ ?>
                      <li><a  href="<?php echo base_url();?>/admin/Vehicle_Ledger">Vehicle Ledger </a></li>
                      <?php } ?>
+                     <li><a href="<?= base_url(); ?>admin/ledger_statement">Ledger Statement</a></li>
 
                      
                     </ul> 
@@ -240,18 +260,6 @@
                         </a>
                          <?php } ?>
                  </li>
-                    <li class="sidebar-list">
-                        <a class="sidebar-link sidebar-title" href="#"><span >Payment Report</span></a>
-                        <ul class="sidebar-submenu">
-                            <li><a  href="<?php echo base_url();?>/admin/voucher_payment">Payment Voucher</a></li>
-                            <li><a  href="<?php echo base_url();?>/admin/voucher_received">Received Voucher</a></li>
-                            <?php if(in_array(39,$jobAssign)){ ?>
-                            <li><a  href="<?php echo base_url();?>admin/group">Group</a></li>
-                            <?php } ?>
-                            <li><a  href="<?php echo base_url();?>admin/financial_year">Financial Year</a></li>
-                            <li><a href="<?= base_url(); ?>admin/ledger">Ledger</a></li>
-                        </ul> 
-                    </li>
                 </ul>
               </div>
               <div class="right-arrow" id="right-arrow"><i data-feather="arrow-right"></i></div>
