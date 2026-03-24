@@ -1,6 +1,0 @@
-﻿Field	Type	Null	Key	Default	Extra
-id	int(11)	NO	PRI	NULL	auto_increment
-voucher_id	int(11)	NO	MUL	NULL	
-ledger_id	int(11)	NO	MUL	NULL	
-entry_type	tinyint(4)	NO		NULL	
-amount	decimal(15,2)	NO		0.00	

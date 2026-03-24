@@ -1,3 +1,0 @@
-Connected successfully.
-ALTER SUCCESSFUL.
-Current type: text
