@@ -97,7 +97,19 @@
                         </table>
                     </div>
 
-                    <a href="<?= base_url(); ?>/Admin/Inserpurchasetstock" class="btn btn-primary">Submit</a>
+                    <form action="<?= base_url(); ?>/Admin/Inserpurchasetstock" method="post" enctype="multipart/form-data">
+                        <div class="row" style="padding: 15px;">
+                            <div class="col-md-6">
+                                <label>Bill Photo</label>
+                                <input type="file" name="bill_photo" class="form-control" accept="image/*">
+                            </div>
+                            <div class="col-md-6">
+                                <label>Remarks</label>
+                                <textarea name="remarks" class="form-control" rows="2" placeholder="Enter remarks..."></textarea>
+                            </div>
+                        </div>
+                        <button type="submit" class="btn btn-primary m-3">Submit</button>
+                    </form>
                 </div>
             </div>
         </div>

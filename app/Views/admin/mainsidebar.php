@@ -79,8 +79,17 @@
                     </li>
                     <?php } ?>
                     <?php if(in_array(4,$jobAssign)){ ?>
-                    <li class="sidebar-list"><a class="sidebar-link sidebar-title link-nav " href="<?php echo base_url();?>/admin/diesel_entry"><span>Diesel Entry</span></a></li>
-                    
+                    <li class="sidebar-list">
+                      <a class="sidebar-link sidebar-title" href="#">
+                        <span>Diesel Management</span>
+                      </a>
+                      <ul class="sidebar-submenu">
+                        <li><a href="<?php echo base_url();?>/admin/diesel_entry">Diesel Entry</a></li>
+                        <li><a href="<?php echo base_url();?>/admin/extra_diesel">Extra Diesel</a></li>
+                        <li><a href="<?php echo base_url();?>/admin/passenger_diesel">Passenger Diesel</a></li>
+                        <li><a href="<?php echo base_url();?>/admin/diesel_rate">Diesel Rate Master</a></li>
+                      </ul>
+                    </li>
                     <?php } ?>
                     <?php if(in_array(5,$jobAssign)){ ?>
                     <li class="sidebar-list"><a class="sidebar-link sidebar-title link-nav " href="<?php echo base_url();?>/admin/add_inhouse"><span>In House Maintance </span></a></li>
@@ -91,9 +100,9 @@
                     <?php if(in_array(7,$jobAssign)){ ?>
                     <!-- <li class="sidebar-list"><a class="sidebar-link sidebar-title link-nav " href="<?php echo base_url();?>/admin/staf_advance"><span>Staff Advance </span></a></li> -->
                     <li class="sidebar-list">
-                      <a class="sidebar-link sidebar-title" href="#"><span >Staff Advance</span></a>
+                      <a class="sidebar-link sidebar-title" href="#"><span >Advance</span></a>
                       <ul class="sidebar-submenu">
-                     <li><a  href="<?php echo base_url();?>/admin/staf_advance">Trip Advance</a></li>
+                     <li><a  href="<?php echo base_url();?>/admin/staf_advance">Advance</a></li>
                      <li><a  href="<?php echo base_url();?>/admin/CashBank">Cash/Bank</a></li>
                     </ul> 
                    </li>
@@ -114,7 +123,15 @@
                     <li class="sidebar-list"><a class="sidebar-link sidebar-title link-nav " href="<?php echo base_url();?>/admin/task_Assignment"><span>Task Assignment  </span></a></li>
                     <?php } ?>
                     <?php if(in_array(9,$jobAssign)){ ?>
-                    <li class="sidebar-list"><a class="sidebar-link sidebar-title link-nav " href="<?php echo base_url();?>/admin/Regular_Checkup"><span>Regular Checkup  </span></a></li> 
+                    <li class="sidebar-list">
+                      <a class="sidebar-link sidebar-title" href="#">
+                        <span>Checkup</span>
+                      </a>
+                      <ul class="sidebar-submenu">
+                        <li><a href="<?php echo base_url();?>/admin/Regular_Checkup">Regular Checkup</a></li>
+                        <li><a href="<?php echo base_url();?>/admin/Uria_Checkup">Uria Checkup</a></li>
+                      </ul>
+                    </li> 
                     <?php } ?>
                     <?php if(in_array(10,$jobAssign)){ ?>
                     <li class="sidebar-list"><a class="sidebar-link sidebar-title link-nav " href="<?php echo base_url();?>/admin/Overall_Expence"><span>Overall Expence  </span></a></li> 

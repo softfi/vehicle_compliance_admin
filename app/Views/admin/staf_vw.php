@@ -18,7 +18,16 @@
             <div class="page-title">
                 <div class="row">
                     <div class="col-sm-6 p-0">
-                        <h3>Add Staff / Driver</h3>
+                        <h3>Add Staff / Driver / Mechanic</h3>
+                        <?php if (session()->getFlashdata('msg')): ?>
+                            <div class="alert alert-success mt-2"><?= session()->getFlashdata('msg'); ?></div>
+                        <?php endif; ?>
+                        <?php if (session()->getFlashdata('error')): ?>
+                            <div class="alert alert-danger mt-2"><?= session()->getFlashdata('error'); ?></div>
+                        <?php endif; ?>
+                        <?php if (isset($validation)): ?>
+                            <div class="alert alert-danger mt-2">Validation failed. Please check the form fields.</div>
+                        <?php endif; ?>
                     </div>
 
                     <div class="col-sm-6 p-0 text-right">
@@ -52,8 +61,9 @@
                                     <div class="col-sm-6">
                                         <label>Employee Type</label>
                                         <select class="form-control" name="user_type">
-                                            <option value="DRIVER" <?= set_select('user_type', 'Driver'); ?>>Driver</option>
-                                            <option value="STAFF" <?= set_select('user_type', 'Staff'); ?>>Staff Master</option>
+                                            <option value="DRIVER" <?= set_select('user_type', 'DRIVER'); ?>>Driver</option>
+                                            <option value="STAFF" <?= set_select('user_type', 'STAFF'); ?>>Staff Master</option>
+                                            <option value="MECHANIC" <?= set_select('user_type', 'MECHANIC'); ?>>Mechanic</option>
                                         </select>
                                     </div>
                                     <div class="col-sm-6">
@@ -63,6 +73,9 @@
                                     <div class="col-sm-6">
                                         <label>Salary</label>
                                         <input type="text" class="form-control" name="salary" placeholder="Enter Salary" value="<?= set_value('salary'); ?>">
+                                        <?php if (isset($validation) && $validation->getError('salary')): ?>
+                                            <span class="text-danger"><?= $validation->getError('salary'); ?></span>
+                                        <?php endif; ?>
                                     </div>
                                     <div class="col-sm-6">
                                         <label>Upload Image</label>
@@ -114,6 +127,9 @@
                                     <div class="col-sm-6">
                                         <label>Contact No.</label>
                                         <input type="tel" class="form-control" name="tel" placeholder="Contact Number" value="<?= set_value('tel'); ?>">
+                                        <?php if (isset($validation) && $validation->getError('tel')): ?>
+                                            <span class="text-danger"><?= $validation->getError('tel'); ?></span>
+                                        <?php endif; ?>
                                     </div>
                                     <div class="col-sm-6">
                                         <label>Father's Name</label>
@@ -148,9 +164,12 @@
                                         <select name="address" class="form-control">
                                             <option value="">Select Location</option>
                                             <?php foreach ($location as $loc): ?>
-                                                <option value="<?= $loc->location_id; ?>"><?= $loc->location_name; ?></option>
+                                                <option value="<?= $loc->location_id; ?>" <?= set_select('address', $loc->location_id); ?>><?= $loc->location_name; ?></option>
                                             <?php endforeach; ?>
                                         </select>
+                                        <?php if (isset($validation) && $validation->getError('address')): ?>
+                                            <span class="text-danger"><?= $validation->getError('address'); ?></span>
+                                        <?php endif; ?>
                                     </div>
                                 </div>
                                 <p></p>
@@ -333,6 +352,10 @@
 
 <script>
     $(document).ready(function () {
+        <?php if (isset($validation)): ?>
+            UIkit.offcanvas('#offcanvas-flip').show();
+        <?php endif; ?>
+
         var table = $('#myTable').DataTable({
             responsive: true,
             scrollX: true,

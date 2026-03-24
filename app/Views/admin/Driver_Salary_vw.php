@@ -63,8 +63,8 @@ endforeach; ?>
                                 </div>
 
                                 <div class="form-group">
-                                    <label for="driver_id">Driver <span class="text-danger">*</span></label>
-                                    <select name="driver_id" id="driver_id" class="form-control select2-search" required>
+                                    <label for="driver_id">Driver</label>
+                                    <select name="driver_id" id="driver_id" class="form-control select2-search">
                                         <option value="">Select driver</option>
                                         <?php foreach ($drivers as $driver): ?>
                                             <option value="<?= $driver->id; ?>"><?= $driver->name; ?></option>
@@ -133,21 +133,26 @@ $(document).on('change', '.driver-select-cb', function() {
 function sendWhatsAppBulk() {
     var drivers = [];
     var noPhone = [];
+    var uniqueDriverIds = new Set();
 
     $('.driver-select-cb:checked').each(function() {
+        var staffId  = $(this).data('staff-id');
+        
+        // Skip if this driver is already in the list
+        if (uniqueDriverIds.has(staffId)) return;
+        uniqueDriverIds.add(staffId);
+
         var mobile   = $(this).data('mobile');
         var name     = $(this).data('name');
-        var staffId  = $(this).data('staff-id');
         var year     = $(this).data('year');
         var month    = $(this).data('month');
-        var fromDate = $(this).data('from-date');
-        var toDate   = $(this).data('to-date');
 
         if (!mobile || mobile.toString().trim() === '') {
             noPhone.push(name);
             return;
         }
-        drivers.push({ staff_id: staffId, year: year, month: month, from_date: fromDate, to_date: toDate });
+        // Only include staff_id, year, and month to get the full-month slip
+        drivers.push({ staff_id: staffId, year: year, month: month });
     });
 
     if (drivers.length === 0 && noPhone.length === 0) {
@@ -227,12 +232,6 @@ $(document).ready(function() {
     $('#selectionForm').on('submit', function(e) {
         e.preventDefault(); // Prevent the default form submission
 
-        // Driver is required — block if not selected
-        if (!$('#driver_id').val()) {
-            alert('Please select a driver first.');
-            return;
-        }
-
         // Show loader before making AJAX request
         $('#loader').show();
         $('#results').html(''); // Clear previous results
@@ -309,12 +308,44 @@ $(document).ready(function() {
     function printSalarySlip() {
         var year = document.getElementById('year').value;
         var month = document.getElementById('month').value;
-        var driver_id = document.getElementById('driver_id').value;
-        if (!driver_id) {
-            alert("Please select a driver first.");
-            return;
+        
+        var selectedDrivers = [];
+        $('.driver-select-cb:checked').each(function() {
+            var staffId = $(this).data('staff-id');
+            if (staffId && !selectedDrivers.includes(staffId)) {
+                selectedDrivers.push(staffId);
+            }
+        });
+
+        if (selectedDrivers.length === 0) {
+            var driver_id = document.getElementById('driver_id').value;
+            if (driver_id) {
+                selectedDrivers.push(driver_id);
+            } else {
+                alert('Please select at least one driver row to print the salary slip.');
+                return;
+            }
         }
-        window.open('<?= base_url(); ?>/admin/salary_slip?staff_id=' + driver_id + '&year=' + year + '&month=' + month, '_blank');
+
+        // Download slips for each unique driver
+        selectedDrivers.forEach(function(staffId, index) {
+            var url = '<?= base_url("admin/salary_slip"); ?>' + '?staff_id=' + staffId + '&year=' + year + '&month=' + month;
+            
+            // Using hidden iframes or a timed delay for multiple background downloads
+            setTimeout(function() {
+                var frameNode = document.createElement('iframe');
+                frameNode.style.display = 'none';
+                frameNode.src = url;
+                document.body.appendChild(frameNode);
+                
+                // Keep the frame in DOM long enough to start the request
+                setTimeout(function() {
+                    if (document.body.contains(frameNode)) {
+                        document.body.removeChild(frameNode);
+                    }
+                }, 10000); // 10s cleanup
+            }, index * 1000); 
+        });
     }
 </script>
 

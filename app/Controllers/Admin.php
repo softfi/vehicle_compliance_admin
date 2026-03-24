@@ -909,7 +909,7 @@ class Admin extends BaseController
         $rules = [
             'user_type' => 'required',
             'name' => 'required|max_length[100]',
-            'salary' => 'required|decimal',
+            'salary' => 'required|numeric',
             // 'driving_l' => 'uploaded[driving_l]|max_size[driving_l,2048]|is_image[driving_l]',
             // 'dl_number' => 'required|max_length[20]',
             // 'dl_expiry' => 'required|valid_date[Y-m-d]',
@@ -1005,7 +1005,7 @@ class Admin extends BaseController
 
 
 
-            return redirect()->to('admin/staf')->with('msg', 'Staff member added successfully');
+            return redirect()->to('admin/staf')->with('msg', 'Added successfully');
         } else {
             $data['validation'] = $this->validator;
             echo view('admin/staf_vw', $data);
@@ -1224,6 +1224,7 @@ class Admin extends BaseController
                                 <select class="form-control" name="user_type" aria-label="Select">
                                     <option value="DRIVER" <?= $staff->user_type == 'DRIVER' ? 'selected' : ''; ?>>Driver</option>
                                     <option value="STAFF" <?= $staff->user_type == 'STAFF' ? 'selected' : ''; ?>>Staff </option>
+                                    <option value="MECHANIC" <?= $staff->user_type == 'MECHANIC' ? 'selected' : ''; ?>>Mechanic</option>
                                 </select>
                                 <?php if (isset($validation) && $validation->getError('user_type')): ?>
                                     <span class="text-danger"><?= $validation->getError('user_type'); ?></span>
@@ -3343,12 +3344,14 @@ class Admin extends BaseController
                 $stockCode = $stcode->stock_code + 1;
             }
 
-
-
-
-
-
-
+            // Check if there is an uploaded file
+            $bill_photo_name = null;
+            $file = $this->request->getFile('bill_photo');
+            if ($file && $file->isValid() && !$file->hasMoved()) {
+                $bill_photo_name = $file->getRandomName();
+                $file->move('public/uploads/purchase_bills/', $bill_photo_name);
+            }
+            $remarks = $this->request->getPost('remarks');
 
             foreach ($cart_dtls as $cartdtls) {
                 $tcart = $cartdtls->rate * $cartdtls->qty;
@@ -3371,6 +3374,8 @@ class Admin extends BaseController
 
                     'invoice_number' => $cartdtls->invoiceno,
                     'location_id' => $cartdtls->location,
+                    'bill_photo' => $bill_photo_name,
+                    'remarks' => $remarks,
                 ];
 
                 //print_r ($data);exit;
@@ -3422,6 +3427,8 @@ class Admin extends BaseController
             $data['vehicles'] = $this->AdminModel->Getvehicle();
             $data['location'] = $this->db->query("SELECT * FROM location")->getResult();
             $data['items'] = $this->AdminModel->itemdtls();
+            $data['users'] = $this->db->table('user')->get()->getResult();
+            $data['mechanics'] = $this->db->table('staff')->where('user_type', 'MECHANIC')->get()->getResult();
             return view('admin/add_inhouse_vw', $data);
         } else {
             return redirect()->to('Admin/');
@@ -3559,6 +3566,8 @@ class Admin extends BaseController
             $data['items'] = $this->AdminModel->itemdtls();
             $segment = $this->request->getUri()->getSegment(3);
             $data['orderdtls'] = $this->AdminModel->inhouse_orderdtls($segment);
+            $data['users'] = $this->db->table('user')->get()->getResult();
+            $data['mechanics'] = $this->db->table('staff')->where('user_type', 'MECHANIC')->get()->getResult();
 
             // Prepare filtered items by location
             $data['location_items_map'] = [];
@@ -3637,6 +3646,7 @@ class Admin extends BaseController
         $items = $this->request->getPost('items');
         $qty = $this->request->getPost('qty');
         $price = $this->request->getPost('price');
+        $mechanic_names = $this->request->getPost('mechanic_name');
 
         $order_id = 'ORD-' . strtoupper(uniqid());
 
@@ -3658,6 +3668,7 @@ class Admin extends BaseController
                     'location' => $location,
                     'itemUseAs' => $itemUseAs[$key],
                     'check_by' => $check_by,
+                    'mechanic_name' => isset($mechanic_names[$key]) ? $mechanic_names[$key] : null,
                 ];
                 $this->db->table('inhouse_maintenance')->insert($itemsData);
             }
@@ -3688,6 +3699,7 @@ class Admin extends BaseController
         $items = $this->request->getPost('items[]');
         $qty = $this->request->getPost('qty[]');
         $price = $this->request->getPost('price[]');
+        $mechanic_names = $this->request->getPost('mechanic_name');
 
         $order_id = 'ORD-' . strtoupper(uniqid());
 
@@ -3710,6 +3722,7 @@ class Admin extends BaseController
                         'location' => $location,
                         'itemUseAs' => $itemUseAs[$key],
                         'check_by' => $check_by,
+                        'mechanic_name' => isset($mechanic_names[$key]) ? $mechanic_names[$key] : null,
                     ];
                     $this->db->table('inhouse_maintenance')->insert($itemsData);
                 }
@@ -3999,14 +4012,38 @@ class Admin extends BaseController
             'amount' => $this->request->getPost('amount'),
             'location_id' => $this->request->getPost('location_id'),
             'upload_file' => $this->uploadFile('upload_file'), // Handle file upload
-            'despatch_id' => $this->request->getPost('despatch_id')
+            'despatch_id' => $this->request->getPost('despatch_id') ? $this->request->getPost('despatch_id') : null,
+            'paid_by' => $this->request->getPost('paid_by')
         ];
             
         $this->db->table('staff_advance')->insert($data);
+        $insertID = $this->db->insertID();
+
+        // Account Voucher Insertion (Linking to Cashbook)
+        if ($data['bank_cash'] == 'Cash') {
+            $staff = $this->db->query("SELECT name FROM staff WHERE id = ?", [$data['staff_id']])->getRow();
+            $location = $this->db->query("SELECT location_name FROM location WHERE location_id = ?", [$data['location_id']])->getRow();
+            
+            $fy = $this->db->query("SELECT fy_id FROM financial_year WHERE status = 1")->getRow();
+            $fy_id = $fy->fy_id ?? 0;
+            $voucher_no = $this->AdminModel->getNextVoucherNo('Payment');
+
+            $voucherData = [
+                'voucher_no'   => $voucher_no,
+                'voucher_date' => $data['adv_date'],
+                'voucher_type' => 'Payment',
+                'fy_id'        => $fy_id,
+                'total_amount' => $data['amount'],
+                'narration'    => "Advance paid to " . ($staff->name ?? 'Staff') . " (ID: ".$data['staff_id'].") at " . ($location->location_name ?? 'Location') . ". [Advance ID: " . $insertID . "]. Paid by: " . $data['paid_by'],
+                'created_at'   => date('Y-m-d H:i:s'),
+                'created_by'   => $this->session->get('user_id')
+            ];
+            $this->db->table('account_vouchers')->insert($voucherData);
+        }
 
         $user_id = $this->session->get('user_id');
         $menu = $this->request->getUri()->getSegment(2);
-        $this->logActivity($user_id, 'create', 'staff_advance', $this->db->insertID(), ['data' => $data], $menu); 
+        $this->logActivity($user_id, 'create', 'staff_advance', $insertID, ['data' => $data], $menu); 
 
         return redirect()->to('Admin/staf_advance');
     }
@@ -4097,6 +4134,25 @@ class Admin extends BaseController
         return redirect()->back()->with('error', 'Failed to upload file.');
     }
 
+    public function print_advance($id)
+    {
+        $advance = $this->db->table('staff_advance')
+            ->select('staff_advance.*, staff.name as staff_name, staff.staff_code, location.location_name')
+            ->join('staff', 'staff.id = staff_advance.staff_id', 'left')
+            ->join('location', 'location.location_id = staff_advance.location_id', 'left')
+            ->where('staff_advance.id', $id)
+            ->get()->getRow();
+
+        if (!$advance) {
+            return "Advance Record not found.";
+        }
+
+        $data['advance'] = $advance;
+        $data['setting'] = $this->AdminModel->Settingdata();
+
+        return view('admin/print_advance_vw', $data);
+    }
+
 
     function editstaf_advance()
     {
@@ -4131,7 +4187,8 @@ class Admin extends BaseController
             'adv_date' => $this->request->getPost('date'),
             'amount' => $this->request->getPost('amount'),
             'location_id' => $this->request->getPost('location_id'),
-            'despatch_id' => $this->request->getPost('despatch_id')
+            'despatch_id' => $this->request->getPost('despatch_id'),
+            'paid_by' => $this->request->getPost('paid_by')
         ];
 
         // Check if there is a file uploaded
@@ -4676,10 +4733,30 @@ class Admin extends BaseController
             $data['setting'] = $this->AdminModel->Settingdata();
             $data['singleuser'] = $this->AdminModel->userdata($user_id);
             $data['vehicles'] = $this->AdminModel->Getvehicle();
-            $data['regularcheckup'] = $this->AdminModel->regularcheckup();
+            $data['users'] = $this->db->table('user')->get()->getResult(); // Fetch users to show for checking
+            $data['mechanics'] = $this->db->table('staff')->where('user_type', 'MECHANIC')->get()->getResult();
+            $data['regularcheckup'] = $this->db->query("SELECT * FROM vehicle_maintenance WHERE checkup_type='Regular' ORDER BY id DESC")->getResult();
             //  print_r($data['regularcheckup']);exit;
 
             return view('admin/Regular_Checkup_vw', $data);
+        } else {
+            return redirect()->to('Admin/');
+        }
+    }
+
+    function Uria_Checkup()
+    {
+        if ($this->session->get('user_id')) {
+
+            $user_id = $this->session->get('user_id');
+            $data['setting'] = $this->AdminModel->Settingdata();
+            $data['singleuser'] = $this->AdminModel->userdata($user_id);
+            $data['vehicles'] = $this->AdminModel->Getvehicle();
+            $data['users'] = $this->db->table('user')->get()->getResult(); // Fetch users to show for checking
+            $data['mechanics'] = $this->db->table('staff')->where('user_type', 'MECHANIC')->get()->getResult();
+            $data['regularcheckup'] = $this->db->query("SELECT * FROM vehicle_maintenance WHERE checkup_type='Uria' ORDER BY id DESC")->getResult();
+
+            return view('admin/Uria_Checkup_vw', $data);
         } else {
             return redirect()->to('Admin/');
         }
@@ -4690,7 +4767,7 @@ class Admin extends BaseController
         if ($this->session->get('user_id')) {
             $segment = $this->request->getUri()->getSegment(3);
             $this->db->table('vehicle_maintenance')->delete(array('id' => $segment));
-            return redirect()->to('Admin/Regular_Checkup');
+            return redirect()->back();
         } else {
             return redirect()->to('admin/');
         }
@@ -4735,14 +4812,16 @@ class Admin extends BaseController
 
 
             'remark' => $this->request->getPost('remark'),
-            'checked_by' => $this->request->getPost('checked_by')
+            'checked_by' => $this->request->getPost('checked_by'),
+            'checkup_type' => $this->request->getPost('checkup_type'),
+            'mechanic_name' => $this->request->getPost('mechanic_name')
         ];
 
         // Insert data into the database
         $this->db->table('vehicle_maintenance')->insert($data);
 
-        // Redirect to the specified page
-        return redirect()->to('Admin/Regular_Checkup');
+        // Redirect back
+        return redirect()->back();
     }
     public function Overall_Expence()
     {
@@ -6615,12 +6694,13 @@ public function get_vehicle_report_excel()
     $tsalary = ($display_opening + $d_salary + $hsd_amount + $trip_expenses_sum + $bonus_sum)
              - ($total_advance + $adjust_sum);
 
+    $month_name = date("F", strtotime("$year-$month-01"));
     // ── View Data ─────────────────────────────────────────────────────────
     $data = [
         'driver'              => $driver,
         'year'                => $year,
         'month'               => $month,
-        'month_name'          => date("F", strtotime("$year-$month-01")),
+        'month_name'          => $month_name,
         'opening'             => $display_opening,
         'working_days'        => $working_days,
         'basic_salary'        => $d_salary,
@@ -6645,7 +6725,20 @@ public function get_vehicle_report_excel()
         'setting'             => $this->AdminModel->Settingdata(),
     ];
 
-    return view('admin/salary_slip_vw', $data);
+    $html = view('admin/salary_slip_vw', $data);
+    
+    if (ob_get_length()) ob_clean();
+    $options = new Options();
+    $options->set('isRemoteEnabled', true);
+    $options->set('isHtml5ParserEnabled', true);
+    $dompdf = new Dompdf($options);
+    $dompdf->loadHtml($html);
+    $dompdf->setPaper('A4', 'portrait');
+    $dompdf->render();
+
+    $clean_name = str_replace(' ', '_', $driver->name);
+    $filename = "Salary_Slip_{$clean_name}_{$month_name}_{$year}.pdf";
+    return $this->response->download($filename, $dompdf->output())->setHeader('Content-Type', 'application/pdf');
 }
 
 
@@ -6926,7 +7019,7 @@ public function get_vehicle_report_excel()
                                                                                                 echo "0";
                                                                                             } else {
                                                                                                 echo $staf->working_day;
-                                                                                            } ?>" name="t_working_day" data-staffid="<?= $staf->id ?>" data-year="<?= $year ?>" data-month="<?= $month ?>" data-salary="<?= $staf->salary ?>" data-opening-balance="<?= $staf->opening_balance ?>" data-total-advance="<?= $staf->total_advance ?>">
+                                                                                            } ?>" name="t_working_day" data-staffid="<?= $staf->id ?>" data-year="<?= $year ?>" data-month="<?= $month ?>" data-salary="<?= $staf->salary ?>" data-opening-balance="<?= $staf->opening_balance ?>" data-total-advance="<?= $staf->total_advance ?>" data-type="<?= $staf->user_type ?>">
                             </td>
                             <td>
                                 <input type="number" class="form-control insentive" name="insentive[]" value="<?php if ($staf->insentive == '') {
@@ -6981,8 +7074,16 @@ public function get_vehicle_report_excel()
                     var working_day = parseFloat(row.find('.working_day').val());
                     var insentive = parseFloat(row.find('.insentive').val());
 
+                    var staff_type = row.find('.working_day').data('type');
+
                     // Calculate the total salary based on working days
-                    var total_salary = (salary / <?= $curent_monthday ?>) * working_day;
+                    var total_salary = 0;
+                    if (staff_type === 'MECHANIC' || staff_type === 'STAFF') {
+                        // Month + 2 days calculation
+                        total_salary = (salary / (parseFloat(<?= $curent_monthday ?>) + 2)) * working_day;
+                    } else {
+                        total_salary = (salary / parseFloat(<?= $curent_monthday ?>)) * working_day;
+                    }
 
                     // Calculate the net salary considering opening balance, total advance, and incentive
                     var net_salary = total_salary + opening_balance - total_advance + insentive;
@@ -7074,7 +7175,12 @@ public function get_vehicle_report_excel()
             $insentive = isset($staf->insentive) ? (float) $staf->insentive : 0;
 
             // Calculate total salary and net salary
-            $total_salary = ($salary / $curent_monthday) * $working_day;
+            $total_salary = 0;
+            if ($staf->user_type === 'MECHANIC' || $staf->user_type === 'STAFF') {
+                $total_salary = ($salary / ($curent_monthday + 2)) * $working_day;
+            } else {
+                $total_salary = ($salary / $curent_monthday) * $working_day;
+            }
             $net_salary = $total_salary + $opening_balance - $total_advance + $insentive;
 
             $sheet->setCellValue('A' . $row, $sl_no++);
@@ -7278,6 +7384,296 @@ public function get_vehicle_report_excel()
             // Handle any errors
             return $this->fail('An error occurred: ' . $e->getMessage(), 500);
         }
+    }
+
+    public function extra_diesel()
+    {
+        if ($this->session->get('user_id') == '') return redirect()->to('Admin/');
+        $user_id = $this->session->get('user_id');
+        $from_date = $this->request->getVar('from_date');
+        $to_date = $this->request->getVar('to_date');
+        $vehicle_id = $this->request->getVar('filter_vehicle');
+        $driver_id = $this->request->getVar('filter_driver');
+
+        $data['setting'] = $this->AdminModel->Settingdata();
+        $data['singleuser'] = $this->AdminModel->userdata($user_id);
+        $data['vehicle'] = $this->AdminModel->Getvehicle();
+        $data['drivers'] = $this->db->table('staff')->where('user_type', 'DRIVER')->get()->getResult();
+        $data['issuers'] = $this->db->table('user')->get()->getResult();
+        $data['extra_diesel'] = $this->AdminModel->extra_diesel_issue($from_date, $to_date, $vehicle_id, $driver_id);
+        $data['filter_date'] = ['from_date' => $from_date, 'to_date' => $to_date, 'vehicle_id' => $vehicle_id, 'driver_id' => $driver_id];
+
+        return view('admin/extra_diesel_vw', $data);
+    }
+
+    public function insert_extra_diesel()
+    {
+        if ($this->session->get('user_id') == '') return redirect()->to('Admin/');
+        $data = [
+            'issue_date' => $this->request->getPost('date'),
+            'vehicle_id' => $this->request->getPost('vehicle'),
+            'driver_id' => $this->request->getPost('driver'),
+            'qty' => $this->request->getPost('qty'),
+            'issued_by' => $this->request->getPost('issued_by'),
+            'remarks' => $this->request->getPost('remarks'),
+        ];
+        $this->db->table('extra_diesel_issue')->insert($data);
+        return redirect()->to(base_url('/admin/extra_diesel'))->with('success', 'Extra diesel issued successfully');
+    }
+
+    public function delete_extra_diesel()
+    {
+        $id = $this->request->getPost('id');
+        $user_id = $this->session->get('user_id');
+        $this->db->table('extra_diesel_issue')->where('id', $id)->update([
+            'deleted_by' => $user_id,
+            'deleted_at' => date('Y-m-d H:i:s')
+        ]);
+        return redirect()->to('Admin/extra_diesel');
+    }
+
+    public function edit_extra_diesel()
+    {
+        $id = $this->request->getVar('id');
+        $data['row'] = $this->db->table('extra_diesel_issue')->where('id', $id)->get()->getRow();
+        $data['vehicle'] = $this->AdminModel->Getvehicle();
+        $data['drivers'] = $this->db->table('staff')->where('user_type', 'DRIVER')->get()->getResult();
+        $data['issuers'] = $this->db->table('user')->get()->getResult();
+        
+        // Return a partial view/fragment for the modal
+        echo '<form action="'.base_url('Admin/update_extra_diesel').'" method="post">
+                <input type="hidden" name="id" value="'.$data['row']->id.'">
+                <div class="form-group">
+                    <label>Vehicle</label>
+                    <select class="form-control" name="vehicle" required>';
+                    foreach($data['vehicle'] as $v) {
+                        $sel = ($v->id == $data['row']->vehicle_id) ? 'selected' : '';
+                        echo '<option value="'.$v->id.'" '.$sel.'>'.$v->vehicle_no.'</option>';
+                    }
+        echo '      </select>
+                </div>
+                <div class="form-group">
+                    <label>Driver</label>
+                    <select class="form-control" name="driver" required>';
+                    foreach($data['drivers'] as $dr) {
+                        $sel = ($dr->id == $data['row']->driver_id) ? 'selected' : '';
+                        echo '<option value="'.$dr->id.'" '.$sel.'>'.$dr->name.'</option>';
+                    }
+        echo '      </select>
+                </div>
+                <div class="form-group">
+                    <label>Date</label>
+                    <input type="date" class="form-control" name="date" value="'.$data['row']->issue_date.'" required>
+                </div>
+                <div class="form-group">
+                    <label>QTY</label>
+                    <input type="number" step="0.01" class="form-control" name="qty" value="'.$data['row']->qty.'" required>
+                </div>
+                <div class="form-group">
+                    <label>Issued By</label>
+                    <select class="form-control" name="issued_by" required>';
+                    foreach($data['issuers'] as $u) {
+                        $sel = ($u->id == $data['row']->issued_by) ? 'selected' : '';
+                        echo '<option value="'.$u->id.'" '.$sel.'>'.$u->full_name.'</option>';
+                    }
+        echo '      </select>
+                </div>
+                <div class="form-group">
+                    <label>Remarks</label>
+                    <textarea class="form-control" name="remarks">'.$data['row']->remarks.'</textarea>
+                </div>
+                <button type="submit" class="btn btn-primary mt-3">Update</button>
+              </form>';
+    }
+
+    public function update_extra_diesel()
+    {
+        $id = $this->request->getPost('id');
+        $data = [
+            'issue_date' => $this->request->getPost('date'),
+            'vehicle_id' => $this->request->getPost('vehicle'),
+            'driver_id' => $this->request->getPost('driver'),
+            'qty' => $this->request->getPost('qty'),
+            'issued_by' => $this->request->getPost('issued_by'),
+            'remarks' => $this->request->getPost('remarks'),
+        ];
+        $this->db->table('extra_diesel_issue')->where('id', $id)->update($data);
+        return redirect()->to(base_url('/admin/extra_diesel'))->with('success', 'Updated successfully');
+    }
+
+    public function passenger_diesel()
+    {
+        if ($this->session->get('user_id') == '') return redirect()->to('Admin/');
+        $user_id = $this->session->get('user_id');
+        $from_date = $this->request->getVar('from_date');
+        $to_date = $this->request->getVar('to_date');
+        $vehicle_id = $this->request->getVar('filter_vehicle');
+        $location_id = $this->request->getVar('filter_location');
+
+        $data['setting'] = $this->AdminModel->Settingdata();
+        $data['singleuser'] = $this->AdminModel->userdata($user_id);
+        $data['vehicle'] = $this->AdminModel->Getvehicle();
+        $data['locations'] = $this->db->table('location')->get()->getResult();
+        $data['issuers'] = $this->db->table('user')->get()->getResult();
+        $data['passenger_diesel'] = $this->AdminModel->passenger_vehicle_diesel($from_date, $to_date, $vehicle_id, $location_id);
+        $data['filter_date'] = ['from_date' => $from_date, 'to_date' => $to_date, 'vehicle_id' => $vehicle_id, 'location_id' => $location_id];
+
+        return view('admin/passenger_diesel_vw', $data);
+    }
+
+    public function insert_passenger_diesel()
+    {
+        if ($this->session->get('user_id') == '') return redirect()->to('Admin/');
+        $data = [
+            'entry_date' => $this->request->getPost('date'),
+            'vehicle_id' => $this->request->getPost('vehicle'),
+            'location_id' => $this->request->getPost('location'),
+            'qty' => $this->request->getPost('qty'),
+            'issued_by' => $this->request->getPost('issued_by'),
+        ];
+        $this->db->table('passenger_vehicle_diesel')->insert($data);
+        return redirect()->to(base_url('/admin/passenger_diesel'))->with('success', 'Passenger diesel data added');
+    }
+
+    public function delete_passenger_diesel()
+    {
+        $id = $this->request->getPost('id');
+        $user_id = $this->session->get('user_id');
+        $this->db->table('passenger_vehicle_diesel')->where('id', $id)->update([
+            'deleted_by' => $user_id,
+            'deleted_at' => date('Y-m-d H:i:s')
+        ]);
+        return redirect()->to('Admin/passenger_diesel');
+    }
+
+    public function edit_passenger_diesel()
+    {
+        $id = $this->request->getVar('id');
+        $data['row'] = $this->db->table('passenger_vehicle_diesel')->where('id', $id)->get()->getRow();
+        $data['vehicle'] = $this->AdminModel->Getvehicle();
+        $data['locations'] = $this->db->table('location')->get()->getResult();
+        $data['issuers'] = $this->db->table('user')->get()->getResult();
+        
+        echo '<form action="'.base_url('Admin/update_passenger_diesel').'" method="post">
+                <input type="hidden" name="id" value="'.$data['row']->id.'">
+                <div class="form-group">
+                    <label>Vehicle</label>
+                    <select class="form-control" name="vehicle" required>';
+                    foreach($data['vehicle'] as $v) {
+                        $sel = ($v->id == $data['row']->vehicle_id) ? 'selected' : '';
+                        echo '<option value="'.$v->id.'" '.$sel.'>'.$v->vehicle_no.'</option>';
+                    }
+        echo '      </select>
+                </div>
+                <div class="form-group">
+                    <label>Location</label>
+                    <select class="form-control" name="location" required>';
+                    foreach($data['locations'] as $loc) {
+                        $sel = ($loc->location_id == $data['row']->location_id) ? 'selected' : '';
+                        echo '<option value="'.$loc->location_id.'" '.$sel.'>'.$loc->location_name.'</option>';
+                    }
+        echo '      </select>
+                </div>
+                <div class="form-group">
+                    <label>Date</label>
+                    <input type="date" class="form-control" name="date" value="'.$data['row']->entry_date.'" required>
+                </div>
+                <div class="form-group">
+                    <label>QTY</label>
+                    <input type="number" step="0.01" class="form-control" name="qty" value="'.$data['row']->qty.'" required>
+                </div>
+                <div class="form-group">
+                    <label>Issued By</label>
+                    <select class="form-control" name="issued_by" required>';
+                    foreach($data['issuers'] as $u) {
+                        $sel = ($u->id == $data['row']->issued_by) ? 'selected' : '';
+                        echo '<option value="'.$u->id.'" '.$sel.'>'.$u->full_name.'</option>';
+                    }
+        echo '      </select>
+                </div>
+                <button type="submit" class="btn btn-primary mt-3">Update</button>
+              </form>';
+    }
+
+    public function update_passenger_diesel()
+    {
+        $id = $this->request->getPost('id');
+        $data = [
+            'entry_date' => $this->request->getPost('date'),
+            'vehicle_id' => $this->request->getPost('vehicle'),
+            'location_id' => $this->request->getPost('location'),
+            'qty' => $this->request->getPost('qty'),
+            'issued_by' => $this->request->getPost('issued_by'),
+        ];
+        $this->db->table('passenger_vehicle_diesel')->where('id', $id)->update($data);
+        return redirect()->to(base_url('/admin/passenger_diesel'))->with('success', 'Updated successfully');
+    }
+
+    public function diesel_rate()
+    {
+        if ($this->session->get('user_id') == '') return redirect()->to('Admin/');
+        $user_id = $this->session->get('user_id');
+        $from_date = $this->request->getVar('from_date');
+        $to_date = $this->request->getVar('to_date');
+
+        $data['setting'] = $this->AdminModel->Settingdata();
+        $data['singleuser'] = $this->AdminModel->userdata($user_id);
+        $data['rates'] = $this->AdminModel->get_diesel_rate_master($from_date, $to_date);
+        $data['filter_date'] = ['from_date' => $from_date, 'to_date' => $to_date];
+        return view('admin/diesel_rate_vw', $data);
+    }
+
+    public function edit_diesel_rate()
+    {
+        $id = $this->request->getVar('id');
+        $row = $this->db->table('diesel_rate_master')->where('id', $id)->get()->getRow();
+        echo '<form action="'.base_url('Admin/update_diesel_rate').'" method="post">
+                <input type="hidden" name="id" value="'.$row->id.'">
+                <div class="form-group">
+                    <label>From Date</label>
+                    <input type="date" class="form-control" name="from_date" value="'.$row->from_date.'" required>
+                </div>
+                <div class="form-group">
+                    <label>To Date</label>
+                    <input type="date" class="form-control" name="to_date" value="'.$row->to_date.'" required>
+                </div>
+                <div class="form-group">
+                    <label>Rate</label>
+                    <input type="number" step="0.01" class="form-control" name="rate" value="'.$row->rate.'" required>
+                </div>
+                <button type="submit" class="btn btn-primary mt-3">Update</button>
+              </form>';
+    }
+
+    public function update_diesel_rate()
+    {
+        $id = $this->request->getPost('id');
+        $data = [
+            'from_date' => $this->request->getPost('from_date'),
+            'to_date' => $this->request->getPost('to_date'),
+            'rate' => $this->request->getPost('rate'),
+        ];
+        $this->db->table('diesel_rate_master')->where('id', $id)->update($data);
+        return redirect()->to(base_url('/admin/diesel_rate'))->with('success', 'Updated successfully');
+    }
+
+    public function insert_diesel_rate()
+    {
+        if ($this->session->get('user_id') == '') return redirect()->to('Admin/');
+        $data = [
+            'from_date' => $this->request->getPost('from_date'),
+            'to_date' => $this->request->getPost('to_date'),
+            'rate' => $this->request->getPost('rate'),
+        ];
+        $this->db->table('diesel_rate_master')->insert($data);
+        return redirect()->to(base_url('/admin/diesel_rate'));
+    }
+
+    public function delete_diesel_rate()
+    {
+        $id = $this->request->getUri()->getSegment(3);
+        $this->db->table('diesel_rate_master')->where('id', $id)->delete();
+        return redirect()->to('Admin/diesel_rate');
     }
 
 
@@ -11642,31 +12038,86 @@ public function exportPaymentExcel()
         $v_result = $query_v->getRow();
 
         // 2. Fetch Trips (Despatch records) for that driver around that date
-        $trips = $this->db->table('despatch')
+        $tripsBuilder = $this->db->table('despatch')
             ->select('despatch.despatch_id, despatch.ref_no, route.to_city as location')
             ->join('do_registration', 'do_registration.do_registration_id = despatch.do_no', 'left')
             ->join('route', 'route.id = do_registration.route_id', 'left')
-            ->where('despatch.des_date', $date)
-            ->get()->getResult();
+            ->where('despatch.des_date', $date);
 
-        echo '<div class="uk-grid-small uk-child-width-1-2" uk-grid>';
-        
-        echo '<div>';
-        echo '<label>Assigned Vehicle</label>';
-        $v_no = $v_result->vehicle_no ?? 'No vehicle found';
-        echo '<input type="text" readonly class="uk-input" value="' . htmlspecialchars($v_no) . '"/>';
-        echo '</div>';
-
-        echo '<div>';
-        echo '<label>Link to Trip (Optional)</label>';
-        echo '<select name="despatch_id" class="uk-select">';
-        echo '<option value="">Not Linked to Trip</option>';
-        foreach ($trips as $t) {
-            $label = "#" . $t->despatch_id . " " . ($t->ref_no ? "(".$t->ref_no.")" : "") . " - " . $t->location;
-            echo '<option value="' . $t->despatch_id . '">' . htmlspecialchars($label) . '</option>';
+        if ($v_result) {
+            $tripsBuilder->where('despatch.vehicle_no', $v_result->vehicle_id);
+        } else {
+            // If no vehicle assigned, don't show any trips to avoid errors or wrong linking
+            $tripsBuilder->where('1=0', null, false);
         }
-        echo '</select>';
+        $trips = $tripsBuilder->get()->getResult();
+
+        // 3. Fetch Balances
+        $staff_dtl = $this->db->query("SELECT user_type FROM staff WHERE id = ?", [$driver_id])->getRow();
+        
+        $user_type = $staff_dtl?->user_type ?? '';
+        
+        if ($user_type == 'DRIVER') {
+            // For drivers, all advances are considered Trip Advances
+            $trip_adv_bal = $this->db->query("SELECT SUM(amount) as total FROM staff_advance WHERE staff_id = ?", [$driver_id])->getRow()->total ?? 0;
+            $gen_adv_bal = 0;
+        } else {
+            // General Advance Balance (Overall where despatch_id is null)
+            $gen_adv_bal = $this->db->query("SELECT SUM(amount) as total FROM staff_advance WHERE staff_id = ? AND (despatch_id IS NULL OR despatch_id = '')", [$driver_id])->getRow()->total ?? 0;
+            
+            // Trip Advance Balance (Overall where despatch_id is not null)
+            $trip_adv_bal = $this->db->query("SELECT SUM(amount) as total FROM staff_advance WHERE staff_id = ? AND despatch_id IS NOT NULL AND despatch_id != ''", [$driver_id])->getRow()->total ?? 0;
+        }
+        
+        // Calculated Salary for the month of the provided date
+        $year = date('Y', strtotime($date));
+        $month = date('m', strtotime($date));
+        
+        // Check if salary is already processed for this month
+        $processed = $this->db->query("SELECT net_salary FROM staff_salary WHERE user_id = ? AND Year = ? AND month = ?", [$driver_id, $year, $month])->getRow();
+        $salary_bal = $processed->net_salary ?? 0;
+
+        echo '<div class="uk-grid-small uk-child-width-1-3@m uk-child-width-1-2" uk-grid>';
+        
+        if (($staff_dtl?->user_type ?? '') != 'DRIVER') {
+            echo '<div>';
+            echo '<label>Advance Balance</label>';
+            echo '<input type="text" readonly class="uk-input" style="color:red; font-weight:bold" value="' . number_format($gen_adv_bal, 2) . '"/>';
+            echo '</div>';
+        }
+
+        if (($staff_dtl->user_type ?? '') == 'DRIVER') {
+            echo '<div>';
+            echo '<label>Trip Advance Balance</label>';
+            echo '<input type="text" readonly class="uk-input" style="color:orange; font-weight:bold" value="' . number_format($trip_adv_bal, 2) . '"/>';
+            echo '</div>';
+        }
+
+        echo '<div>';
+        echo '<label>Salary Balance</label>';
+        echo '<input type="text" readonly class="uk-input" style="color:green; font-weight:bold" value="' . number_format($salary_bal, 2) . '"/>';
         echo '</div>';
+
+        if (($staff_dtl->user_type ?? '') == 'DRIVER') {
+            echo '<div>';
+            echo '<label>Assigned Vehicle</label>';
+            $v_no = $v_result->vehicle_no ?? 'No vehicle found';
+            echo '<input type="text" readonly class="uk-input" value="' . htmlspecialchars($v_no) . '"/>';
+            echo '</div>';
+
+            echo '<div>';
+            echo '<label>Link to Trip <span class="text-danger">* (Required for Driver)</span></label>';
+            echo '<select name="despatch_id" class="uk-select" required>';
+            if (empty($trips)) {
+                echo '<option value="">No Trip Found (Record still saved as Trip Advance)</option>';
+            }
+            foreach ($trips as $t) {
+                $label = "#" . $t->despatch_id . " " . ($t->ref_no ? "(".$t->ref_no.")" : "") . " - " . $t->location;
+                echo '<option value="' . $t->despatch_id . '">' . htmlspecialchars($label) . '</option>';
+            }
+            echo '</select>';
+            echo '</div>';
+        }
 
         echo '</div>';
     }

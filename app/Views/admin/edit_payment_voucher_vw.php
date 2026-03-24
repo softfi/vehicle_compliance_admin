@@ -41,6 +41,7 @@ foreach($single_payment_voucher as $stf_adv){}
         <option value="Vendor" <?= ($stf_adv->user_type == 'Vendor') ? 'selected' : ''; ?>>VENDOR</option>
         <option value="DRIVER" <?= ($stf_adv->user_type == 'DRIVER') ? 'selected' : ''; ?>>Driver</option>
         <option value="STAFF" <?= ($stf_adv->user_type == 'STAFF') ? 'selected' : ''; ?>>Staff</option>
+        <option value="MECHANIC" <?= ($stf_adv->user_type == 'MECHANIC') ? 'selected' : ''; ?>>Mechanic</option>
     </select>
 </div>
 

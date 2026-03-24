@@ -8,7 +8,7 @@
                     <div class="page-title">
                       <div class="row">
                         <div class="col-sm-6 p-0">
-                          <h3>Staff Advance </h3>
+                          <h3>Advance </h3>
                         </div>
                       </div>
                     </div>
@@ -62,7 +62,17 @@
                                                             <option>Cash</option>
                                                             <option>Bank</option>
                                                         </select>
-                                                    </div>
+                                                     </div>
+                                                 <div class="uk-form-controls">
+                                                         <label>Cash Paid By</label>
+                                                        <select class="uk-select" name="paid_by">
+                                                            <option value="">Select</option>
+                                                            <option value="Self">Self</option>
+                                                            <option value="Admin">Admin</option>
+                                                            <option value="Dispatcher">Dispatcher</option>
+                                                            <option value="Pump">Pump</option>
+                                                        </select>
+                                                     </div>
                                                 <div class="">
                                                     <label>Amount</label>
                                                     <input type="number" name="amount" placeholder="Enter Amount" id="amount" class="uk-input" value="" />
@@ -148,6 +158,7 @@
                                                 <th>Amount</th>
                                                 <th>Location</th>
                                                 <th>File</th>
+                                                <th>Print</th>
                                                 <th>Edit</th>
                                                 <th>Delete</th>
                                             </tr>
@@ -170,6 +181,9 @@
                                                         <?php else: ?>
                                                             No Image
                                                         <?php endif; ?>
+                                                    </td>
+                                                    <td>
+                                                        <a href="<?= base_url(); ?>/Admin/print_advance/<?= $record->id; ?>" target="_blank" class="btn btn-info">Print</a>
                                                     </td>
                                     
                                                     <td>
@@ -196,21 +210,22 @@
                                                         
                                                         
                                                          <div class="">
-                                                                                                <label>Staff Type</label>
-                                                                                                <?php
-                                                                                                // Group by user_type
-                                                                                                $user_types = [];
-                                                                                                foreach ($allstaf as $staff) {
-                                                                                                    $user_types[$staff->user_type] = $staff->user_type;
-                                                                                                }
-                                                                                                ?>
-                                                                                                <select id="typeFilter" name="type" class="form-control">
-                                                                                                    <option value="">Select Type</option>
-                                                                                                    <?php foreach ($user_types as $user_type) { ?>
-                                                                                                        <option value="<?= htmlspecialchars($user_type) ?>"><?= htmlspecialchars($user_type) ?></option>
-                                                                                                    <?php } ?>
-                                                                                                </select>
-                                                                                            </div>
+                                                                                        <div class="" style="display:none;">
+                                                         <label>Staff Type</label>
+                                                         <?php
+                                                         // Group by user_type
+                                                         $user_types = [];
+                                                         foreach ($allstaf as $staff) {
+                                                             $user_types[$staff->user_type] = $staff->user_type;
+                                                         }
+                                                         ?>
+                                                         <select id="typeFilter" name="type" class="form-control">
+                                                             <option value="">Select Type</option>
+                                                             <?php foreach ($user_types as $user_type) { ?>
+                                                                 <option value="<?= htmlspecialchars($user_type) ?>"><?= htmlspecialchars($user_type) ?></option>
+                                                             <?php } ?>
+                                                         </select>
+                                                     </div>                                       </div>
                                                         
                                                         <div class="">
                                                                                                 <label>Employ Name</label>
@@ -347,13 +362,14 @@
             $('#staffFilter option').each(function() {
                 var userType = $(this).data('user-type');
                 if (selectedType === "" || userType === selectedType) {
-                    $(this).show();
+                    $(this).prop('disabled', false).css('display', '');
                 } else {
-                    $(this).hide();
+                    $(this).prop('disabled', true).css('display', 'none');
                 }
             });
             // Reset the staff selection
             $('#staffFilter').val('');
+            $('#responseContainer').html('');
         });
     });
 </script>
@@ -381,6 +397,8 @@
                         $('#responseContainer').html('<p>An error occurred while processing your request.</p>'); // Display error message
                     }
                 });
+            } else {
+                $('#responseContainer').html('');
             }
         });
     });

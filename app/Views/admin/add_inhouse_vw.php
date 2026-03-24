@@ -62,7 +62,12 @@
                         </div>
                         <div>
                             <label>Checked by</label>
-                            <input type="text" name="check_by" class="form-control" />
+                            <select name="check_by" class="form-control" required>
+                                <option value="">Select User</option>
+                                <?php foreach($users as $u): ?>
+                                    <option value="<?= $u->id; ?> - <?= $u->full_name; ?>"><?= $u->id; ?> - <?= $u->full_name; ?></option>
+                                <?php endforeach; ?>
+                            </select>
                         </div>
                     </div>
                 </div>
@@ -74,6 +79,19 @@
                         <div class="col-sm-12">
                             <div class="form-group">
                                 <table class="table table-bordered table-hover" id="dynamic_field">
+                                    <thead>
+                                        <tr>
+                                            <th>S.No</th>
+                                            <th>Usage Type</th>
+                                            <th>Item Name</th>
+                                            <th>Qty/Price Info</th>
+                                            <th>Quantity</th>
+                                            <th>Unit Price</th>
+                                            <th>Mechanic Name</th>
+                                            <th>Total Price</th>
+                                            <th>Action</th>
+                                        </tr>
+                                    </thead>
                                     <tr>
                                         <td>1</td>
                                         <td>
@@ -92,7 +110,16 @@
                                         </td>
                                         <td><input type="number" name="qty[]" placeholder="Enter quantity" class="form-control qty" min="0.01" step="any" /></td>
                                         <td><input type="text" name="price[]" placeholder="Auto Price" class="form-control price" readonly /></td>
-                                        <td><input type="text" name="totalprice" placeholder="Total Price" class="form-control tprice" readonly /></td>
+                                         <td>
+                                             <?php
+                                             $mechOptsHtml = '<option value="">Select Mechanic</option>';
+                                             foreach($mechanics as $mec) {
+                                                 $mechOptsHtml .= '<option value="' . $mec->name . '">' . $mec->name . '</option>';
+                                             }
+                                             ?>
+                                             <select name="mechanic_name[]" class="form-control mechanic-select"><?= $mechOptsHtml ?></select>
+                                         </td>
+                                         <td><input type="text" name="totalprice" placeholder="Total Price" class="form-control tprice" readonly /></td>
                                         <td><button type="button" name="add" id="add" class="btn btn-primary">Add More</button></td>
                                     </tr>
                                 </table>
@@ -115,6 +142,13 @@
 <link href="https://cdnjs.cloudflare.com/ajax/libs/select2/4.0.6-rc.0/css/select2.min.css" rel="stylesheet" />
 
 <script>
+    
+    // Global mechanic options for dynamic rows
+    var mechOptGlobal = '<option value="">Select Mechanic</option>';
+    <?php foreach($mechanics as $mec): ?>
+    mechOptGlobal += '<option value="<?= $mec->name; ?>"><?= $mec->name; ?></option>';
+    <?php endforeach; ?>
+
     var currentItemsOptions = '';  // latest options
     var i = $('#dynamic_field tr').length;
 
@@ -139,6 +173,7 @@
     }
 
     function addRow() {
+        var mechOptHtml = mechOptGlobal;
         i++;
 
         // Build options dynamically, excluding already selected items
@@ -162,13 +197,15 @@
                     </select>
                 </td>
                 <td>
-                    <div>
-                        <select name="items[]" class="form-control items">${optionsHtml}</select>
-                        <small class="availableqty text-muted d-block mt-1">Available: 0 | Unit Price: 0.00</small>
-                    </div>
+                    <select name="items[]" class="form-control items">${optionsHtml}</select>
+                </td>
+                <td>
+                    <small class="availableqty text-muted d-block mt-1">Available: 0 | Unit Price: 0.00</small>
                 </td>
                 <td><input type="number" name="qty[]" class="form-control qty" placeholder="Enter quantity" min="0.01" step="any"/></td>
                 <td><input type="text" name="price[]" class="form-control price" readonly/></td>
+                <td><select name="mechanic_name[]" class="form-control mechanic-select">${mechOptHtml}</select></td>
+                <td><input type="text" name="totalprice" placeholder="Total Price" class="form-control tprice" readonly /></td>
                 <td><button type="button" class="btn btn-danger btn_remove">X</button></td>
             </tr>
         `);

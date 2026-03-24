@@ -180,6 +180,59 @@ public function driverasignment($from_date = null, $to_date = null)
 
 		return $builder->get()->getResult();  
 	}
+
+	function extra_diesel_issue($from_date = null, $to_date = null, $vehicle_id = null, $driver_id = null)
+	{
+		if (empty($from_date)) $from_date = date('Y-m-01');
+		if (empty($to_date)) $to_date = date('Y-m-d');
+
+		$builder = $this->db->table('extra_diesel_issue');
+		$builder->select('extra_diesel_issue.*, vehicle.vehicle_no as truck_no, staff.name as driver_name, user.full_name as issued_by_name');
+		$builder->join('vehicle', 'vehicle.id = extra_diesel_issue.vehicle_id', 'left');
+		$builder->join('staff', 'staff.id = extra_diesel_issue.driver_id', 'left');
+		$builder->join('user', 'user.id = extra_diesel_issue.issued_by', 'left');
+		$builder->where('issue_date >=', $from_date);
+		$builder->where('issue_date <=', $to_date);
+		if (!empty($vehicle_id)) $builder->where('extra_diesel_issue.vehicle_id', $vehicle_id);
+		if (!empty($driver_id)) $builder->where('extra_diesel_issue.driver_id', $driver_id);
+		$builder->where('extra_diesel_issue.deleted_by', null);
+		return $builder->get()->getResult();
+	}
+
+	function passenger_vehicle_diesel($from_date = null, $to_date = null, $vehicle_id = null, $location_id = null)
+	{
+		if (empty($from_date)) $from_date = date('Y-m-01');
+		if (empty($to_date)) $to_date = date('Y-m-d');
+
+		$builder = $this->db->table('passenger_vehicle_diesel');
+		$builder->select('passenger_vehicle_diesel.*, vehicle.vehicle_no as truck_no, location.location_name, user.full_name as issued_by_name');
+		$builder->join('vehicle', 'vehicle.id = passenger_vehicle_diesel.vehicle_id', 'left');
+		$builder->join('location', 'location.location_id = passenger_vehicle_diesel.location_id', 'left');
+		$builder->join('user', 'user.id = passenger_vehicle_diesel.issued_by', 'left');
+		$builder->where('entry_date >=', $from_date);
+		$builder->where('entry_date <=', $to_date);
+		if (!empty($vehicle_id)) $builder->where('passenger_vehicle_diesel.vehicle_id', $vehicle_id);
+		if (!empty($location_id)) $builder->where('passenger_vehicle_diesel.location_id', $location_id);
+		$builder->where('passenger_vehicle_diesel.deleted_by', null);
+		return $builder->get()->getResult();
+	}
+
+	function diesel_rate_master()
+	{
+		return $this->db->table('diesel_rate_master')
+						->orderBy('from_date', 'DESC')
+						->get()
+						->getResult();
+	}
+
+	function get_diesel_rate_master($from_date = null, $to_date = null)
+	{
+		$builder = $this->db->table('diesel_rate_master');
+		if (!empty($from_date)) $builder->where('from_date >=', $from_date);
+		if (!empty($to_date)) $builder->where('to_date <=', $to_date);
+		$builder->orderBy('from_date', 'DESC');
+		return $builder->get()->getResult();
+	}
 	
 	function purcartdetails($user_id)
 	{
@@ -2133,7 +2186,7 @@ function staff_salary_details($year, $month, $location)
                       staff_salary_details.net_salary,  
                       location.location_name, 
                       IFNULL(FORMAT(staff_advance.total_advance, 2), "0.00") as total_advance');
-    $builder->where('staff.user_type', 'STAFF');
+    $builder->whereIn('staff.user_type', ['STAFF', 'MECHANIC']);
     if (!empty($location)) {
         $builder->where('staff.address', $location);  // Corrected line
     }

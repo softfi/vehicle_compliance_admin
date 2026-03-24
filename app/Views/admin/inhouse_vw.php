@@ -75,6 +75,7 @@
                             <th>Time</th>
                             <th>Remark</th>
                             <th>Check By</th>
+                            <th>Mechanic Name</th>
                             <th>Location Name</th>
                             <th>Total Amount</th>
                             <th>Action</th>
@@ -93,6 +94,7 @@
                                 <td><?php echo $row->time; ?></td>
                                 <td><?php echo $row->invoiceno; ?></td>
                                 <td><?php echo $row->check_by; ?></td>
+                                <td><?php echo isset($row->mechanic_name) ? $row->mechanic_name : ''; ?></td>
                                 <td><?php echo $row->location_name; ?></td>
                                 <td><?php echo $row->price*$row->qty; ?></td>
                                 <td>
@@ -117,6 +119,7 @@
                             <th>Time</th>
                             <th>Invoice No</th>
                             <th>Check By</th>
+                            <th>Mechanic Name</th>
                             <th>Location Name</th>
                             <th>Total Amount</th>
                             <th>Action</th>
