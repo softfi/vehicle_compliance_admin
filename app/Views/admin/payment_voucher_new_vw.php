@@ -51,6 +51,15 @@
                                     <?php endforeach; ?>
                                 </select>
                             </div>
+                            <div class="col-md-3">
+                                <label class="form-label font-weight-bold">Location <span class="text-danger">*</span></label>
+                                <select name="location_id" class="form-control" required>
+                                    <option value="">-- Select --</option>
+                                    <?php foreach($locations as $loc): ?>
+                                        <option value="<?= $loc->location_id ?>"><?= $loc->location_name ?></option>
+                                    <?php endforeach; ?>
+                                </select>
+                            </div>
                         </div>
 
                         <div class="table-responsive">
@@ -58,10 +67,11 @@
                                 <thead class="bg-primary text-white">
                                     <tr>
                                         <th width="10%">Dr/Cr</th>
-                                        <th width="20%">Select Group</th>
-                                        <th width="30%">Select Particulars</th>
+                                        <th width="20%">Group</th>
+                                        <th width="20%">Particulars</th>
+                                        <th width="20%">Select Cash/Bank Account</th>
                                         <th width="15%">Amount</th>
-                                        <th width="5%"><i class="fa fa-trash"></i></th>
+                                        <th width="5%"><span class="fa fa-trash"></span></th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -83,6 +93,13 @@
                                         <td>
                                             <select name="ledger_id[]" class="form-control ledger-select" required>
                                                 <option value="">Select Particular...</option>
+                                            </select>
+                                        </td>
+                                        <td>
+                                            <select name="bank_id[]" class="form-control bank-select">
+                                                <option value="">-- No Auto-Contra --</option>
+                                                <option value="Cash">Cash</option>
+                                                <option value="Bank">Bank</option>
                                             </select>
                                         </td>
                                         <td>
@@ -139,9 +156,8 @@ $(document).ready(function() {
         $(element).select2({ placeholder: "Search...", width: '100%' });
     }
 
-    // Initialize Select2 on existing rows
-    $('.group-select').each(function() { initSelect2(this); });
-    $('.ledger-select').each(function() { initSelect2(this); });
+    // Initialize Select2
+    $('.group-select, .ledger-select, .bank-select, select[name="location_id"]').each(function() { initSelect2(this); });
 
     $(document).on('change', '.group-select', function() {
         var group_id = $(this).val();
@@ -172,6 +188,7 @@ $(document).ready(function() {
             '<td><select name="type[]" class="form-control type-select" required><option value="1">Dr</option><option value="2">Cr</option></select></td>' +
             '<td><select name="group_id[]" class="form-control group-select" required><option value="">Select Group</option><?php foreach($groups as $g): ?><option value="<?= $g->group_id ?>"><?= htmlspecialchars($g->group_name) ?></option><?php endforeach; ?></select></td>' +
             '<td><select name="ledger_id[]" class="form-control ledger-select" required><option value="">Select Particular...</option></select></td>' +
+            '<td><select name="bank_id[]" class="form-control bank-select"><option value="">-- No Auto-Contra --</option><option value="Cash">Cash</option><option value="Bank">Bank</option></select></td>' +
             '<td><input type="number" step="0.01" name="amount[]" class="form-control amount-input" placeholder="0.00" required></td>' +
             '<td><button type="button" class="btn btn-danger btn-sm remove-row"><i class="fa fa-times"></i></button></td>' +
             '</tr>');
@@ -179,6 +196,7 @@ $(document).ready(function() {
         $tableBody.append($newRow);
         initSelect2($newRow.find('.group-select'));
         initSelect2($newRow.find('.ledger-select'));
+        initSelect2($newRow.find('.bank-select'));
     });
 
     $(document).on('click', '.remove-row', function() {

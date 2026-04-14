@@ -1,0 +1,16 @@
+﻿Field	Type	Null	Key	Default	Extra
+id	int(11)	NO	PRI	NULL	auto_increment
+adv_date	date	YES		NULL	
+staff_id	int(11)	NO		NULL	
+despatch_id	int(11)	YES		NULL	
+paid_by	varchar(255)	YES		NULL	
+advance_type	varchar(100)	YES		NULL	
+bank_cash	enum('Bank','Cash')	NO		NULL	
+amount	decimal(10,2)	NO		NULL	
+location_id	int(11)	NO		NULL	
+upload_file	varchar(255)	YES		NULL	
+created_at	timestamp	NO		current_timestamp()	
+created_by	int(11)	YES		NULL	
+updated_by	int(11)	YES		NULL	
+deleted_by	int(11)	YES		NULL	
+deleted_at	timestamp	NO		current_timestamp()	

@@ -35,7 +35,7 @@ class AditionalAdminPart extends BaseController
 	{
         $builder = $this->db->table('staff');
 		$builder->select('staff.*,location.location_name');
-		$builder->join('location', 'location.location_id = staff.address','left');
+		$builder->join('location', 'location.location_id = staff.location_id','left');
 		return $builder->get()->getResult();
 	}
 
@@ -58,6 +58,7 @@ class AditionalAdminPart extends BaseController
             'Salary',
             'Contact No',
             'Dob',
+            'Location',
             'Address'
         ];
         $sheet->fromArray($headers, NULL, 'A1');
@@ -78,6 +79,7 @@ class AditionalAdminPart extends BaseController
             $sheet->setCellValue('K' . $row, $record->tel);
             $sheet->setCellValue('L' . $row, date('d-m-Y', strtotime($record->doj)));
             $sheet->setCellValue('M' . $row, $record->location_name);
+            $sheet->setCellValue('N' . $row, $record->address);
             $row++;
         }
 
@@ -246,7 +248,7 @@ class AditionalAdminPart extends BaseController
 
     public function download_excel_location()
     {
-        $recordData = $this->db->query("SELECT * FROM location")->getResult();
+        $recordData = $this->db->query("SELECT * FROM location WHERE (status IS NULL OR status='Active')")->getResult();
         $spreadsheet = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
         $sheet = $spreadsheet->getActiveSheet();
         // Set header row (removing 'File' column)
@@ -254,6 +256,8 @@ class AditionalAdminPart extends BaseController
             'Sl no',
             'Location Name',
             'Location Short Name',
+            'Opening Balance',
+            'Radius',
         ];
         $sheet->fromArray($headers, NULL, 'A1');
 
@@ -263,6 +267,8 @@ class AditionalAdminPart extends BaseController
             $sheet->setCellValue('A' . $row, $index + 1);
             $sheet->setCellValue('B' . $row, $record->location_name);
             $sheet->setCellValue('C' . $row, $record->location_shordname);
+            $sheet->setCellValue('D' . $row, $record->opening_balance);
+            $sheet->setCellValue('E' . $row, $record->radius);
             $row++;
         }
 

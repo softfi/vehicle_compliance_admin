@@ -149,6 +149,25 @@
                     <?php if(in_array(40,$jobAssign)){ ?>
                     <li class="sidebar-list"><a class="sidebar-link sidebar-title link-nav " href="<?php echo base_url();?>/admin/payment_voucher"><span>Payment Voucher</span></a></li>
                     <?php } ?>
+                    <?php if(in_array(45,$jobAssign) || in_array(46,$jobAssign) || in_array(47,$jobAssign) || in_array(48,$jobAssign)){ ?>
+                    <li class="sidebar-list">
+                        <a class="sidebar-link sidebar-title" href="#"><span>Attendance</span></a>
+                        <ul class="sidebar-submenu">
+                            <?php if(in_array(45,$jobAssign)){ ?>
+                            <li><a href="<?php echo base_url();?>/admin/attendance">View Attendance</a></li>
+                            <?php } ?>
+
+                            <?php if(in_array(47,$jobAssign)){ ?>
+                            <li><a href="<?php echo base_url();?>/admin/attendance/bulk">Bulk Upload</a></li>
+                            <?php } ?>
+                            <?php if(in_array(48,$jobAssign)){ ?>
+                            <li><a href="<?php echo base_url();?>/admin/attendance/reports">Reports</a></li>
+                            <?php } ?>
+                            <li><a href="<?php echo base_url();?>/admin/attendance/calendar">Calendar View</a></li>
+                            <li><a href="<?php echo base_url();?>/admin/attendance/analytics">Analytics</a></li>
+                        </ul>
+                    </li>
+                    <?php } ?>
                     <li class="sidebar-list">
                         <a class="sidebar-link sidebar-title" href="#"><span>Accounting</span></a>
                         <ul class="sidebar-submenu">
@@ -157,126 +176,120 @@
                             <li><a href="<?= base_url(); ?>admin/journal_voucher_new">Journal Voucher</a></li>
                         </ul> 
                     </li>
-                    <li class="sidebar-list">
                     <?php if(in_array(41,$jobAssign)){ ?>
-                    <a class="sidebar-link sidebar-title" href="#"><span >Payment Report</span></a>
-                    <?php } ?>
-                    <ul class="sidebar-submenu">
-                      <?php if(in_array(42,$jobAssign)){ ?>
-                    <li><a  href="<?php echo base_url();?>/admin/pump_report">Pump</a></li>
-                    <?php } ?>
-                    <?php if(in_array(43,$jobAssign)){ ?>
-                    <li><a  href="<?php echo base_url();?>/admin/party_report">Party</a></li>
-                    <?php } ?>
-                    <?php if(in_array(44,$jobAssign)){ ?>
-                    <li><a  href="<?php echo base_url();?>/admin/vendor_report">Vendor</a></li>
-                    <?php } ?>
-                    </ul> 
-                    
-                  </li>
                     <li class="sidebar-list">
-                    <?php if(in_array(29,$jobAssign)){ ?>
-                      <a class="sidebar-link sidebar-title" href="#"><span >Vehicle </span></a>
-                      <?php } ?>
-                      <ul class="sidebar-submenu">
-                      <?php if(in_array(13,$jobAssign)){ ?>
-                     <li><a  href="<?php echo base_url();?>/admin/vehicle">Vehicle Master</a></li>
-                     <?php } ?>
-                    <?php if(in_array(14,$jobAssign)){ ?>
-                     <li><a  href="<?php echo base_url();?>/admin/Statutory_Entry">Statutory Entry</a></li>
-                     <?php } ?>
-                    
-                     <li><a  href="<?php echo base_url();?>/admin/track_vehicle">Track Vehicle</a></li>
-                     
-                    </ul> 
-                  </li>
-                     
-                    <li class="sidebar-list">
-                        <?php if(in_array(30,$jobAssign)){ ?>
-                        <a class="sidebar-link sidebar-title" href="#"><span >Master Entry </span></a>
-                        <?php } ?>
+                        <a class="sidebar-link sidebar-title" href="#"><span>Payment Report</span></a>
                         <ul class="sidebar-submenu">
-                            <?php if(in_array(15,$jobAssign)){ ?>
-                            <li><a  href="<?php echo base_url();?>/admin/staf">staf/Driver</a></li>
+                            <?php if(in_array(42,$jobAssign)){ ?>
+                            <li><a href="<?php echo base_url();?>/admin/pump_report">Pump</a></li>
                             <?php } ?>
-                            <?php if(in_array(16,$jobAssign)){ ?>
-                            <li><a  href="<?php echo base_url();?>/admin/Vendor">Vendor</a></li>
+                            <?php if(in_array(43,$jobAssign)){ ?>
+                            <li><a href="<?php echo base_url();?>/admin/party_report">Party</a></li>
                             <?php } ?>
-                            <?php if(in_array(17,$jobAssign)){ ?>
-                            <li><a  href="<?php echo base_url();?>/admin/Items">Items</a></li>
+                            <?php if(in_array(44,$jobAssign)){ ?>
+                            <li><a href="<?php echo base_url();?>/admin/vendor_report">Vendor</a></li>
                             <?php } ?>
-                            <?php if(in_array(18,$jobAssign)){ ?>
-                            <li><a  href="<?php echo base_url();?>/admin/unit">Unit</a></li>
-                            <?php } ?>
-                            <?php if(in_array(19,$jobAssign)){ ?>
-                            <li><a  href="<?php echo base_url();?>/admin/location">Location</a></li>
-                            <?php } ?>
-                            <?php if(in_array(20,$jobAssign)){ ?>
-                            <li><a  href="<?php echo base_url();?>/admin/Route">Route</a></li>
-                            <?php } ?>
-                            <?php if(in_array(21,$jobAssign)){ ?>
-                            <li><a  href="<?php echo base_url();?>/admin/bank">Bank</a></li>
-                            <?php } ?>
-                            <li><a  href="<?php echo base_url();?>/admin/group">Master Group</a></li>
-                            <li><a  href="<?php echo base_url();?>/admin/financial_year">Financial Year</a></li>
                         </ul>
                     </li>
-                      
-                   <li class="sidebar-list">
-                       <?php if(in_array(31,$jobAssign)){ ?>
-                      <a class="sidebar-link sidebar-title" href="#"><span >Reports </span></a>
-                       <?php } ?>
-                      <ul class="sidebar-submenu">
-                     <?php if(in_array(22,$jobAssign)){ ?>
-                     <li><a  href="<?php echo base_url();?>/admin/Stock_Report">Stock Report</a></li>
-                     <?php } ?>
-                     <li><a  href="<?php echo base_url();?>/admin/Driver_Report">Driver Report</a></li>
-                     <li><a  href="<?php echo base_url();?>/admin/Vehicle_Report">Vehicle Report</a></li>
-                      <?php if(in_array(23,$jobAssign)){ ?>
-                     <li><a  href="<?php echo base_url();?>/admin/Vehicle_Ledger">Vehicle Ledger </a></li>
-                     <?php } ?>
-                     <li><a href="<?= base_url(); ?>admin/ledger_statement">Ledger Statement</a></li>
-
+                    <?php } ?>
+                    <?php if(in_array(29,$jobAssign)){ ?>
+                    <li class="sidebar-list">
+                        <a class="sidebar-link sidebar-title" href="#"><span>Vehicle</span></a>
+                        <ul class="sidebar-submenu">
+                            <?php if(in_array(13,$jobAssign)){ ?>
+                            <li><a href="<?php echo base_url();?>/admin/vehicle">Vehicle Master</a></li>
+                            <?php } ?>
+                            <?php if(in_array(14,$jobAssign)){ ?>
+                            <li><a href="<?php echo base_url();?>/admin/Statutory_Entry">Statutory Entry</a></li>
+                            <?php } ?>
+                            <li><a href="<?php echo base_url();?>/admin/track_vehicle">Track Vehicle</a></li>
+                        </ul>
+                    </li>
+                    <?php } ?>
                      
-                    </ul> 
-                  </li>
-                  
-                   <li class="sidebar-list">
-                       <?php if(in_array(32,$jobAssign)){ ?>
-                      <a class="sidebar-link sidebar-title" href="#"><span >Tyer management </span></a>
-                       <?php } ?>
-                      <ul class="sidebar-submenu">
-                      <?php if(in_array(24,$jobAssign)){ ?>
-                     <li><a  href="<?php echo base_url();?>/admin/tyer_management" >Purchase Tyer</a></li>
-                     <?php } ?>
-                     <?php if(in_array(34,$jobAssign)){ ?>
-                      <li><a  href="<?php echo base_url();?>/admin/StockTyer_management" >Stock Tyer</a></li>
-                      <?php } ?>
-                       <?php if(in_array(38,$jobAssign)){ ?>
-                      <li><a  href="<?php echo base_url();?>/admin/trashTyer_management" >Trash Tyer</a></li>
-                      <?php } ?>
-                     <?php if(in_array(25,$jobAssign)){ ?>
-                     <li><a  href="<?php echo base_url();?>/admin/Asign_Tyer">Asign Tyer</a></li>
-                     <?php } ?>
-                     <?php if(in_array(26,$jobAssign)){ ?>
-                     <li><a  href="<?php echo base_url();?>/admin/tyer_report">Report Tyer</a></li>
-                     <?php } ?>
-                     <?php if(in_array(33,$jobAssign)){ ?>
-                     <li><a  href="<?php echo base_url();?>/admin/repaire_report">Repaire Report</a></li>
-                      <?php } ?>
+                    <?php if(in_array(30,$jobAssign)){ ?>
+                    <li class="sidebar-list">
+                        <a class="sidebar-link sidebar-title" href="#"><span>Master Entry</span></a>
+                        <ul class="sidebar-submenu">
+                            <?php if(in_array(15,$jobAssign)){ ?>
+                            <li><a href="<?php echo base_url();?>/admin/staf">Staff/Driver</a></li>
+                            <?php } ?>
+                            <?php if(in_array(16,$jobAssign)){ ?>
+                            <li><a href="<?php echo base_url();?>/admin/Vendor">Vendor</a></li>
+                            <?php } ?>
+                            <?php if(in_array(17,$jobAssign)){ ?>
+                            <li><a href="<?php echo base_url();?>/admin/Items">Items</a></li>
+                            <?php } ?>
+                            <?php if(in_array(18,$jobAssign)){ ?>
+                            <li><a href="<?php echo base_url();?>/admin/unit">Unit</a></li>
+                            <?php } ?>
+                            <?php if(in_array(19,$jobAssign)){ ?>
+                            <li><a href="<?php echo base_url();?>/admin/location">Location</a></li>
+                            <?php } ?>
+                            <?php if(in_array(20,$jobAssign)){ ?>
+                            <li><a href="<?php echo base_url();?>/admin/Route">Route</a></li>
+                            <?php } ?>
+                            <?php if(in_array(21,$jobAssign)){ ?>
+                            <li><a href="<?php echo base_url();?>/admin/bank">Bank</a></li>
+                            <?php } ?>
+                            <li><a href="<?php echo base_url();?>/admin/group">Master Group</a></li>
+                            <li><a href="<?php echo base_url();?>/admin/financial_year">Financial Year</a></li>
+                        </ul>
+                    </li>
+                    <?php } ?>
                       
-                    <ul> 
-                  </li>
+                    <?php if(in_array(31,$jobAssign)){ ?>
+                    <li class="sidebar-list">
+                        <a class="sidebar-link sidebar-title" href="#"><span>Reports</span></a>
+                        <ul class="sidebar-submenu">
+                            <?php if(in_array(22,$jobAssign)){ ?>
+                            <li><a href="<?php echo base_url();?>/admin/Stock_Report">Stock Report</a></li>
+                            <?php } ?>
+                            <li><a href="<?php echo base_url();?>/admin/Driver_Report">Driver Report</a></li>
+                            <li><a href="<?php echo base_url();?>/admin/Vehicle_Report">Vehicle Report</a></li>
+                            <?php if(in_array(23,$jobAssign)){ ?>
+                            <li><a href="<?php echo base_url();?>/admin/Vehicle_Ledger">Vehicle Ledger</a></li>
+                            <?php } ?>
+                            <li><a href="<?= base_url(); ?>admin/ledger_statement">Ledger Statement</a></li>
+                        </ul>
+                    </li>
+                    <?php } ?>
+                  
+                   <?php if(in_array(32,$jobAssign)){ ?>
+                   <li class="sidebar-list">
+                       <a class="sidebar-link sidebar-title" href="#"><span>Tyre Management</span></a>
+                       <ul class="sidebar-submenu">
+                           <?php if(in_array(24,$jobAssign)){ ?>
+                           <li><a href="<?php echo base_url();?>/admin/tyer_management">Purchase Tyre</a></li>
+                           <?php } ?>
+                           <?php if(in_array(34,$jobAssign)){ ?>
+                           <li><a href="<?php echo base_url();?>/admin/StockTyer_management">Stock Tyre</a></li>
+                           <?php } ?>
+                           <?php if(in_array(38,$jobAssign)){ ?>
+                           <li><a href="<?php echo base_url();?>/admin/trashTyer_management">Trash Tyre</a></li>
+                           <?php } ?>
+                           <?php if(in_array(25,$jobAssign)){ ?>
+                           <li><a href="<?php echo base_url();?>/admin/Asign_Tyer">Assign Tyre</a></li>
+                           <?php } ?>
+                           <?php if(in_array(26,$jobAssign)){ ?>
+                           <li><a href="<?php echo base_url();?>/admin/tyer_report">Report Tyre</a></li>
+                           <?php } ?>
+                           <?php if(in_array(33,$jobAssign)){ ?>
+                           <li><a href="<?php echo base_url();?>/admin/repaire_report">Repair Report</a></li>
+                           <?php } ?>
+                       </ul>
+                   </li>
+                   <?php } ?>
                   
                    <!--<li class="sidebar-list"><a class="sidebar-link sidebar-title link-nav " href="<?php echo base_url();?>/admin/staff_Salary"><span>Download Database  </span></a></li> -->
                 
-                 <li class="sidebar-list">
-                        <?php if(in_array(34,$jobAssign)){ ?>
-                        <a class="sidebar-link sidebar-title link-nav" href="<?php echo base_url();?>/AditionalAdminPart/downloadDatabase">
-                            <span>Download Database</span>
-                        </a>
-                         <?php } ?>
-                 </li>
+                   <?php if(in_array(34,$jobAssign)){ ?>
+                   <li class="sidebar-list">
+                       <a class="sidebar-link sidebar-title link-nav" href="<?php echo base_url();?>/AditionalAdminPart/downloadDatabase">
+                           <span>Download Database</span>
+                       </a>
+                   </li>
+                   <?php } ?>
                 </ul>
               </div>
               <div class="right-arrow" id="right-arrow"><i data-feather="arrow-right"></i></div>

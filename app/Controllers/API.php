@@ -485,7 +485,7 @@ class API extends BaseController
             // Query to fetch staff details with location
             $builder = $this->db->table('staff');
             $builder->select('staff.*, location.location_name');
-            $builder->join('location', 'location.location_id = staff.address', 'left');
+            $builder->join('location', 'location.location_id = staff.location_id', 'left');
             $staff = $builder->get()->getResult();
 
             return $this->respond([

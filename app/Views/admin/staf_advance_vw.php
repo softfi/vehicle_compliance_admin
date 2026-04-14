@@ -42,11 +42,11 @@
                                                         <select id="staffFilter" name="staff_id" class="uk-input"  required>
                                                             <option value="">Select </option>
                                                             <?php foreach ($allstaf as $staff) { ?>
-                                                                <option data-user-type="<?= htmlspecialchars($staff->user_type) ?>" value="<?= htmlspecialchars($staff->id) ?>">
-                                                                    <?= htmlspecialchars($staff->name) ?> (<?= htmlspecialchars($staff->staff_code) ?>)
-                                                                </option>
+                                                <option data-user-type="<?= htmlspecialchars($staff->user_type) ?>" data-location-id="<?= htmlspecialchars($staff->location_id) ?>" value="<?= htmlspecialchars($staff->id) ?>">
+                                                    <?= htmlspecialchars($staff->name) ?> (<?= htmlspecialchars($staff->staff_code) ?>)
+                                                </option>
 
-                                                            <?php } ?>
+                                            <?php } ?>
                                                         </select>
                                                     </div>
                                                  <div class="">
@@ -370,6 +370,17 @@
             // Reset the staff selection
             $('#staffFilter').val('');
             $('#responseContainer').html('');
+        });
+
+        $('#staffFilter').change(function() {
+            var selectedOption = $(this).find('option:selected');
+            var userType = selectedOption.data('user-type');
+            var locationId = selectedOption.data('location-id');
+
+            // Automatically select the location if the staff type is Staff Master (STAFF)
+            if (userType === 'STAFF' && locationId) {
+                $('select[name="location_id"]').val(locationId);
+            }
         });
     });
 </script>

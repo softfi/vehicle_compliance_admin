@@ -1,0 +1,6 @@
+﻿Field	Type	Null	Key	Default	Extra
+location_id	int(11)	NO	PRI	NULL	auto_increment
+location_name	varchar(250)	YES		NULL	
+location_shordname	varchar(250)	YES		NULL	
+opening_balance	decimal(10,2)	YES		0.00	
+status	enum('Active','Inactive')	YES		Active	

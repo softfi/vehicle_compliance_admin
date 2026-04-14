@@ -46,7 +46,7 @@ foreach($single_stafadv as $stf_adv){}
                                                         <select id="staffFilter" name="staff_id" class="uk-input"  required>
                                                             <option value="">Select </option>
                                                             <?php foreach ($allstaf as $staff) { ?>
-                                                                <option  <?php if($stf_adv->staff_id==$staff->id){echo "selected";}?>  data-user-type="<?= htmlspecialchars($staff->user_type) ?>" value="<?= htmlspecialchars($staff->id) ?>">
+                                                                <option  <?php if($stf_adv->staff_id==$staff->id){echo "selected";}?>  data-user-type="<?= htmlspecialchars($staff->user_type) ?>" data-location-id="<?= htmlspecialchars($staff->address) ?>" value="<?= htmlspecialchars($staff->id) ?>">
                                                                     <?= htmlspecialchars($staff->name) ?>
                                                                 </option>
                                                             <?php } ?>
@@ -138,6 +138,17 @@ $(document).ready(function() {
         });
         // Reset the staff selection
         $('#staffFilter').val('');
+    });
+
+    $('#staffFilter').change(function() {
+        var selectedOption = $(this).find('option:selected');
+        var userType = selectedOption.data('user-type');
+        var locationId = selectedOption.data('location-id');
+
+        // Automatically select the location if the staff type is Staff Master (STAFF)
+        if (userType === 'STAFF' && locationId) {
+            $('select[name="location_id"]').val(locationId);
+        }
     });
 });
 </script>

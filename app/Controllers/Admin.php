@@ -227,7 +227,7 @@ class Admin extends BaseController
         // print_r($data['vehicle']);exit;
         $data['setting'] = $this->AdminModel->Settingdata();
         $data['singleuser'] = $this->AdminModel->userdata($user_id);
-        $data['locations'] = $this->db->query("SELECT * FROM location")->getResult();
+        $data['locations'] = $this->db->query("SELECT * FROM location WHERE (status IS NULL OR status='Active')")->getResult();
         return view('admin/vehicle', $data);
     }
     function Insertvehicle()
@@ -239,7 +239,7 @@ class Admin extends BaseController
             $data['setting'] = $this->AdminModel->Settingdata();
             $data['singleuser'] = $this->AdminModel->userdata($user_id);
             $data['vehicle'] = $this->AdminModel->Vehicle();
-            $data['locations'] = $this->db->query("SELECT * FROM location")->getResult();
+            $data['locations'] = $this->db->query("SELECT * FROM location WHERE (status IS NULL OR status='Active')")->getResult();
             $vehicleType = $this->request->getPost('vehicle_type');
             if($vehicleType == '1'){
                 
@@ -595,7 +595,7 @@ class Admin extends BaseController
 
         $vehicle_id = $this->request->getPost('vehicle_id');
         $vechile = $this->db->query("SELECT * FROM vehicle  where id='$vehicle_id' ")->getResult();
-        $location = $this->db->query("SELECT * FROM location")->getResult();
+        $location = $this->db->query("SELECT * FROM location WHERE (status IS NULL OR status='Active')")->getResult();
         foreach ($vechile as $vec) {
         }
 ?>
@@ -877,25 +877,56 @@ class Admin extends BaseController
     public function staf()
     {
         if ($this->session->get('user_id')) {
-    
+
             $user_id = $this->session->get('user_id');
-    
+
             if ($this->session->get('user_type') != 1 and $this->session->get('user_type') != 2) {
                 return redirect()->to('admin/');
             }
+
             $builder = $this->db->table('staff');
             $builder->select('staff.*, location.location_name');
-            $builder->join('location', 'location.location_id = staff.address', 'left');
+
+            // ✅ FIXED JOIN (IMPORTANT)
+            $builder->join('location', 'location.location_id = staff.location_id', 'left');
+
             $data['allstaf'] = $builder->get()->getResult();
+
             $data['setting'] = $this->AdminModel->Settingdata();
             $data['singleuser'] = $this->AdminModel->userdata($user_id);
-            $data['location'] = $this->db->query("SELECT * FROM location")->getResult();
-    
+
+            // ✅ location dropdown ke liye
+            $data['location'] = $this->db->query("SELECT * FROM location WHERE (status IS NULL OR status='Active')")->getResult();
+
             return view('admin/staf_vw', $data);
+
         } else {
             return redirect()->to('admin/');
         }
     }
+
+    // public function staf()
+    // {
+    //     if ($this->session->get('user_id')) {
+    
+    //         $user_id = $this->session->get('user_id');
+    
+    //         if ($this->session->get('user_type') != 1 and $this->session->get('user_type') != 2) {
+    //             return redirect()->to('admin/');
+    //         }
+    //         $builder = $this->db->table('staff');
+    //         $builder->select('staff.*, location.location_name');
+    //         $builder->join('location', 'location.location_id = staff.address', 'left');
+    //         $data['allstaf'] = $builder->get()->getResult();
+    //         $data['setting'] = $this->AdminModel->Settingdata();
+    //         $data['singleuser'] = $this->AdminModel->userdata($user_id);
+    //         $data['location'] = $this->db->query("SELECT * FROM location WHERE (status IS NULL OR status='Active')")->getResult();
+    
+    //         return view('admin/staf_vw', $data);
+    //     } else {
+    //         return redirect()->to('admin/');
+    //     }
+    // }
     
     public function Add_staf()
     {
@@ -903,7 +934,7 @@ class Admin extends BaseController
         $data['setting'] = $this->AdminModel->Settingdata();
         $data['singleuser'] = $this->AdminModel->userdata($user_id);
         $data['allstaf'] = $this->AdminModel->Getallstaf(3);
-        $data['location'] = $this->db->query("SELECT * FROM location")->getResult();
+        $data['location'] = $this->db->query("SELECT * FROM location WHERE (status IS NULL OR status='Active')")->getResult();
 
         // Define validation rules
         $rules = [
@@ -916,7 +947,8 @@ class Admin extends BaseController
             // 'aadhaar_no' => 'required|max_length[20]',
             // 'aadhaar' => 'uploaded[aadhaar]|max_size[aadhaar,2048]|is_image[aadhaar]',
             'tel' => 'required|numeric|min_length[10]|max_length[15]',
-            'address' => 'required|max_length[255]',
+            'address'     => 'permit_empty|max_length[255]',
+            'location_id' => 'permit_empty|integer',
         ];
 
         // Validate the input data
@@ -941,6 +973,7 @@ class Admin extends BaseController
             $blood_group = $this->request->getPost('blood_group');
             $opening_balance = $this->request->getPost('opening_balance');
             $address = $this->request->getPost('address');
+            $location_id = $this->request->getPost('location_id');
 
             // Handle file uploads
             $imgPath = $this->uploadFile('img');
@@ -973,7 +1006,8 @@ class Admin extends BaseController
                 'family_contact' => $family_contact,
                 'blood_group' => $blood_group,
                 'opening_balance' => $opening_balance,
-                'address' => $address,
+                'address'         => $address,
+                'location_id'     => $location_id ?: null,
             ];
 
             $yearMonth = date('Y-m-d');
@@ -1030,7 +1064,7 @@ class Admin extends BaseController
         $staff = $this->db->query("SELECT * FROM staff WHERE id='$staff_id'")->getRow();
         // echo "<pre>";
         // print_r($staff);exit;
-        $location = $this->db->query("SELECT * FROM location")->getResult();
+        $location = $this->db->query("SELECT * FROM location WHERE (status IS NULL OR status='Active')")->getResult();
 
         if ($staff) {
         ?>
@@ -1201,7 +1235,7 @@ class Admin extends BaseController
     {
         $staff_id = $this->request->getPost('staff_id');
         $staff = $this->db->query("SELECT * FROM staff WHERE id='$staff_id'")->getRow();
-        $location = $this->db->query("SELECT * FROM location")->getResult();
+        $location = $this->db->query("SELECT * FROM location WHERE (status IS NULL OR status='Active')")->getResult();
 
         if ($staff) {
         ?>
@@ -1416,21 +1450,27 @@ class Admin extends BaseController
                                 <?php endif; ?>
                             </div>
                         </div>
-                        <div class="col-sm-12">
+                        <div class="col-sm-6">
                             <div class="form-group">
-                                <label>Address</label>
-                                <label for="location">Location</label>
-                                <select name="address" id="location" class="form-control">
+                                <label for="location">Workstation Location</label>
+                                <select name="location_id" id="location" class="form-control">
                                     <option value="">Select location</option>
                                     <?php foreach ($location as $loc): ?>
-                                        <option <?= ($loc->location_id == $staff->address) ? 'selected' : ''; ?> value="<?= $loc->location_id; ?>"><?= $loc->location_name; ?></option>
+                                        <option <?= ($loc->location_id == $staff->location_id || (empty($staff->location_id) && $loc->location_id == $staff->address)) ? 'selected' : ''; ?> value="<?= $loc->location_id; ?>"><?= $loc->location_name; ?></option>
                                     <?php endforeach; ?>
                                 </select>
-
+                                <?php if (isset($validation) && $validation->getError('location_id')): ?>
+                                    <span class="text-danger"><?= $validation->getError('location_id'); ?></span>
+                                <?php endif; ?>
+                            </div>
+                        </div>
+                        <div class="col-sm-6">
+                            <div class="form-group">
+                                <label>Home Address</label>
+                                <input type="text" name="address" class="form-control" placeholder="Enter Physical Address" value="<?= $staff->address; ?>">
                                 <?php if (isset($validation) && $validation->getError('address')): ?>
                                     <span class="text-danger"><?= $validation->getError('address'); ?></span>
                                 <?php endif; ?>
-
                             </div>
                         </div>
                     </div>
@@ -1445,7 +1485,7 @@ class Admin extends BaseController
     }
     public function edit_staf()
     {
-        $staff_id = $this->request->getPost('staff_id');
+        $staff_id = $this->request->getVar('staff_id');
         $user_id = $this->session->get('user_id');
         $data['allstaf'] = $this->AdminModel->Getallstaf();
         $data['singleuser'] = $this->AdminModel->userdata($user_id);
@@ -1454,7 +1494,8 @@ class Admin extends BaseController
             'name' => 'required|max_length[100]',
             'salary' => 'required|numeric',
             'tel' => 'required|numeric|min_length[10]|max_length[15]',
-            'address' => 'required|integer',
+            'address'     => 'permit_empty|max_length[255]',
+            'location_id' => 'permit_empty',
         ];
 
         if ($this->validate($rules)) {
@@ -1473,10 +1514,11 @@ class Admin extends BaseController
                 'fathers_name'    => $this->request->getPost('fathers_name'),
                 'spouse_name'     => $this->request->getPost('spouse_name'),
                 'dob'             => $this->request->getPost('dob'),
-                'family_contact'  => $this->request->getPost('family_contact'),
-                'blood_group'     => $this->request->getPost('blood_group'),
-                'opening_balance' => $this->request->getPost('opening_balance'),
-                'address'         => $this->request->getPost('address'),
+                'family_contact'  => $this->request->getVar('family_contact'),
+                'blood_group'     => $this->request->getVar('blood_group'),
+                'opening_balance' => $this->request->getVar('opening_balance'),
+                'address'         => $this->request->getVar('address'),
+                'location_id'     => $this->request->getVar('location_id') ?: null,
             ];
 
             // Handle file uploads correctly
@@ -1544,7 +1586,8 @@ class Admin extends BaseController
                             'dob' => $row[10],
                             'family_contact' => $row[11],
                             'blood_group' => $row[12],
-                            'address' => $loc->location_id,
+                            'address' => $row[13],
+                            'location_id' => $loc->location_id,
                             'img' => $row[14], // Add img field
                             'dl_number' => $row[15], // Add DL number field
                             'aadhaar_no' => $row[16], // Add Aadhaar number field
@@ -1595,7 +1638,7 @@ class Admin extends BaseController
             $data['setting'] = $this->AdminModel->Settingdata();
             $data['singleuser'] = $this->AdminModel->userdata($user_id);
             $data['allvendor'] = $this->AdminModel->Get_vendor();
-            $data['location'] = $this->db->query("SELECT * FROM location")->getResult();
+            $data['location'] = $this->db->query("SELECT * FROM location WHERE (status IS NULL OR status='Active')")->getResult();
             // 			echo "<pre>";
             //             print_r($data['allvendor']);exit;
 
@@ -1665,7 +1708,7 @@ class Admin extends BaseController
                 $data['setting'] = $this->AdminModel->Settingdata();
                 $data['singleuser'] = $this->AdminModel->userdata($user_id);
                 $data['allvendor'] = $this->AdminModel->Get_vendor();
-                $data['location'] = $this->db->query("SELECT * FROM location")->getResult();
+                $data['location'] = $this->db->query("SELECT * FROM location WHERE (status IS NULL OR status='Active')")->getResult();
                 echo view('admin/vendor_vw', $data);
             }
         } else {
@@ -1673,7 +1716,7 @@ class Admin extends BaseController
             $data['setting'] = $this->AdminModel->Settingdata();
             $data['singleuser'] = $this->AdminModel->userdata($user_id);
             $data['allvendor'] = $this->AdminModel->Get_vendor();
-            $data['location'] = $this->db->query("SELECT * FROM location")->getResult();
+            $data['location'] = $this->db->query("SELECT * FROM location WHERE (status IS NULL OR status='Active')")->getResult();
             echo view('admin/staf_vw', $data);
         }
     }
@@ -1780,7 +1823,7 @@ class Admin extends BaseController
     {
         $vendor_id = $this->request->getPost('vendor_id');
         $vendor = $this->db->query("SELECT * FROM vendor WHERE id='$vendor_id'")->getRow();
-        $location = $this->db->query("SELECT * FROM location")->getResult();
+        $location = $this->db->query("SELECT * FROM location WHERE (status IS NULL OR status='Active')")->getResult();
         if ($vendor) {
         ?>
             <form action="<?= base_url(); ?>/Admin/EditVendor" enctype="multipart/form-data" method="post">
@@ -1863,7 +1906,7 @@ class Admin extends BaseController
         $data['setting'] = $this->AdminModel->Settingdata();
         $data['singleuser'] = $this->AdminModel->userdata($user_id);
         $data['allvendor'] = $this->AdminModel->Get_vendor();
-        $data['location'] = $this->db->query("SELECT * FROM location")->getResult();
+        $data['location'] = $this->db->query("SELECT * FROM location WHERE (status IS NULL OR status='Active')")->getResult();
 
         $rules = [
             'name' => 'required',
@@ -2074,7 +2117,7 @@ class Admin extends BaseController
             $user_id = $this->session->get('user_id');
             $data['setting'] = $this->AdminModel->Settingdata();
             $data['singleuser'] = $this->AdminModel->userdata($user_id);
-            $data['location'] = $this->db->query("SELECT * FROM location")->getResult();;
+            $data['location'] = $this->db->query("SELECT * FROM location WHERE (status IS NULL OR status='Active')")->getResult();;
             $rules = [
                 'city_name' => 'required|is_unique[location.location_name]',
                 'short_name' => 'required|max_length[100]',
@@ -2084,10 +2127,16 @@ class Admin extends BaseController
             if ($this->validate($rules)) {
                 $city_name = $this->request->getPost('city_name');
                 $short_name = $this->request->getPost('short_name');
+                $opening_balance = $this->request->getPost('opening_balance');
+                $radius = $this->request->getPost('radius');
+                $status = $this->request->getPost('status') ?: 'Active';
 
                 $data = [
                     'location_name' => $city_name,
                     'location_shordname' => $short_name,
+                    'opening_balance' => $opening_balance,
+                    'radius' => $radius,
+                    'status' => $status,
                 ];
                 $this->db->table('location')->insert($data);
                 return redirect()->to('admin/location');
@@ -2124,6 +2173,8 @@ class Admin extends BaseController
 
                 $location_name = $row[0];
                 $location_shordname = $row[1];
+                $opening_balance = $row[2] ?? 0;
+                $radius = $row[3] ?? 0;
 
                 // Check if the location_name or location_shordname already exists
                 $existingLocation = $this->db->table('location')
@@ -2137,6 +2188,8 @@ class Admin extends BaseController
                     $data = [
                         'location_name' => $location_name,
                         'location_shordname' => $location_shordname,
+                        'opening_balance' => $opening_balance,
+                        'radius' => $radius,
                     ];
 
                     $this->db->table('location')->insert($data);
@@ -2157,10 +2210,16 @@ class Admin extends BaseController
             $unit_id = $this->request->getVar('unit_id');
             $name = $this->request->getVar('name');
             $sname = $this->request->getVar('sname');
+            $opening_balance = $this->request->getVar('opening_balance');
+            $radius = $this->request->getVar('radius');
+            $status = $this->request->getVar('status');
 
             $data = [
                 'location_name' => $name,
                 'location_shordname' => $sname,
+                'opening_balance' => $opening_balance,
+                'radius' => $radius,
+                'status' => $status,
             ];
 
             $this->db->table('location')->update($data, ['location_id' => $unit_id]);
@@ -2168,6 +2227,18 @@ class Admin extends BaseController
             return redirect()->to('admin/location');
         } else {
             return redirect()->to('admin/');
+        }
+    }
+    
+    public function update_location_status()
+    {
+        if ($this->session->get('user_id')) {
+            $id = $this->request->getPost('id');
+            $status = $this->request->getPost('status');
+            $this->db->table('location')->update(['status' => $status], ['location_id' => $id]);
+            return $this->response->setJSON(['status' => 1, 'message' => 'Status Updated successfully']);
+        } else {
+            return $this->response->setJSON(['status' => 0, 'message' => 'Unauthorized']);
         }
     }
     function delete_location()
@@ -2307,7 +2378,7 @@ class Admin extends BaseController
         $data['setting'] = $this->AdminModel->Settingdata();
         $data['singleuser'] = $this->AdminModel->userdata($user_id);
         $data['units'] = $this->db->query("SELECT * FROM units")->getResult();
-        $data['location'] = $this->db->query("SELECT * FROM location")->getResult();
+        $data['location'] = $this->db->query("SELECT * FROM location WHERE (status IS NULL OR status='Active')")->getResult();
         $data['items'] = $this->AdminModel->itemdtls();
         // echo "<pre>";
         // print_r($data['items']);exit;
@@ -2337,7 +2408,7 @@ class Admin extends BaseController
         $data['setting'] = $this->AdminModel->Settingdata();
         $data['singleuser'] = $this->AdminModel->userdata($user_id);
         $data['units'] = $this->db->query("SELECT * FROM units")->getResult();
-        $data['location'] = $this->db->query("SELECT * FROM location")->getResult();
+        $data['location'] = $this->db->query("SELECT * FROM location WHERE (status IS NULL OR status='Active')")->getResult();
         $data['items'] = $this->AdminModel->itemdtls();
 
         // Set validation rules
@@ -2393,7 +2464,7 @@ class Admin extends BaseController
 
         $item_id = $this->request->getVar('id');
         $units = $this->db->query("SELECT * FROM units")->getResult();
-        $location = $this->db->query("SELECT * FROM location")->getResult();
+        $location = $this->db->query("SELECT * FROM location WHERE (status IS NULL OR status='Active')")->getResult();
         $items = $this->db->query("SELECT * FROM items where id='$item_id'")->getResult();
 
         foreach ($items as $itm) {
@@ -2478,7 +2549,7 @@ class Admin extends BaseController
         $data['setting'] = $this->AdminModel->Settingdata();
         $data['singleuser'] = $this->AdminModel->userdata($user_id);
         $data['units'] = $this->db->query("SELECT * FROM units")->getResult();
-        $data['location'] = $this->db->query("SELECT * FROM location")->getResult();
+        $data['location'] = $this->db->query("SELECT * FROM location WHERE (status IS NULL OR status='Active')")->getResult();
         $data['items'] = $this->AdminModel->itemdtls();
 
         // Set validation rules
@@ -2659,7 +2730,7 @@ class Admin extends BaseController
             $data['stock_dtls'] = $this->AdminModel->stock_dtls();
             $data['vendor'] = $this->AdminModel->Get_vendor();
             $data['vendor'] = $this->db->query("SELECT * FROM vendor")->getResult();
-            $data['location'] = $this->db->query("SELECT * FROM location")->getResult();
+            $data['location'] = $this->db->query("SELECT * FROM location WHERE (status IS NULL OR status='Active')")->getResult();
             $data['items'] = $this->db->query("SELECT * FROM items")->getResult();
 
             return view('admin/edit_stock_vw', $data);
@@ -2712,7 +2783,7 @@ class Admin extends BaseController
             $data['setting'] = $this->AdminModel->Settingdata();
             $data['singleuser'] = $this->AdminModel->userdata($user_id);
             $data['stock_dtls'] = $this->AdminModel->stock_dtls();
-            $data['location'] = $this->db->query("SELECT * FROM location")->getResult();
+            $data['location'] = $this->db->query("SELECT * FROM location WHERE (status IS NULL OR status='Active')")->getResult();
             $data['vendor'] = $this->db->query("SELECT * FROM vendor")->getResult();
             return view('admin/Allstock_vw', $data);
         } else {
@@ -2788,7 +2859,7 @@ class Admin extends BaseController
             $data['product'] = $this->AdminModel->items();
             $data['cart_dtls'] = $this->AdminModel->stockTransferdetails($user_id);
             $data['vendor'] = $this->AdminModel->Get_vendor();
-            $data['location'] = $this->db->query("SELECT * FROM location")->getResult();
+            $data['location'] = $this->db->query("SELECT * FROM location WHERE (status IS NULL OR status='Active')")->getResult();
             return view('admin/stock_transfer_vw', $data);
         } else {
             return redirect()->to('Admin/');
@@ -3080,7 +3151,7 @@ class Admin extends BaseController
             $data['product'] = $this->AdminModel->items();
             $data['cart_dtls'] = $this->AdminModel->purcartdetails($user_id);
             $data['vendor'] = $this->AdminModel->Get_vendor();
-            $data['location'] = $this->db->query("SELECT * FROM location")->getResult();
+            $data['location'] = $this->db->query("SELECT * FROM location WHERE (status IS NULL OR status='Active')")->getResult();
             // $data['item'] = $this->AdminModel->getItem();
 
             // 			echo '<pre>';
@@ -3425,7 +3496,7 @@ class Admin extends BaseController
             $data['setting'] = $this->AdminModel->Settingdata();
             $data['singleuser'] = $this->AdminModel->userdata($user_id);
             $data['vehicles'] = $this->AdminModel->Getvehicle();
-            $data['location'] = $this->db->query("SELECT * FROM location")->getResult();
+            $data['location'] = $this->db->query("SELECT * FROM location WHERE (status IS NULL OR status='Active')")->getResult();
             $data['items'] = $this->AdminModel->itemdtls();
             $data['users'] = $this->db->table('user')->get()->getResult();
             $data['mechanics'] = $this->db->table('staff')->where('user_type', 'MECHANIC')->get()->getResult();
@@ -3458,7 +3529,7 @@ class Admin extends BaseController
             $to_date = $this->request->getVar('to_date') ?? date('Y-m-d'); // Default to the current date
             $location_id = $this->request->getVar('location');
             $data['selected_location_id'] = $location_id; // send selected location
-            $data['location'] = $this->db->query("SELECT * FROM location")->getResult();
+            $data['location'] = $this->db->query("SELECT * FROM location WHERE (status IS NULL OR status='Active')")->getResult();
             $data['setting'] = $this->AdminModel->Settingdata();
             $data['singleuser'] = $this->AdminModel->userdata($user_id);
             $data['inhousedtls'] = $this->AdminModel->inhouse_dtls($from_date, $to_date, $location_id); // Pass the dates
@@ -3747,7 +3818,7 @@ class Admin extends BaseController
             $data['singleuser'] = $this->AdminModel->userdata($user_id);
             $data['vehicle'] = $this->AdminModel->Getvehicle();
             $data['vendor'] = $this->AdminModel->Get_vendor();
-            $data['location'] = $this->db->query("SELECT * FROM location")->getResult();
+            $data['location'] = $this->db->query("SELECT * FROM location WHERE (status IS NULL OR status='Active')")->getResult();
             $data['outside'] = $this->AdminModel->out_side($from_date, $to_date);
             $data['date'] = [
                 'from_date' => $from_date,
@@ -3934,7 +4005,7 @@ class Admin extends BaseController
             $to_date = $this->request->getVar('to_date');
             $data['setting'] = $this->AdminModel->Settingdata();
             $data['singleuser'] = $this->AdminModel->userdata($user_id);
-            $data['location'] = $this->db->query("SELECT * FROM location")->getResult();
+            $data['location'] = $this->db->query("SELECT * FROM location WHERE (status IS NULL OR status='Active')")->getResult();
             $data['allstaf'] = $this->AdminModel->Getallstaf();
             $data['staffadvance'] = $this->AdminModel->staffadvance($from_date, $to_date);
             $data['date'] = [
@@ -4163,7 +4234,7 @@ class Admin extends BaseController
 
             $data['setting'] = $this->AdminModel->Settingdata();
             $data['singleuser'] = $this->AdminModel->userdata($user_id);
-            $data['location'] = $this->db->query("SELECT * FROM location")->getResult();
+            $data['location'] = $this->db->query("SELECT * FROM location WHERE (status IS NULL OR status='Active')")->getResult();
             $data['allstaf'] = $this->AdminModel->Getallstaf();
 
             $data['single_stafadv'] = $this->db->query("SELECT * FROM staff_advance  where staff_advance.id='$segment' ")->getResult();
@@ -4212,18 +4283,104 @@ class Admin extends BaseController
             return redirect()->to('admin/');
         }
     }
-    public function CashBank(){
-        if ($this->session->get('user_id')) {
-
-            $user_id = $this->session->get('user_id');
-            $data['setting'] = $this->AdminModel->Settingdata();
-            $data['singleuser'] = $this->AdminModel->userdata($user_id);
-            // echo "<pre>";
-            // print_r($data['staffadvance']);exit;	
-            return view('admin/cashbank_vw', $data);
-        } else {
+    public function CashBank()
+    {
+        if ($this->session->get('user_id') == '') {
             return redirect()->to('Admin/');
         }
+
+        $user_id = $this->session->get('user_id');
+        $data['setting'] = $this->AdminModel->Settingdata();
+        $data['singleuser'] = $this->AdminModel->userdata($user_id);
+
+        $location_id = $this->request->getGet('location_id');
+        $from_date = $this->request->getGet('from_date') ?: date('Y-m-01');
+        $to_date = $this->request->getGet('to_date') ?: date('Y-m-d');
+
+        $data['locations'] = $this->db->query("SELECT * FROM location WHERE (status IS NULL OR status='Active')")->getResult();
+        
+        $data['entries'] = [];
+        $data['opening_balance'] = 0;
+        $data['selected_location'] = null;
+
+        if ($location_id) {
+            $loc = $this->db->table('location')->where('location_id', $location_id)->get()->getRow();
+            $data['selected_location'] = $loc;
+            $data['opening_balance'] = $loc->opening_balance ?? 0;
+
+            // 1. Staff Advances (Debit/Outflow)
+            $advances = $this->db->query("
+                SELECT sa.adv_date as date, CONCAT('Staff Advance: ', s.name) as particulars, 'Staff Advance' as source, sa.amount as debit, 0 as credit
+                FROM staff_advance sa
+                JOIN staff s ON s.id = sa.staff_id
+                WHERE sa.location_id = ? AND sa.adv_date BETWEEN ? AND ?
+            ", [$location_id, $from_date, $to_date])->getResult();
+
+            // 2. Overall Expenses (Debit/Outflow)
+            $expenses = $this->db->query("
+                SELECT oe.date as date, 'Overall Expense' as particulars, 'Overall Expense' as source, oe.amount as debit, 0 as credit
+                FROM overall_expence oe
+                WHERE oe.location_id = ? AND oe.date BETWEEN ? AND ?
+            ", [$location_id, $from_date, $to_date])->getResult();
+
+            // 3. Accounting Vouchers (Non-Cashbook entries from vouchers that HAVE a cashbook component)
+            // As requested: Accounting Dr -> Cashbook Debit, Accounting Cr -> Cashbook Credit
+            $vouchers = $this->db->query("
+                SELECT av.voucher_date as date, 
+                       CONCAT(g.group_name, ': ', 
+                              CASE 
+                                WHEN av.voucher_type = 'Payment' THEN 'Paid to '
+                                WHEN av.voucher_type = 'Receipt' THEN 'Received from '
+                                ELSE ''
+                              END, 
+                              ledger.name_or_no) as particulars, 
+                       av.voucher_type as source,
+                       CASE WHEN ave.entry_type = 1 THEN ave.amount ELSE 0 END as debit,
+                       CASE WHEN ave.entry_type = 2 THEN ave.amount ELSE 0 END as credit
+                FROM account_vouchers av
+                JOIN account_voucher_entries ave ON ave.voucher_id = av.id
+                JOIN `group` g ON g.group_id = ave.group_id
+                -- Join with various tables to get the ledger name (using a subquery or CASE logic)
+                LEFT JOIN (
+                    SELECT id, name as name_or_no, 'vendor' as src FROM vendor
+                    UNION SELECT id, name as name_or_no, 'staff' as src FROM staff
+                    UNION SELECT id, vehicle_no as name_or_no, 'vehicle' as src FROM vehicle
+                ) ledger ON ledger.id = ave.ledger_id
+                WHERE av.location = ? 
+                  AND ave.group_id != 2  -- Pull the other side of the cash entry
+                  AND EXISTS (SELECT 1 FROM account_voucher_entries ave2 WHERE ave2.voucher_id = av.id AND ave2.group_id = 2) -- Ensure it has a cash component
+                  AND av.voucher_date BETWEEN ? AND ?
+            ", [$location_id, $from_date, $to_date])->getResult();
+
+            $data['entries'] = array_merge($advances, $expenses, $vouchers);
+            
+            // Sort by date
+            usort($data['entries'], function($a, $b) {
+                return strtotime($a->date) - strtotime($b->date);
+            });
+            
+            // Calculate Pre-Opening (Balance before from_date)
+            // User terms: Cr is Inflow, Dr is Outflow.
+            $pre_adv = $this->db->query("SELECT SUM(amount) as total FROM staff_advance WHERE location_id = ? AND adv_date < ?", [$location_id, $from_date])->getRow()->total ?? 0;
+            $pre_exp = $this->db->query("SELECT SUM(amount) as total FROM overall_expence WHERE location_id = ? AND date < ?", [$location_id, $from_date])->getRow()->total ?? 0;
+            $pre_vouch = $this->db->query("
+                SELECT SUM(CASE WHEN ave.entry_type = 2 THEN ave.amount ELSE -ave.amount END) as net
+                FROM account_vouchers av
+                JOIN account_voucher_entries ave ON ave.voucher_id = av.id
+                WHERE av.location = ? AND ave.group_id != 2 AND av.voucher_date < ?
+            ", [$location_id, $from_date])->getRow()->net ?? 0;
+            
+            // Equation: Opening + (Cr_Inflow - Dr_Outflow) - StaffAdv - OverallExp
+            $data['opening_balance'] += ($pre_vouch - $pre_adv - $pre_exp);
+        }
+
+        $data['filters'] = [
+            'location_id' => $location_id,
+            'from_date' => $from_date,
+            'to_date' => $to_date
+        ];
+
+        return view('admin/cashbank_vw', $data);
     }
 
 
@@ -4837,7 +4994,7 @@ class Admin extends BaseController
             // Get settings and user data
             $data['setting'] = $this->AdminModel->Settingdata();
             $data['singleuser'] = $this->AdminModel->userdata($user_id);
-            $data['location'] = $this->db->query("SELECT * FROM location")->getResult();
+            $data['location'] = $this->db->query("SELECT * FROM location WHERE (status IS NULL OR status='Active')")->getResult();
 
             // Modify query to filter by date range
             $data['overall'] = $this->db->query("
@@ -4952,7 +5109,7 @@ class Admin extends BaseController
             $user_id = $this->session->get('user_id');
             $data['setting'] = $this->AdminModel->Settingdata();
             $data['singleuser'] = $this->AdminModel->userdata($user_id);
-            $data['location'] = $this->db->query("SELECT * FROM location")->getResult();
+            $data['location'] = $this->db->query("SELECT * FROM location WHERE (status IS NULL OR status='Active')")->getResult();
             $data['drivers'] = $this->db->query("SELECT * FROM staff WHERE user_type = 'DRIVER'")->getResult();
             return view('admin/Driver_Salary_vw', $data);
         } else {
@@ -6882,7 +7039,7 @@ public function get_vehicle_report_excel()
         $user_id = $this->session->get('user_id');
         $data['setting'] = $this->AdminModel->Settingdata();
         $data['singleuser'] = $this->AdminModel->userdata($user_id);
-        $data['location'] = $this->db->query("SELECT * FROM location")->getResult();
+        $data['location'] = $this->db->query("SELECT * FROM location WHERE (status IS NULL OR status='Active')")->getResult();
         $data['drivers'] = $this->AdminModel->Getallstaf();
 
         // Fetch the salary adjustment details using the ID
@@ -6953,7 +7110,7 @@ public function get_vehicle_report_excel()
             $user_id = $this->session->get('user_id');
             $data['setting'] = $this->AdminModel->Settingdata();
             $data['singleuser'] = $this->AdminModel->userdata($user_id);
-            $data['location'] = $this->db->query("SELECT * FROM location")->getResult();
+            $data['location'] = $this->db->query("SELECT * FROM location WHERE (status IS NULL OR status='Active')")->getResult();
 
             return view('admin/staff_Salary_vw', $data);
         } else {
@@ -7008,7 +7165,9 @@ public function get_vehicle_report_excel()
                         <tr>
                             <td><?= $i++; ?></td>
                             <td><?= $staf->name ?></td>
-                            <td><?= $staf->location_name ?></td>
+                            <td>
+                                <?= !empty($staf->location_name) ? $staf->location_name : 'No Location' ?>
+                            </td>
                             <td><?= $staf->tel ?></td>
                             <td><?= date('d/m/Y', strtotime($staf->doj)) ?></td>
                             <td><?= $staf->salary ?></td>
@@ -7995,7 +8154,7 @@ public function get_vehicle_report_excel()
 
         $data['setting'] = $this->AdminModel->Settingdata();
         $data['singleuser'] = $this->AdminModel->userdata($user_id);
-        $data['location'] = $this->db->query("SELECT * FROM location")->getResult();
+        $data['location'] = $this->db->query("SELECT * FROM location WHERE (status IS NULL OR status='Active')")->getResult();
         $data['route'] = $this->db->query("
                             SELECT route.*, location.location_name 
                             FROM route 
@@ -8013,7 +8172,7 @@ public function get_vehicle_report_excel()
         $user_id = $this->session->get('user_id');
         $data['setting'] = $this->AdminModel->Settingdata();
         $data['singleuser'] = $this->AdminModel->userdata($user_id);
-        $data['location'] = $this->db->query("SELECT * FROM location")->getResult();
+        $data['location'] = $this->db->query("SELECT * FROM location WHERE (status IS NULL OR status='Active')")->getResult();
         $data['route'] = $this->db->query("
                             SELECT route.*, location.location_name 
                             FROM route 
@@ -11312,7 +11471,7 @@ public function exportPaymentExcel()
             // echo'<pre>';
             // print_r($data['allsubadmin']);
             // exit;
-            $data['location'] = $this->db->query("SELECT * FROM location")->getResult();
+            $data['location'] = $this->db->query("SELECT * FROM location WHERE (status IS NULL OR status='Active')")->getResult();
             return view('admin/sub_admin_vw', $data);
         } else {
             return redirect()->to('admin/');
@@ -11362,7 +11521,7 @@ public function exportPaymentExcel()
             $data['setting'] = $this->AdminModel->Settingdata();
             $data['singleuser'] = $this->AdminModel->userdata($user_id);
             $data['allsubadmin'] = $this->AdminModel->GetAllCustomer(2);
-            $data['location'] = $this->db->query("SELECT * FROM location")->getResult();
+            $data['location'] = $this->db->query("SELECT * FROM location WHERE (status IS NULL OR status='Active')")->getResult();
 
             // Define validation rules
             $rules = [
@@ -11716,7 +11875,7 @@ public function exportPaymentExcel()
         $data['setting'] = $this->AdminModel->Settingdata();
         $data['singleuser'] = $this->AdminModel->userdata($user_id);
         $data['stock_dtls'] = $this->AdminModel->stock_details($from_date, $to_date, $location);
-        $data['locations'] = $this->db->query("SELECT * FROM location")->getResult();
+        $data['locations'] = $this->db->query("SELECT * FROM location WHERE (status IS NULL OR status='Active')")->getResult();
 
         // echo "<pre>";
         // print_r($data['stock_dtls']);exit;
@@ -12165,7 +12324,7 @@ public function exportPaymentExcel()
         $data['setting'] = $this->AdminModel->Settingdata();
         $data['singleuser'] = $this->AdminModel->userdata($user_id);
         $data['vehicle'] = $this->AdminModel->Getvehicle();
-        $data['location'] = $this->db->query("SELECT * FROM location")->getResult();
+        $data['location'] = $this->db->query("SELECT * FROM location WHERE (status IS NULL OR status='Active')")->getResult();
 
         $data['tyer_data'] = $this->db->query("
             SELECT tm.*, l.location_name, v.name, COUNT(tm.id) as qty
@@ -12273,7 +12432,7 @@ public function exportPaymentExcel()
         $user_id = $this->session->get('user_id');
         $data['setting'] = $this->AdminModel->Settingdata();
         $data['singleuser'] = $this->AdminModel->userdata($user_id);
-        $data['location'] = $this->db->query("SELECT * FROM location")->getResult();
+        $data['location'] = $this->db->query("SELECT * FROM location WHERE (status IS NULL OR status='Active')")->getResult();
 
         return view('admin/tyreTransfer_vw', $data);
     }
@@ -12362,7 +12521,7 @@ public function exportPaymentExcel()
         $user_id = $this->session->get('user_id');
         $data['setting'] = $this->AdminModel->Settingdata();
         $data['singleuser'] = $this->AdminModel->userdata($user_id);
-        $data['location'] = $this->db->query("SELECT * FROM location")->getResult();
+        $data['location'] = $this->db->query("SELECT * FROM location WHERE (status IS NULL OR status='Active')")->getResult();
         $data['vendor'] = $this->AdminModel->Get_vendor();
 
         return view('admin/addtyerbill_vw', $data);
@@ -12488,7 +12647,7 @@ public function exportPaymentExcel()
             $data['tyer_data'] = $this->db->query("SELECT * FROM tyer_management  where bill_no='$billno'")->getResult();
             $data['setting'] = $this->AdminModel->Settingdata();
             $data['singleuser'] = $this->AdminModel->userdata($user_id);
-            $data['location'] = $this->db->query("SELECT * FROM location")->getResult();
+            $data['location'] = $this->db->query("SELECT * FROM location WHERE (status IS NULL OR status='Active')")->getResult();
             $data['vendor'] = $this->AdminModel->Get_vendor();
 
 
@@ -12570,7 +12729,7 @@ public function exportPaymentExcel()
         // echo'<pre>';
         // print_r($data['vehicle']);
         // exit;
-        $data['location'] = $this->db->query("SELECT * FROM location")->getResult();
+        $data['location'] = $this->db->query("SELECT * FROM location WHERE (status IS NULL OR status='Active')")->getResult();
         $data['tyer_data'] = $this->db->query("
                                                 SELECT tm.*, l.location_name 
                                                 FROM tyer_management tm
@@ -12889,7 +13048,7 @@ public function exportPaymentExcel()
     $data['setting'] = $this->AdminModel->Settingdata();
     $data['singleuser'] = $this->AdminModel->userdata($user_id);
     $data['vehicle'] = $this->AdminModel->Getvehicle_tyer();
-    $data['location'] = $this->db->query("SELECT * FROM location")->getResult();
+    $data['location'] = $this->db->query("SELECT * FROM location WHERE (status IS NULL OR status='Active')")->getResult();
     $data['tyer_data'] = $this->db->query("
             SELECT tm.tyer_position, tm.asign_date, tm.tyer_type, tm.brand_name, l.location_name, tm.tyer_sl_no
             FROM tyer_management tm
@@ -13404,7 +13563,7 @@ public function exportPaymentExcel()
 
         $data['setting'] = $this->AdminModel->Settingdata();
         $data['singleuser'] = $this->AdminModel->userdata($user_id);
-        $data['location'] = $this->db->query("SELECT * FROM location")->getResult();
+        $data['location'] = $this->db->query("SELECT * FROM location WHERE (status IS NULL OR status='Active')")->getResult();
         $data['vendor'] = $this -> db -> query("SELECT * FROM vendor") ->getResult();
 
 
@@ -13791,7 +13950,7 @@ public function exportPaymentExcel()
             $data['setting'] = $this->AdminModel->Settingdata();
             $data['singleuser'] = $this->AdminModel->userdata($user_id);
             $data['allUsers'] = $this->AdminModel->getAllStaffAndVendors();
-            $data['location'] = $this->db->query("SELECT * FROM location")->getResult();
+            $data['location'] = $this->db->query("SELECT * FROM location WHERE (status IS NULL OR status='Active')")->getResult();
             $data['allbank'] = $this->db->query("SELECT * FROM bank")->getResult();
             $data['allstaf'] = $this->AdminModel->Getallstaf();
             $data['AllPaymentVoucher'] = $this->AdminModel->GetAllPaymentVoucher($from_date, $to_date);
@@ -13866,7 +14025,7 @@ public function exportPaymentExcel()
             $segment = $this->request->getUri()->getSegment(3);
             $data['setting'] = $this->AdminModel->Settingdata();
             $data['singleuser'] = $this->AdminModel->userdata($user_id);
-            $data['location'] = $this->db->query("SELECT * FROM location")->getResult();
+            $data['location'] = $this->db->query("SELECT * FROM location WHERE (status IS NULL OR status='Active')")->getResult();
             $data['allbank'] = $this->db->query("SELECT * FROM bank")->getResult();
             $data['single_payment_voucher'] = $this->db->query("SELECT * FROM payment_voucher  where payment_voucher.pay_id='$segment' ")->getResult();            
             return view('admin/edit_payment_voucher_vw', $data);
@@ -14582,6 +14741,8 @@ public function exportPaymentExcel()
         $data['financial_years'] = $this->AdminModel->getyearsDetails();
         $data['groups'] = $this->AdminModel->getGroupDetails();
         $data['next_no'] = $this->AdminModel->getNextVoucherNo('Payment');
+        $data['locations'] = $this->db->query("SELECT * FROM location WHERE (status IS NULL OR status='Active')")->getResult();
+        $data['banks'] = $this->AdminModel->bank();
 
         return view('admin/payment_voucher_new_vw', $data);
     }
@@ -14607,7 +14768,7 @@ public function exportPaymentExcel()
             foreach($res as $r) $data[] = ['id' => $r->id, 'name' => $r->vehicle_no];
         } elseif ($group_id == 2) { // Cash Book
             $res = $this->AdminModel->bank();
-            foreach($res as $r) $data[] = ['id' => $r->bank_id, 'name' => $r->bank_name];
+            foreach($res as $r) $data[] = ['id' => $r->id, 'name' => $r->bank_name];
         } else {
             // No default ledger table anymore
         }
@@ -14628,6 +14789,8 @@ public function exportPaymentExcel()
         $data['financial_years'] = $this->AdminModel->getyearsDetails();
         $data['groups'] = $this->AdminModel->getGroupDetails();
         $data['next_no'] = $this->AdminModel->getNextVoucherNo('Receipt');
+        $data['locations'] = $this->db->query("SELECT * FROM location WHERE (status IS NULL OR status='Active')")->getResult();
+        $data['banks'] = $this->AdminModel->bank();
 
         return view('admin/receipt_voucher_new_vw', $data);
     }
@@ -14644,6 +14807,8 @@ public function exportPaymentExcel()
         $data['financial_years'] = $this->AdminModel->getyearsDetails();
         $data['groups'] = $this->AdminModel->getGroupDetails();
         $data['next_no'] = $this->AdminModel->getNextVoucherNo('Journal');
+        $data['locations'] = $this->db->query("SELECT * FROM location WHERE (status IS NULL OR status='Active')")->getResult();
+        $data['banks'] = $this->AdminModel->bank();
 
         return view('admin/journal_voucher_new_vw', $data);
     }
@@ -14659,30 +14824,67 @@ public function exportPaymentExcel()
         $voucher_type = $this->request->getPost('voucher_type');
         $voucher_date = $this->request->getPost('voucher_date');
         $fy_id = $this->request->getPost('fy_id');
+        $location_id = $this->request->getPost('location_id');
         $narration = $this->request->getPost('narration');
 
-        $types = $this->request->getPost('type');
-        $groups = $this->request->getPost('group_id');
-        $ledgers = $this->request->getPost('ledger_id');
-        $amounts = $this->request->getPost('amount');
-        $entry_narrations = $this->request->getPost('entry_narration');
+        $types = $this->request->getPost('type') ?? [];
+        $groups = $this->request->getPost('group_id') ?? [];
+        $ledgers = $this->request->getPost('ledger_id') ?? [];
+        $amounts = $this->request->getPost('amount') ?? [];
+        $entry_narrations = $this->request->getPost('entry_narration') ?? [];
+        $bank_ids = $this->request->getPost('bank_id') ?? [];
 
         $total_amount = 0;
         $entries = [];
 
         foreach ($amounts as $key => $amount) {
             if ($amount > 0) {
+                $type = $types[$key] ?? 1;
+                // Main entry
                 $entries[] = [
-                    'group_id' => $groups[$key],
-                    'ledger_id' => $ledgers[$key],
-                    'entry_type' => $types[$key],
+                    'group_id' => $groups[$key] ?? 0,
+                    'ledger_id' => $ledgers[$key] ?? 0,
+                    'entry_type' => $type,
                     'amount' => $amount,
                     'narration' => $entry_narrations[$key] ?? ''
                 ];
-                if ($types[$key] == 1) { // Debit side total
+
+                if ($type == 1) { // sum of Debits
                     $total_amount += $amount;
                 }
+
+                // Automated contra
+                if (!empty($bank_ids[$key])) {
+                    $b_id = null;
+                    if ($bank_ids[$key] == 'Cash') {
+                        $res = $this->db->query("SELECT id FROM bank WHERE bank_name LIKE '%Cash%' LIMIT 1")->getRow();
+                        $b_id = $res ? $res->id : null;
+                    } else if ($bank_ids[$key] == 'Bank') {
+                        $res = $this->db->query("SELECT id FROM bank WHERE bank_name LIKE '%Bank%' LIMIT 1")->getRow();
+                        $b_id = $res ? $res->id : null;
+                    } else {
+                        $b_id = $bank_ids[$key];
+                    }
+
+                    if ($b_id) {
+                        $contra_type = ($type == 1 ? 2 : 1);
+                        $entries[] = [
+                            'group_id' => 2, // Cash Book Group
+                            'ledger_id' => $b_id,
+                            'entry_type' => $contra_type,
+                            'amount' => $amount,
+                            'narration' => 'Contra: ' . ($entry_narrations[$key] ?? '')
+                        ];
+                        if ($contra_type == 1) { // If contra side is Debit
+                            $total_amount += $amount;
+                        }
+                    }
+                }
             }
+        }
+
+        if (empty($entries)) {
+             return redirect()->back()->with('error', 'Please add at least one row with an amount');
         }
 
         $voucherData = [
@@ -14690,6 +14892,7 @@ public function exportPaymentExcel()
             'voucher_type' => $voucher_type,
             'voucher_date' => $voucher_date,
             'fy_id' => $fy_id,
+            'location' => $location_id,
             'narration' => $narration,
             'total_amount' => $total_amount,
             'created_by' => $user_id
@@ -14698,7 +14901,9 @@ public function exportPaymentExcel()
         if ($this->AdminModel->saveVoucher($voucherData, $entries)) {
             return redirect()->back()->with('success', 'Voucher saved successfully');
         } else {
-            return redirect()->back()->with('error', 'Failed to save voucher');
+            $db_error = $this->db->error();
+            $error_msg = !empty($db_error['message']) ? $db_error['message'] : 'Failed to save voucher';
+            return redirect()->back()->with('error', $error_msg);
         }
     }
 
@@ -14929,7 +15134,7 @@ public function exportPaymentExcel()
             $data['tasks'] = $this->AdminModel->getTasksByUser($user_id);
         }
     
-        return view($data);
+        return view('admin/taskAssignment_vw', $data);
     }
 
 

@@ -1,7 +1,5 @@
 <?php include("header.php"); ?>
 <!-- Page Body Start-->
-<link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
-<link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/jquery.dataTables.min.css">
 <style>
     #myTable { width: 100%; }
     .clickable-img { cursor: pointer; border-radius: 4px; transition: 0.3s; }
@@ -45,7 +43,7 @@
 
                 <!-- Offcanvas Add Staff Form -->
                 <div id="offcanvas-flip" uk-offcanvas="flip: true; overlay: true">
-                    <div class="uk-offcanvas-bar uk-padding-remove uk-width-1-2@m" style="background:#fff;">
+                    <div class="uk-offcanvas-bar uk-padding-remove uk-width-1-2@m" style="background:#fff; color:#212529;">
                         <button class="uk-offcanvas-close" type="button" uk-close></button>
                         <div class="uk-card uk-card-body uk-card-default">
                             <form action="<?= base_url(); ?>/admin/Add_staf" enctype="multipart/form-data" method="post">
@@ -159,14 +157,21 @@
                                         <label>Opening Balance</label>
                                         <input type="text" name="opening_balance" class="form-control" />
                                     </div>
-                                    <div class="col-sm-12">
-                                        <label>Address</label>
-                                        <select name="address" class="form-control">
+                                    <div class="col-sm-6">
+                                        <label>Workstation Location</label>
+                                        <select name="location_id" class="form-control">
                                             <option value="">Select Location</option>
                                             <?php foreach ($location as $loc): ?>
-                                                <option value="<?= $loc->location_id; ?>" <?= set_select('address', $loc->location_id); ?>><?= $loc->location_name; ?></option>
+                                                <option value="<?= $loc->location_id; ?>" <?= set_select('location_id', $loc->location_id); ?>><?= $loc->location_name; ?></option>
                                             <?php endforeach; ?>
                                         </select>
+                                        <?php if (isset($validation) && $validation->getError('location_id')): ?>
+                                            <span class="text-danger"><?= $validation->getError('location_id'); ?></span>
+                                        <?php endif; ?>
+                                    </div>
+                                    <div class="col-sm-6">
+                                        <label>Home Address</label>
+                                        <input type="text" name="address" class="form-control" placeholder="Enter Physical Address" value="<?= set_value('address'); ?>">
                                         <?php if (isset($validation) && $validation->getError('address')): ?>
                                             <span class="text-danger"><?= $validation->getError('address'); ?></span>
                                         <?php endif; ?>
@@ -207,6 +212,7 @@
                                 <th>DOB</th>
                                 <th>Family Contact</th>
                                 <th>Blood Group</th>
+                                <th>Location</th>
                                 <th>Address</th>
                                 <th>Photo</th>
                                 <th>Actions</th>
@@ -267,6 +273,7 @@
                                 <td><?= $staf->family_contact ?></td>
                                 <td><?= $staf->blood_group ?></td>
                                 <td><?= $staf->location_name ?></td>
+                                <td><?= $staf->address ?></td>
 
                                 <!-- Profile Photo -->
                                 <td>
@@ -309,7 +316,7 @@
 
             <!-- Edit / Print Offcanvas -->
             <div id="edit_vehicle" uk-offcanvas="flip: true; overlay: true">
-                <div class="uk-offcanvas-bar uk-padding-remove uk-width-1-2" style="background:#fff">
+            <div class="uk-offcanvas-bar uk-padding-remove uk-width-1-2" style="background:#fff; color:#212529;">
                     <button class="uk-offcanvas-close" type="button" uk-close></button>
                     <div class="uk-card uk-card-body">
                         <div id="edit_staff_form"></div>
@@ -318,7 +325,7 @@
             </div>
 
             <div id="print_vehicle" uk-offcanvas="flip: true; overlay: true">
-                <div class="uk-offcanvas-bar uk-padding-remove uk-width-1-2" style="background:#fff">
+                <div class="uk-offcanvas-bar uk-padding-remove uk-width-1-2" style="background:#fff; color:#212529;">
                     <button class="uk-offcanvas-close" type="button" uk-close></button>
                     <div class="uk-card uk-card-body">
                         <div id="print_staff_form"></div>
@@ -346,9 +353,6 @@
     </div>
 </div>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
-<script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
-<script src="https://maxcdn.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
 
 <script>
     $(document).ready(function () {

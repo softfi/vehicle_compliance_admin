@@ -428,6 +428,13 @@
                     <input type="checkbox" name="role[]" class="uk-checkbox" value="44" <?php if(in_array(44,$jobAssign)){ echo "checked";}?>/>Vendor<br>
                     <input type="checkbox" name="role[]" class="uk-checkbox" value="44.1"<?php if(in_array(44.1,$jobAssign)){ echo "checked";}?>/>Submit
                 </li>
+                <li>
+                    <input type="checkbox" name="role[]" class="uk-checkbox" value="45" <?php if(in_array(45,$jobAssign)){ echo "checked";}?>/>Attendance<br>
+                    <input type="checkbox" name="role[]" class="uk-checkbox" value="45"<?php if(in_array(45,$jobAssign)){ echo "checked";}?>/>View Attendance
+                    <input type="checkbox" name="role[]" class="uk-checkbox" value="46"<?php if(in_array(46,$jobAssign)){ echo "checked";}?>/>Add Attendance
+                    <input type="checkbox" name="role[]" class="uk-checkbox" value="47"<?php if(in_array(47,$jobAssign)){ echo "checked";}?>/>Bulk Upload
+                    <input type="checkbox" name="role[]" class="uk-checkbox" value="48"<?php if(in_array(48,$jobAssign)){ echo "checked";}?>/>Reports
+                </li>
             </ul>
         </div>        <div class="uk-modal-footer uk-text-right">
             <button class="uk-button uk-button-default uk-modal-close" type="button">Cancel</button>
