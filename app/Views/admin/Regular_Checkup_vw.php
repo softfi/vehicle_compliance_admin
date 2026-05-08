@@ -23,6 +23,16 @@
             </div>
           </div>
           <!-- Container-fluid starts-->
+          <style>
+            .select2-container--default .select2-selection--single {
+                height: 38px !important;
+                border: 1px solid #ced4da !important;
+                padding-top: 5px;
+            }
+            .select2-container {
+                display: block !important;
+            }
+          </style>
           <div class="container-fluid default-dashboard">
             <div class="uk-grid-small uk-child-width-expand" uk-grid>
                 <div class="uk-width-1-4">
@@ -110,18 +120,14 @@
                     <input type="checkbox" name="dbrake_adjustment" value='1'  class="uk-checkbox">
                     <input type="text" name="brake_adjustment" class="uk-input">
                 </div>
-                <div class="uk-width-1-2@s uk-margin-bottom-small">
-                    <label>URIA</label>
-                    <input type="checkbox" name="duria" value='1' class="uk-checkbox">
-                    <input type="text" name="uria" class="uk-input">
-                </div>
+
                 <div class="uk-width-1-1 uk-margin-bottom-small">
                     <label>Remark</label>
                     <textarea name="remark" class="uk-textarea"></textarea>
                 </div>
                 <div class="uk-width-1-1 uk-margin-bottom-small">
                     <label>Mechanic Name</label>
-                    <select name="mechanic_name" class="uk-select" required>
+                    <select name="mechanic_name" id="mechanic_id" class="form-control select2-search" required>
                         <option value="">Select Mechanic</option>
                         <?php foreach($mechanics as $mechanic): ?>
                             <option value="<?= $mechanic->name; ?>"><?= $mechanic->name; ?></option>
@@ -130,7 +136,7 @@
                 </div>
                 <div class="uk-width-1-1 uk-margin-bottom-small">
                     <label>Checked By</label>
-                    <select name="checked_by" class="uk-select" required>
+                    <select name="checked_by" id="checked_by" class="form-control select2-search" required>
                         <option value="">Select User</option>
                         <?php foreach($users as $user): ?>
                             <option value="<?= $user->id; ?> - <?= $user->full_name; ?>"><?= $user->id; ?> - <?= $user->full_name; ?></option>
@@ -186,7 +192,6 @@
         <th>Greasing</th>
         <th>Tyre Air Check</th>
         <th>Brake Adjustment</th>
-        <th>URIA</th>
         <th>Remark</th>
         <th>Checked By</th>
         <!--<th>Edit</th>-->
@@ -216,7 +221,6 @@ foreach ($regularcheckup as $record) {
         <td><input class="uk-checkbox" readonly  type="checkbox" <?php if($record->dgreasing==1){echo "checked" ;}?>/> <?= $record->gear_oil ?><?= $record->greasing ?></td>
         <td><input class="uk-checkbox" readonly  type="checkbox" <?php if($record->dtyre_air_check==1){echo "checked" ;}?>/> <?= $record->gear_oil ?><?= $record->tyre_air_check ?></td>
         <td><input class="uk-checkbox" readonly  type="checkbox" <?php if($record->dbrake_adjustment==1){echo "checked" ;}?>/> <?= $record->gear_oil ?><?= $record->brake_adjustment ?></td>
-        <td><input class="uk-checkbox" readonly  type="checkbox" <?php if($record->duria==1){echo "checked" ;}?>/> <?= isset($record->uria) ? $record->uria : '' ?></td>
         <td><?= isset($record->remark) ? $record->remark : '' ?></td>
         <td><?= $record->checked_by ?></td>
         <!--<td><button class="btn btn-primary">Edit</button></td>-->
@@ -245,7 +249,6 @@ foreach ($regularcheckup as $record) {
         <th>Greasing</th>
         <th>Tyre Air Check</th>
         <th>Brake Adjustment</th>
-        <th>URIA</th>
         <th>Remark</th>
         <th>Checked By</th>
         <!--<th>Edit</th>-->
@@ -268,3 +271,12 @@ foreach ($regularcheckup as $record) {
         </style>
         <!-- footer start-->
        <?php include("footer.php");?>
+       <script>
+           $(document).ready(function() {
+               $('#mechanic_id, #checked_by, #single').select2({
+                   placeholder: "Select an option",
+                   allowClear: true,
+                   width: '100%'
+               });
+           });
+       </script>

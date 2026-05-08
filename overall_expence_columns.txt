@@ -1,9 +1,0 @@
-﻿Field	Type	Null	Key	Default	Extra
-id	int(11)	NO	PRI	NULL	auto_increment
-amount	decimal(10,2)	NO		NULL	
-date	date	NO		NULL	
-location_id	int(11)	NO		NULL	
-upload_file	varchar(255)	YES		NULL	
-narration	text	YES		NULL	
-remark	text	NO		NULL	
-created_at	timestamp	NO		current_timestamp()	

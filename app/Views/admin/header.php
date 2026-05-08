@@ -9,11 +9,12 @@
     <meta name="description" content="Dunzo admin is super flexible, powerful, clean &amp; modern responsive bootstrap 5 admin template with unlimited possibilities.">
     <meta name="keywords" content="admin template, Dunzo admin template, dashboard template, flat admin template, responsive admin template, web app">
     <meta name="author" content="pixelstrap">
-    <link rel="icon" href="<?php echo base_url(); ?>/assets/admin/images/favicon.png" type="image/x-icon">
-    <link rel="shortcut icon" href="<?php echo base_url(); ?>/assets/admin/images/favicon.png" type="image/x-icon">
+    <link rel="icon" href="<?php echo base_url(); ?>assets/admin/images/favicon.png" type="image/x-icon">
+    <link rel="shortcut icon" href="<?php echo base_url(); ?>assets/admin/images/favicon.png" type="image/x-icon">
     <title>Yasuja - ADMIN PANEL</title>
     <!-- Google font-->
     <link href="https://stackpath.bootstrapcdn.com/font-awesome/4.7.0/css/font-awesome.min.css" rel="stylesheet" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
     <link href="https://fonts.googleapis.com/css?family=Outfit:400,400i,500,500i,700,700i&amp;display=swap" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,500,500i,700,700i,900&amp;display=swap" rel="stylesheet">
     
@@ -23,37 +24,37 @@
     <script src="https://cdn.jsdelivr.net/npm/uikit@3.21.4/dist/js/uikit.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/uikit@3.21.4/dist/js/uikit-icons.min.js"></script>
 
-    <link rel="stylesheet" type="text/css" href="<?php echo base_url(); ?>/assets/admin/css/font-awesome.css">
+    <link rel="stylesheet" type="text/css" href="<?php echo base_url(); ?>assets/admin/css/font-awesome.css">
     <!-- ico-font-->
-    <link rel="stylesheet" type="text/css" href="<?php echo base_url(); ?>/assets/admin/css/vendors/icofont.css">
+    <link rel="stylesheet" type="text/css" href="<?php echo base_url(); ?>assets/admin/css/vendors/icofont.css">
     <!-- Themify icon-->
-    <link rel="stylesheet" type="text/css" href="<?php echo base_url(); ?>/assets/admin/css/vendors/themify.css">
+    <link rel="stylesheet" type="text/css" href="<?php echo base_url(); ?>assets/admin/css/vendors/themify.css">
     <!-- Flag icon-->
-    <link rel="stylesheet" type="text/css" href="<?php echo base_url(); ?>/assets/admin/css/vendors/flag-icon.css">
+    <link rel="stylesheet" type="text/css" href="<?php echo base_url(); ?>assets/admin/css/vendors/flag-icon.css">
     <!-- Feather icon-->
-    <link rel="stylesheet" type="text/css" href="<?php echo base_url(); ?>/assets/admin/css/vendors/feather-icon.css">
+    <link rel="stylesheet" type="text/css" href="<?php echo base_url(); ?>assets/admin/css/vendors/feather-icon.css">
     <!-- Plugins css start-->
-    <link rel="stylesheet" type="text/css" href="<?php echo base_url(); ?>/assets/admin/css/vendors/slick.css">
-    <link rel="stylesheet" type="text/css" href="<?php echo base_url(); ?>/assets/admin/css/vendors/slick-theme.css">
-    <link rel="stylesheet" type="text/css" href="<?php echo base_url(); ?>/assets/admin/css/vendors/scrollbar.css">
-    <link rel="stylesheet" type="text/css" href="<?php echo base_url(); ?>/assets/admin/css/vendors/animate.css">
-    <link rel="stylesheet" type="text/css" href="<?php echo base_url(); ?>/assets/admin/css/vendors/datatables.css">
-    <link rel="stylesheet" type="text/css" href="<?php echo base_url(); ?>/assets/admin/css/vendors/owlcarousel.css">
+    <link rel="stylesheet" type="text/css" href="<?php echo base_url(); ?>assets/admin/css/vendors/slick.css">
+    <link rel="stylesheet" type="text/css" href="<?php echo base_url(); ?>assets/admin/css/vendors/slick-theme.css">
+    <link rel="stylesheet" type="text/css" href="<?php echo base_url(); ?>assets/admin/css/vendors/scrollbar.css">
+    <link rel="stylesheet" type="text/css" href="<?php echo base_url(); ?>assets/admin/css/vendors/animate.css">
+    <link rel="stylesheet" type="text/css" href="<?php echo base_url(); ?>assets/admin/css/vendors/datatables.css">
+    <link rel="stylesheet" type="text/css" href="<?php echo base_url(); ?>assets/admin/css/vendors/owlcarousel.css">
     <!-- Plugins css Ends-->
     <!-- Bootstrap css-->
-    <link rel="stylesheet" type="text/css" href="<?php echo base_url(); ?>/assets/admin/css/vendors/bootstrap.css">
+    <link rel="stylesheet" type="text/css" href="<?php echo base_url(); ?>assets/admin/css/vendors/bootstrap.css">
     <!-- App css-->
-    <link rel="stylesheet" type="text/css" href="<?php echo base_url(); ?>/assets/admin/css/style.css">
-    <link id="color" rel="stylesheet" href="<?php echo base_url(); ?>/assets/admin/css/color-1.css" media="screen">
+    <link rel="stylesheet" type="text/css" href="<?php echo base_url(); ?>assets/admin/css/style.css">
+    <link id="color" rel="stylesheet" href="<?php echo base_url(); ?>assets/admin/css/color-1.css" media="screen">
     <!-- Responsive css-->
-    <link rel="stylesheet" type="text/css" href="<?php echo base_url(); ?>/assets/admin/css/responsive.css">
+    <link rel="stylesheet" type="text/css" href="<?php echo base_url(); ?>assets/admin/css/responsive.css">
     <!-- Custom Voucher css-->
-    <link rel="stylesheet" type="text/css" href="<?php echo base_url(); ?>/assets/admin/css/custom_voucher.css">
+    <link rel="stylesheet" type="text/css" href="<?php echo base_url(); ?>assets/admin/css/custom_voucher.css">
     <!--<link rel="stylesheet" type="text/css" href="https://cdn.datatables.net/1.13.6/css/jquery.dataTables.min.css">-->
     <!-- Select2 CSS -->
     <link href="https://cdnjs.cloudflare.com/ajax/libs/select2/4.0.6-rc.0/css/select2.min.css" rel="stylesheet" />
     <!-- jQuery loaded early so view inline scripts work -->
-    <script src="<?php echo base_url(); ?>/assets/admin/js/jquery.min.js"></script>
+    <script src="<?php echo base_url(); ?>assets/admin/js/jquery.min.js"></script>
     <!-- Select2 JS -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/select2/4.0.6-rc.0/js/select2.min.js"></script>
   </head>
@@ -77,7 +78,7 @@
             <div class="logo-wrapper"><a href="index.html"><img class="img-fluid for-light" src="<?php echo base_url(); ?>/assets/admin/images/logo/logo-1.png" alt=""><img class="img-fluid for-dark" src="<?php echo base_url(); ?>/assets/admin/images/logo/logo.png" alt=""></a></div>
             <div class="toggle-sidebar">
               <svg class="sidebar-toggle"> 
-                <use href="https://admin.pixelstrap.net/dunzo/<?php echo base_url(); ?>/assets/admin/svg/icon-sprite.svg#stroke-animation"></use>
+                <use href="<?php echo base_url(); ?>assets/admin/svg/icon-sprite.svg#stroke-animation"></use>
               </svg>
             </div>
           </div>
@@ -86,7 +87,7 @@
             <ul class="nav-menus">              
               
               <li class="profile-nav onhover-dropdown p-0">
-                <div class="d-flex align-items-center profile-media"><img class="b-r-10 img-40" src="<?php echo base_url(); ?>/assets/admin/images/dashboard/profile.png" alt="">
+                <div class="d-flex align-items-center profile-media"><img class="b-r-10 img-40" src="<?php echo base_url(); ?>assets/admin/images/dashboard/profile.png" alt="">
                   <div class="flex-grow-1"><span><?= $this->session->get('fullname'); ?></span>
                     <p class="mb-0"><?= $this->session->get('email'); ?> <i class="middle fa fa-angle-down"></i></p>
                   </div>

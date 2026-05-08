@@ -100,7 +100,7 @@
                                     <tr>
                                         <th width="5%">#</th>
                                         <th width="12%">Date</th>
-                                        <th>Particulars</th>
+
                                         <th width="12%">Source</th>
                                         <th width="12%" class="text-danger">Debit (Out)</th>
                                         <th width="12%" class="text-success">Credit (In)</th>
@@ -109,7 +109,7 @@
                                 </thead>
                                 <tbody>
                                     <tr class="bg-light font-weight-bold">
-                                        <td colspan="4" class="text-right">Opening Balance</td>
+                                        <td colspan="3" class="text-right">Opening Balance</td>
                                         <td></td>
                                         <td></td>
                                         <td class="text-right">₹ <?= number_format($opening_balance, 2) ?></td>
@@ -123,7 +123,7 @@
                                         <tr>
                                             <td class="text-center"><?= $n++ ?></td>
                                             <td class="text-center"><?= date('d-m-Y', strtotime($e->date)) ?></td>
-                                            <td><?= $e->particulars ?></td>
+
                                             <td class="text-center"><span class="badge badge-light text-dark border"><?= $e->source ?></span></td>
                                             <td class="text-right text-danger"><?= $e->debit > 0 ? number_format($e->debit, 2) : '-' ?></td>
                                             <td class="text-right text-success"><?= $e->credit > 0 ? number_format($e->credit, 2) : '-' ?></td>
@@ -133,7 +133,7 @@
                                 </tbody>
                                 <tfoot class="bg-light font-weight-bold">
                                     <tr>
-                                        <td colspan="4" class="text-right">TOTAL</td>
+                                        <td colspan="3" class="text-right">TOTAL</td>
                                         <td class="text-right text-danger">₹ <?= number_format($total_debit, 2) ?></td>
                                         <td class="text-right text-success">₹ <?= number_format($total_credit, 2) ?></td>
                                         <td class="text-right">Closing: ₹ <?= number_format($closing, 2) ?></td>

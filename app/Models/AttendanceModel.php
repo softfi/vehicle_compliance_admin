@@ -301,6 +301,7 @@ class AttendanceModel extends Model
     {
         return $this->db->table('staff')
             ->select('id, name, staff_code, location_id')
+            ->where('user_type', 'STAFF')
             ->orderBy('name', 'ASC')
             ->get()->getResult();
     }

@@ -57,7 +57,7 @@
                             </div>
                             <div class="col-md-3 form-group-filter">
                                 <label class="font-weight-bold">Select Particular</label>
-                                <select name="ledger_id" id="ledger_id" class="form-control select2" required>
+                                <select name="ledger_id" id="ledger_id" class="form-control select2">
                                     <option value="">Select Particular...</option>
                                     <?php if(!empty($particulars)): ?>
                                         <?php foreach($particulars as $p): ?>
@@ -105,14 +105,18 @@
                                     <tr>
                                         <th width="12%">Date</th>
                                         <th width="15%">Voucher No</th>
-                                        <th width="12%">Type</th>
+                                        <?php if(!$filters['ledger_id']): ?>
+                                            <th width="15%">Ledger</th>
+                                        <?php endif; ?>
+                                        <th width="12%">Voucher Type</th>
                                         <th>Particulars</th>
-                                        <th width="12%" class="text-right">Debit</th>
-                                        <th width="12%" class="text-right">Credit</th>
-                                        <th width="15%" class="text-right">Balance</th>
+                                        <th width="10%" class="text-right">Debit</th>
+                                        <th width="10%" class="text-right">Credit</th>
+                                        <th width="12%" class="text-right">Balance</th>
                                     </tr>
                                 </thead>
                                 <tbody>
+                                    <?php if($filters['ledger_id']): ?>
                                     <tr>
                                         <td><?= date('d-m-Y', strtotime($filters['from_date'])) ?></td>
                                         <td colspan="3"><strong>Opening Balance</strong></td>
@@ -123,16 +127,25 @@
                                             <?= ($statement['opening_bal'] >= 0) ? 'Dr' : 'Cr' ?>
                                         </td>
                                     </tr>
+                                    <?php endif; ?>
+
                                     <?php 
                                     $running_bal = $statement['opening_bal'];
+                                    $total_dr = 0;
+                                    $total_cr = 0;
                                     foreach ($statement['entries'] as $entry): 
                                         $dr = ($entry->entry_type == 1) ? $entry->amount : 0;
                                         $cr = ($entry->entry_type == 2) ? $entry->amount : 0;
+                                        $total_dr += $dr;
+                                        $total_cr += $cr;
                                         $running_bal += ($dr - $cr);
                                     ?>
                                         <tr>
                                             <td><?= date('d-m-Y', strtotime($entry->voucher_date)) ?></td>
                                             <td><span class="badge badge-light"><?= $entry->voucher_no ?></span></td>
+                                            <?php if(!$filters['ledger_id']): ?>
+                                                <td><span class="text-primary font-weight-bold" style="font-size:0.85rem;"><?= esc($entry->resolved_ledger_name) ?></span></td>
+                                            <?php endif; ?>
                                             <td><?= $entry->voucher_type ?></td>
                                             <td>
                                                 <?= $entry->narration ?><br>
@@ -147,10 +160,16 @@
                                         </tr>
                                     <?php endforeach; ?>
                                 </tbody>
-                                <tfoot class="bg-light font-weight-bold">
-                                    <tr>
-                                        <td colspan="6" class="text-right">Closing Balance</td>
-                                        <td class="text-right font-weight-bold" style="font-size: 1.1em;">
+                                <tfoot>
+                                    <tr class="bg-light font-weight-bold">
+                                        <td colspan="<?= (!$filters['ledger_id'] ? '5' : '4') ?>" class="text-right text-uppercase small">Total Period Transaction</td>
+                                        <td class="text-right text-danger"><?= number_format($total_dr, 2) ?></td>
+                                        <td class="text-right text-success"><?= number_format($total_cr, 2) ?></td>
+                                        <td class="text-right"></td>
+                                    </tr>
+                                    <tr class="bg-white font-weight-bold">
+                                        <td colspan="<?= (!$filters['ledger_id'] ? '7' : '6') ?>" class="text-right">Closing Balance</td>
+                                        <td class="text-right font-weight-bold text-primary" style="font-size: 1.1em;">
                                             <?= number_format(abs($running_bal), 2) ?> 
                                             <?= ($running_bal >= 0) ? 'Dr' : 'Cr' ?>
                                         </td>

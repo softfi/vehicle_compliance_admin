@@ -7,7 +7,7 @@
               <div class="col-md-6 p-0">
                 <p class="heart mb-0">Hand crafted &amp; made with
                   <svg class="footer-icon">
-                    <use href="https://admin.pixelstrap.net/dunzo/<?php echo base_url();?>/assets/admin/svg/icon-sprite.svg#heart"></use>
+                    <use href="<?php echo base_url();?>assets/admin/svg/icon-sprite.svg#heart"></use>
                   </svg>
                 </p>
               </div>
@@ -19,44 +19,44 @@
     
     
     <!-- Bootstrap js-->
-    <script src="<?php echo base_url();?>/assets/admin/js/bootstrap/bootstrap.bundle.min.js"></script>
+    <script src="<?php echo base_url();?>assets/admin/js/bootstrap/bootstrap.bundle.min.js"></script>
     <!-- feather icon js-->
-    <script src="<?php echo base_url();?>/assets/admin/js/icons/feather-icon/feather.min.js"></script>
-    <script src="<?php echo base_url();?>/assets/admin/js/icons/feather-icon/feather-icon.js"></script>
+    <script src="<?php echo base_url();?>assets/admin/js/icons/feather-icon/feather.min.js"></script>
+    <script src="<?php echo base_url();?>assets/admin/js/icons/feather-icon/feather-icon.js"></script>
     <!-- scrollbar js-->
-    <script src="<?php echo base_url();?>/assets/admin/js/scrollbar/simplebar.js"></script>
-    <script src="<?php echo base_url();?>/assets/admin/js/scrollbar/custom.js"></script>
+    <script src="<?php echo base_url();?>assets/admin/js/scrollbar/simplebar.js"></script>
+    <script src="<?php echo base_url();?>assets/admin/js/scrollbar/custom.js"></script>
     <!-- Sidebar jquery-->
-    <script src="<?php echo base_url();?>/assets/admin/js/config.js"></script>
+    <script src="<?php echo base_url();?>assets/admin/js/config.js"></script>
     <!-- Plugins JS start-->
-    <script src="<?php echo base_url();?>/assets/admin/js/sidebar-menu.js"></script>
-    <script src="<?php echo base_url();?>/assets/admin/js/sidebar-pin.js"></script>
-    <script src="<?php echo base_url();?>/assets/admin/js/slick/slick.min.js"></script>
-    <script src="<?php echo base_url();?>/assets/admin/js/slick/slick.js"></script>
-    <script src="<?php echo base_url();?>/assets/admin/js/header-slick.js"></script>
-    <script src="<?php echo base_url();?>/assets/admin/js/chart/morris-chart/raphael.js"></script>
-    <script src="<?php echo base_url();?>/assets/admin/js/chart/morris-chart/morris.js"> </script>
-    <script src="<?php echo base_url();?>/assets/admin/js/chart/morris-chart/prettify.min.js"></script>
-    <script src="<?php echo base_url();?>/assets/admin/js/chart/apex-chart/apex-chart.js"></script>
-    <script src="<?php echo base_url();?>/assets/admin/js/chart/apex-chart/stock-prices.js"></script>
-    <script src="<?php echo base_url();?>/assets/admin/js/chart/apex-chart/moment.min.js"></script>
-    <script src="<?php echo base_url();?>/assets/admin/js/notify/bootstrap-notify.min.js"></script>
-    <script src="<?php echo base_url();?>/assets/admin/js/dashboard/default.js"></script>
-    <script src="<?php echo base_url();?>/assets/admin/js/notify/index.js"></script>
-    <script src="<?php echo base_url();?>/assets/admin/js/datatable/datatables/jquery.dataTables.min.js"></script>
-    <script src="<?php echo base_url();?>/assets/admin/js/datatable/datatables/datatable.custom.js"></script>
-    <script src="<?php echo base_url();?>/assets/admin/js/datatable/datatables/datatable.custom1.js"></script>
-    <script src="<?php echo base_url();?>/assets/admin/js/owlcarousel/owl.carousel.js"></script>
-    <script src="<?php echo base_url();?>/assets/admin/js/owlcarousel/owl-custom.js"></script>
-    <script src="<?php echo base_url();?>/assets/admin/js/typeahead/handlebars.js"></script>
-    <script src="<?php echo base_url();?>/assets/admin/js/typeahead/typeahead.bundle.js"></script>
-    <script src="<?php echo base_url();?>/assets/admin/js/typeahead/typeahead.custom.js"></script>
-    <script src="<?php echo base_url();?>/assets/admin/js/typeahead-search/handlebars.js"></script>
-    <script src="<?php echo base_url();?>/assets/admin/js/typeahead-search/typeahead-custom.js"></script>
-    <script src="<?php echo base_url();?>/assets/admin/js/height-equal.js"></script>
+    <script src="<?php echo base_url();?>assets/admin/js/sidebar-menu.js"></script>
+    <script src="<?php echo base_url();?>assets/admin/js/sidebar-pin.js"></script>
+    <script src="<?php echo base_url();?>assets/admin/js/slick/slick.min.js"></script>
+    <script src="<?php echo base_url();?>assets/admin/js/slick/slick.js"></script>
+    <script src="<?php echo base_url();?>assets/admin/js/header-slick.js"></script>
+    <script src="<?php echo base_url();?>assets/admin/js/chart/morris-chart/raphael.js"></script>
+    <script src="<?php echo base_url();?>assets/admin/js/chart/morris-chart/morris.js"> </script>
+    <script src="<?php echo base_url();?>assets/admin/js/chart/morris-chart/prettify.min.js"></script>
+    <script src="<?php echo base_url();?>assets/admin/js/chart/apex-chart/apex-chart.js"></script>
+    <script src="<?php echo base_url();?>assets/admin/js/chart/apex-chart/stock-prices.js"></script>
+    <script src="<?php echo base_url();?>assets/admin/js/chart/apex-chart/moment.min.js"></script>
+    <script src="<?php echo base_url();?>assets/admin/js/notify/bootstrap-notify.min.js"></script>
+    <script src="<?php echo base_url();?>assets/admin/js/dashboard/default.js"></script>
+    <script src="<?php echo base_url();?>assets/admin/js/notify/index.js"></script>
+    <script src="<?php echo base_url();?>assets/admin/js/datatable/datatables/jquery.dataTables.min.js"></script>
+    <script src="<?php echo base_url();?>assets/admin/js/datatable/datatables/datatable.custom.js"></script>
+    <script src="<?php echo base_url();?>assets/admin/js/datatable/datatables/datatable.custom1.js"></script>
+    <script src="<?php echo base_url();?>assets/admin/js/owlcarousel/owl.carousel.js"></script>
+    <script src="<?php echo base_url();?>assets/admin/js/owlcarousel/owl-custom.js"></script>
+    <script src="<?php echo base_url();?>assets/admin/js/typeahead/handlebars.js"></script>
+    <script src="<?php echo base_url();?>assets/admin/js/typeahead/typeahead.bundle.js"></script>
+    <script src="<?php echo base_url();?>assets/admin/js/typeahead/typeahead.custom.js"></script>
+    <script src="<?php echo base_url();?>assets/admin/js/typeahead-search/handlebars.js"></script>
+    <script src="<?php echo base_url();?>assets/admin/js/typeahead-search/typeahead-custom.js"></script>
+    <script src="<?php echo base_url();?>assets/admin/js/height-equal.js"></script>
     <!-- Plugins JS Ends-->
     <!-- Theme js-->
-    <script src="<?php echo base_url();?>/assets/admin/js/script.js"></script>
+    <script src="<?php echo base_url();?>assets/admin/js/script.js"></script>
     <!--<script src="<?php echo base_url();?>/assets/admin/js/theme-customizer/customizer.js"></script>-->
     <!-- Plugin used-->
     
@@ -105,6 +105,7 @@
 
   // Initialize DataTable
   var table = $(tableId).DataTable({
+    destroy: true, // Allow re-initialization if called multiple times
     pageLength: 100,
     scrollY: "400px",
     scrollX: true,

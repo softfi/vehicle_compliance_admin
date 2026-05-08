@@ -29,7 +29,7 @@
                                 </div>
                                 <div class="form-group">
                                     <label>Select Location</label>
-                                    <select class="form-control" name="location" required>
+                                    <select class="form-control" name="location" id="single2" required>
                                         <option value="">Select Location</option>
                                         <?php foreach($locations as $loc){?>
                                         <option value="<?=$loc->location_id?>"><?=$loc->location_name?></option>
@@ -73,7 +73,7 @@
                                     </div>
                                     <div>
                                         <label>Vehicle:</label>
-                                        <select name="filter_vehicle" class="uk-select">
+                                        <select name="filter_vehicle" class="uk-select select2-filter">
                                             <option value="">All Vehicles</option>
                                             <?php foreach($vehicle as $v){ ?>
                                             <option value="<?=$v->id?>" <?=($filter_date['vehicle_id']==$v->id)?'selected':''?>><?=$v->vehicle_no?></option>
@@ -82,7 +82,7 @@
                                     </div>
                                     <div>
                                         <label>Location:</label>
-                                        <select name="filter_location" class="uk-select">
+                                        <select name="filter_location" class="uk-select select2-filter">
                                             <option value="">All Locations</option>
                                             <?php foreach($locations as $l){ ?>
                                             <option value="<?=$l->location_id?>" <?=($filter_date['location_id']==$l->location_id)?'selected':''?>><?=$l->location_name?></option>
@@ -159,6 +159,16 @@
     </div>
 
     <script>
+    $(document).ready(function() {
+        if ($.fn.select2) {
+            $('.select2-filter').select2({
+                placeholder: "Select an option",
+                allowClear: true,
+                width: '100%'
+            });
+        }
+    });
+
     function editRecordPV(id) {
         $.ajax({
             url: '<?= base_url('Admin/edit_passenger_diesel'); ?>',
@@ -167,6 +177,16 @@
             success: function(response) {
                 $('#edit-form-content-pv').html(response);
                 UIkit.modal('#modal-edit-pv').show();
+                
+                // Re-initialize Select2 for dynamic fields in modal
+                if ($.fn.select2) {
+                    $('#edit-form-content-pv .select2-search').select2({
+                        placeholder: "Select an option",
+                        allowClear: true,
+                        width: '100%',
+                        dropdownParent: $('#modal-edit-pv')
+                    });
+                }
             }
         });
     }

@@ -51,8 +51,9 @@ class AdminModel extends Model
     function Vehicle()
     {
         $builder = $this->db->table('vehicle');
-        $builder->select('*', 'location.location_name');
+        $builder->select('vehicle.*, location.location_name, vehicle_types.type_name');
         $builder->join('location', 'location.location_id = vehicle.location_id', 'left');
+        $builder->join('vehicle_types', 'vehicle_types.id = vehicle.vehicle_type', 'left');
         return $builder->get()->getResult();
     }
     function Getallstaf()
@@ -70,9 +71,8 @@ class AdminModel extends Model
         $builder->join('staff', 'staff.id = driver_assignment.driver', 'left');
 
         if (!empty($from_date) && !empty($to_date)) {
+            $builder->where('driver_assignment.from_date >=', $from_date);
             $builder->where('driver_assignment.from_date <=', $to_date);
-            $builder->where('driver_assignment.to_date >=', $from_date);
-            $builder->orWhere('driver_assignment.to_date IS NULL');
         }
 
         return $builder->get()->getResult();
@@ -103,7 +103,7 @@ class AdminModel extends Model
         }
         // echo $to_date;exit;
         $builder = $this->db->table('staff_advance');
-        $builder->select('staff_advance.*, location.location_name, staff.name, staff.staff_code');
+        $builder->select('staff_advance.*, location.location_name, staff.name, staff.staff_code, staff.user_type');
         $builder->join('location', 'location.location_id = staff_advance.location_id', 'left');
         $builder->join('staff', 'staff.id = staff_advance.staff_id', 'left');
         $builder->where('adv_date >=', $from_date);
@@ -605,8 +605,9 @@ class AdminModel extends Model
     function Getvehicle_details($from_date, $to_date, $type)
     {
         $builder = $this->db->table('vehicle');
-        $builder->select('vehicle.*, location.location_name');
+        $builder->select('vehicle.*, location.location_name, vehicle_types.type_name');
         $builder->join('location', 'location.location_id = vehicle.location_id', 'left');
+        $builder->join('vehicle_types', 'vehicle_types.id = vehicle.vehicle_type', 'left');
 
         if ($type != '') {
             // Add conditions for expiring within the date range
@@ -674,6 +675,7 @@ class AdminModel extends Model
                 $builder->orWhere('khanij_expiri <', $from_date); // Expired
             }
         }
+        $builder->orderBy('vehicle.id', 'DESC');
         return $builder->get()->getResult();
     }
 
@@ -926,7 +928,7 @@ class AdminModel extends Model
     //     return $builder->get()->getResult();
     // }
 
-    public function despatch_count($from_date = null, $to_date = null, $do_no = null, $chalan_status = null, $payment_status = null, $deposited_status = null, $voucher_id = null)
+    public function despatch_count($from_date = null, $to_date = null, $do_no = null, $chalan_status = null, $payment_status = null, $deposited_status = null, $voucher_id = null, $search = null)
     {
         $builder = $this->db->table('despatch');
         $builder->select('COUNT(*) as total');
@@ -973,11 +975,19 @@ class AdminModel extends Model
             $builder->where('deposited', 0);
         }
 
+        if (!empty($search)) {
+            $builder->groupStart()
+                ->like('vehicle.vehicle_no', $search)
+                ->orLike('despatch.ref_no', $search)
+                ->orLike('do_registration.do_no', $search)
+                ->groupEnd();
+        }
+
         $query = $builder->get();
         return $query->getRow()->total;
     }
 
-    public function despatch_dtls1_paginated($from_date = null, $to_date = null, $do_no = null, $chalan_status = null, $payment_status = null, $deposited_status = null, $limit = 10, $offset = 0, $voucher_id = null)
+    public function despatch_dtls1_paginated($from_date = null, $to_date = null, $do_no = null, $chalan_status = null, $payment_status = null, $deposited_status = null, $limit = 10, $offset = 0, $voucher_id = null, $search = null)
     {
         $builder = $this->db->table('despatch');
         $builder->select('despatch.*, vehicle.vehicle_no as vehicle_number, do_registration.do_no as doreg_no, do_registration.rate, do_registration.shortage_qty as min_qty, do_registration.shortage_rate, do_registration.diesel_rate, do_registration.diesel_payment_type, do_registration.cash_type, do_registration.special_shortage, creator.full_name as made_by, COALESCE(do_registration.tds_percentage, 2.00) as tds_percentage, voucher.group_code');
@@ -1025,6 +1035,14 @@ class AdminModel extends Model
             $builder->where('deposited', 1);
         } elseif ($deposited_status === '0') {
             $builder->where('deposited', 0);
+        }
+
+        if (!empty($search)) {
+            $builder->groupStart()
+                ->like('vehicle.vehicle_no', $search)
+                ->orLike('despatch.ref_no', $search)
+                ->orLike('do_registration.do_no', $search)
+                ->groupEnd();
         }
 
         $builder->limit($limit, $offset);
@@ -2781,7 +2799,7 @@ class AdminModel extends Model
     public function Getvehicle_tyer()
     {
         $builder = $this->db->table('vehicle');
-        $builder->select('vehicle.id, vehicle.vehicle_no, tyer_management.tyer_sl_no, tyer_management.tyer_position');
+        $builder->select('vehicle.id, vehicle.vehicle_no, tyer_management.id as tyer_id, tyer_management.tyer_sl_no, tyer_management.tyer_position');
         $builder->join('tyer_management', 'vehicle.id = tyer_management.vehicle_id', 'left');
         $results = $builder->get()->getResult(); // Get result as array of objects
 
@@ -2793,10 +2811,14 @@ class AdminModel extends Model
                 $vehicles[$vehicle_id] = [
                     'id' => $result->id,
                     'vehicle_no' => $result->vehicle_no,
-                    'tyer_position' => []
+                    'tyer_position' => [],
+                    'tyer_ids' => []
                 ];
             }
-            $vehicles[$vehicle_id]['tyer_position'][$result->tyer_position] = $result->tyer_sl_no;
+            if ($result->tyer_position) {
+                $vehicles[$vehicle_id]['tyer_position'][$result->tyer_position] = $result->tyer_sl_no;
+                $vehicles[$vehicle_id]['tyer_ids'][$result->tyer_position] = $result->tyer_id;
+            }
         }
 
         return $vehicles;
@@ -3265,59 +3287,72 @@ class AdminModel extends Model
     }
     public function getHistoryRecords($filters = [])
     {
-        $builder = $this->db->table('tyer_management_history th');
-
-        // Join with other tables for additional info
-        $builder->select('
-            th.*,
-            t.tyer_sl_no,
-            t.brand_name,
-            v.vehicle_no,
-            vn.name AS vendor_name,
-            l.location_name,
-            l1.location_name as from_location,
-            l2.location_name as to_location
-        ');
-
-        $builder->join('tyer_management t', 't.id = th.tyre_id', 'left');
-        $builder->join('vehicle v', 'v.id = th.vehicle_id', 'left');
-        $builder->join('vendor vn', 'vn.id = th.vendor_id', 'left');
-        $builder->join('location l', 'l.location_id = th.location_id', 'left');
-        $builder->join('location l1', 'l1.location_id = th.transfer_from', 'left');
-        $builder->join('location l2', 'l2.location_id = th.transfer_to', 'left');
-
-        // Filter by tyre_id if provided
+        $tyre_ids = [];
         if (!empty($filters['tyre_id'])) {
-            $builder->where('th.tyre_id', $filters['tyre_id']);
+            $tyre_ids[] = (int) $filters['tyre_id'];
+
+            // Find all ancestors in the replacement chain
+            $current_id = (int) $filters['tyre_id'];
+            while ($current_id) {
+                $tyre = $this->db->table('tyer_management')
+                    ->select('replaced_from_id')
+                    ->where('id', $current_id)
+                    ->get()
+                    ->getRow();
+
+                if ($tyre && !empty($tyre->replaced_from_id)) {
+                    $tyre_ids[] = (int) $tyre->replaced_from_id;
+                    $current_id = (int) $tyre->replaced_from_id;
+                } else {
+                    $current_id = null;
+                }
+            }
         }
 
-        // Filter by event_type
+        $builder = $this->db->table('tyer_management_history h')
+            ->select([
+                'h.*',
+                'tm.tyer_sl_no',
+                'tm.brand_name',
+                'tm.tyer_type',
+                'v.vehicle_no',
+                've.name AS vendor_name',
+                'l.location_name',
+                'lf.location_name AS from_location',
+                'lt.location_name AS to_location',
+            ])
+            ->join('tyer_management tm', 'tm.id = h.tyre_id', 'left')
+            ->join('vehicle v', 'v.id = h.vehicle_id', 'left')
+            ->join('vendor ve', 've.id = h.vendor_id', 'left')
+            ->join('location l', 'l.location_id = h.location_id', 'left')
+            ->join('location lf', 'lf.location_id = h.transfer_from', 'left')
+            ->join('location lt', 'lt.location_id = h.transfer_to', 'left')
+            ->orderBy('h.event_date', 'ASC')
+            ->orderBy('h.tyre_history_id', 'ASC');
+
+        // Filter by tyre IDs (including ancestors if applicable)
+        if (!empty($tyre_ids)) {
+            $builder->whereIn('h.tyre_id', $tyre_ids);
+        }
+
+        // Filter by event type
         if (!empty($filters['event_type'])) {
-            $builder->where('th.event_type', $filters['event_type']);
+            $builder->where('h.event_type', $filters['event_type']);
         }
-
-        // Search filter
-        if (!empty($filters['search'])) {
-            $builder->groupStart()
-                ->like('t.tyer_sl_no', $filters['search'])
-                ->orLike('v.vehicle_no', $filters['search'])
-                ->orLike('t.brand_name', $filters['search'])
-                ->orLike('th.remarks', $filters['search'])
-                ->groupEnd();
-        }
-
-        $builder->orderBy('th.created_at', 'DESC');
 
         return $builder->get()->getResult();
     }
 
     // Add this method to get single tyre details
-    public function getTyreById($tyre_id)
+    public function getTyreById($id)
     {
-        return $this->db->table('tyer_management t')
-            ->select('t.*, l.location_name')
-            ->join('location l', 'l.location_id = t.location_id', 'left')
-            ->where('t.id', $tyre_id)
+        return $this->db->table('tyer_management tm')
+            ->select('tm.*, l.location_name, v.name as vendor_name, parent.tyer_sl_no as replaced_from_serial, child.tyer_sl_no as replaced_to_serial')
+            ->join('location l', 'l.location_id = tm.location_id', 'left')
+            ->join('vendor v', 'v.id = tm.vendor_id', 'left')
+            ->join('tyer_management parent', 'parent.id = tm.replaced_from_id', 'left')
+            ->join('tyer_management child', 'child.id = tm.replaced_to_id', 'left')
+            ->where('tm.id', $id)
             ->get()
             ->getRow();
     }
@@ -3602,18 +3637,44 @@ class AdminModel extends Model
 
     public function saveVoucher($voucherData, $entries)
     {
-        $this->db->transStart();
+        $this->db->transBegin();
 
         $this->db->table('account_vouchers')->insert($voucherData);
+        $db_err = $this->db->error();
+        if ($db_err['code'] !== 0) {
+            session()->setFlashdata('last_db_error', $db_err['message']);
+            $this->db->transRollback();
+            return false;
+        }
+
         $voucherId = $this->db->insertID();
+
+        if (!$voucherId) {
+            session()->setFlashdata('last_db_error', 'Failed to get insert ID for voucher');
+            $this->db->transRollback();
+            return false;
+        }
 
         foreach ($entries as $entry) {
             $entry['voucher_id'] = $voucherId;
             $this->db->table('account_voucher_entries')->insert($entry);
+            $db_err = $this->db->error();
+            if ($db_err['code'] !== 0) {
+                session()->setFlashdata('last_db_error', $db_err['message']);
+                $this->db->transRollback();
+                return false;
+            }
         }
 
-        $this->db->transComplete();
-        return $this->db->transStatus();
+        if ($this->db->transStatus() === FALSE) {
+            $db_err = $this->db->error();
+            session()->setFlashdata('last_db_error', $db_err['message'] ?: 'Transaction status failed');
+            $this->db->transRollback();
+            return false;
+        } else {
+            $this->db->transCommit();
+            return true;
+        }
     }
 
     public function getVouchers($filters = [])
@@ -3677,9 +3738,19 @@ class AdminModel extends Model
                             $entry->ledger_name = $row->vehicle_no;
                         break;
                     case 2:
-                        $row = $this->db->table('bank')->where('bank_id', $entry->ledger_id)->get()->getRow();
+                        $row = $this->db->table('location')->where('location_id', $entry->ledger_id)->get()->getRow();
+                        if ($row)
+                            $entry->ledger_name = $row->location_name;
+                        break;
+                    case 7:
+                        $row = $this->db->table('bank')->where('id', $entry->ledger_id)->get()->getRow();
                         if ($row)
                             $entry->ledger_name = $row->bank_name;
+                        break;
+                    default:
+                        $row = $this->db->table('ledger')->where('ledger_id', $entry->ledger_id)->get()->getRow();
+                        if ($row)
+                            $entry->ledger_name = $row->ledger_name;
                         break;
                 }
             }
@@ -3692,71 +3763,110 @@ class AdminModel extends Model
         return null;
     }
 
-    public function getLedgerStatement($group_id, $ledger_id, $from_date, $to_date, $voucher_type = null)
+    public function getLedgerStatement($group_id = null, $ledger_id = null, $from_date = null, $to_date = null, $voucher_type = null)
     {
-        // 1. Get Opening Balance from base table
-        $initial_opening_bal = 0;
-        $ledger_name = 'Unknown';
+        $opening_bal = 0;
+        $ledger_name = 'All Vouchers';
 
-        switch ($group_id) {
-            case 6: // Vendor
-                $row = $this->db->table('vendor')->where('id', $ledger_id)->get()->getRow();
-                if ($row) {
-                    $bal = isset($row->bal) ? $row->bal : 0;
-                    $type = isset($row->transaction_type) ? $row->transaction_type : (isset($row->type) ? $row->type : 'CR');
-                    $initial_opening_bal = ($type == 'DR' ? $bal : -$bal);
-                    $ledger_name = $row->name;
-                }
-                break;
-            case 5: // Staff
-            case 4: // Driver
-                $row = $this->db->table('staff')->where('id', $ledger_id)->get()->getRow();
-                if ($row) {
-                    $bal = isset($row->opening_balance) ? $row->opening_balance : 0;
-                    $type = isset($row->transaction_type) ? $row->transaction_type : 'DR';
-                    $initial_opening_bal = ($type == 'DR' ? $bal : -$bal);
-                    $ledger_name = $row->name;
-                }
-                break;
-            case 3: // Vehicle
-                $row = $this->db->table('vehicle')->where('id', $ledger_id)->get()->getRow();
-                if ($row) {
-                    $bal = isset($row->opening_balance) ? $row->opening_balance : 0;
-                    $initial_opening_bal = $bal; // Default DR for vehicle?
-                    $ledger_name = $row->vehicle_no;
-                }
-                break;
-            case 2: // Cash Bank
-                $row = $this->db->table('bank')->where('bank_id', $ledger_id)->get()->getRow();
-                if ($row) {
-                    $bal = isset($row->opening_balance) ? $row->opening_balance : 0;
-                    $type = isset($row->transaction_type) ? $row->transaction_type : 'DR';
-                    $initial_opening_bal = ($type == 'DR' ? $bal : -$bal);
-                    $ledger_name = $row->bank_name;
-                }
-                break;
+        // 1. Specific Ledger Mode: Calculate Opening Balance
+        if ($group_id && $ledger_id) {
+            $initial_opening_bal = 0;
+            switch ($group_id) {
+                case 6: // Vendor
+                    $row = $this->db->table('vendor')->where('id', $ledger_id)->get()->getRow();
+                    if ($row) {
+                        $bal = $row->bal ?? 0;
+                        $type = $row->transaction_type ?? ($row->type ?? 'CR');
+                        $initial_opening_bal = ($type == 'DR' ? $bal : -$bal);
+                        $ledger_name = $row->name;
+                    }
+                    break;
+                case 5: // Staff
+                case 4: // Driver
+                    $row = $this->db->table('staff')->where('id', $ledger_id)->get()->getRow();
+                    if ($row) {
+                        $bal = $row->opening_balance ?? 0;
+                        $type = $row->transaction_type ?? 'DR';
+                        $initial_opening_bal = ($type == 'DR' ? $bal : -$bal);
+                        $ledger_name = $row->name;
+                    }
+                    break;
+                case 3: // Vehicle
+                    $row = $this->db->table('vehicle')->where('id', $ledger_id)->get()->getRow();
+                    if ($row) {
+                        $bal = $row->opening_balance ?? 0;
+                        $initial_opening_bal = $bal;
+                        $ledger_name = $row->vehicle_no;
+                    }
+                    break;
+                case 2: // Cash Book (Location)
+                    $row = $this->db->table('location')->where('location_id', $ledger_id)->get()->getRow();
+                    if ($row) {
+                        $bal = $row->opening_balance ?? 0;
+                        // Locations typically have DR opening balances if positive
+                        $initial_opening_bal = $bal;
+                        $ledger_name = $row->location_name;
+                    }
+                    break;
+                case 7: // Bank
+                    $row = $this->db->table('bank')->where('id', $ledger_id)->get()->getRow();
+                    if ($row) {
+                        $bal = $row->opening_balance ?? 0;
+                        $initial_opening_bal = $bal;
+                        $ledger_name = $row->bank_name;
+                    }
+                    break;
+                default:
+                    $row = $this->db->table('ledger')->where('ledger_id', $ledger_id)->get()->getRow();
+                    if ($row) {
+                        $bal = $row->balance ?? 0;
+                        $type = $row->transaction_type ?? 'DR';
+                        $initial_opening_bal = ($type == 'DR' ? $bal : -$bal);
+                        $ledger_name = $row->ledger_name;
+                    }
+                    break;
+            }
+
+            // Sum transactions BEFORE from_date to get current opening balance
+            $prev_query = $this->db->table('account_voucher_entries e')
+                ->select('SUM(CASE WHEN e.entry_type = 1 THEN e.amount ELSE -e.amount END) as total')
+                ->join('account_vouchers v', 'v.id = e.voucher_id')
+                ->where('e.group_id', $group_id)
+                ->where('e.ledger_id', $ledger_id);
+
+            if ($from_date) {
+                $prev_query->where('v.voucher_date <', $from_date);
+            }
+
+            $prev_transactions = $prev_query->get()->getRow();
+            $opening_bal = $initial_opening_bal + ($prev_transactions->total ?? 0);
         }
 
-        // 2. Sum transactions BEFORE from_date to get current opening balance
-        $prev_transactions = $this->db->table('account_voucher_entries e')
-            ->select('SUM(CASE WHEN e.entry_type = 1 THEN e.amount ELSE -e.amount END) as total')
-            ->join('account_vouchers v', 'v.id = e.voucher_id')
-            ->where('e.group_id', $group_id)
-            ->where('e.ledger_id', $ledger_id)
-            ->where('v.voucher_date <', $from_date)
-            ->get()->getRow();
-
-        $opening_bal = $initial_opening_bal + ($prev_transactions->total ?? 0);
-
-        // 3. Get transactions within date range
+        // 2. Get transactions within date range (or all if no date)
         $builder = $this->db->table('account_voucher_entries e')
             ->select('e.*, v.voucher_no, v.voucher_type, v.voucher_date, v.narration as voucher_narration')
-            ->join('account_vouchers v', 'v.id = e.voucher_id')
-            ->where('e.group_id', $group_id)
-            ->where('e.ledger_id', $ledger_id)
-            ->where('v.voucher_date >=', $from_date)
-            ->where('v.voucher_date <=', $to_date);
+            ->select("(CASE 
+                WHEN e.group_id = 6 THEN (SELECT name FROM vendor WHERE id = e.ledger_id)
+                WHEN e.group_id IN (4, 5) THEN (SELECT name FROM staff WHERE id = e.ledger_id)
+                WHEN e.group_id = 3 THEN (SELECT vehicle_no FROM vehicle WHERE id = e.ledger_id)
+                WHEN e.group_id = 2 THEN (SELECT location_name FROM location WHERE location_id = e.ledger_id)
+                WHEN e.group_id = 7 THEN (SELECT bank_name FROM bank WHERE id = e.ledger_id)
+                ELSE (SELECT ledger_name FROM ledger WHERE ledger_id = e.ledger_id)
+            END) as resolved_ledger_name")
+            ->join('account_vouchers v', 'v.id = e.voucher_id');
 
+        if ($group_id) {
+            $builder->where('e.group_id', $group_id);
+        }
+        if ($ledger_id) {
+            $builder->where('e.ledger_id', $ledger_id);
+        }
+        if ($from_date) {
+            $builder->where('v.voucher_date >=', $from_date);
+        }
+        if ($to_date) {
+            $builder->where('v.voucher_date <=', $to_date);
+        }
         if ($voucher_type) {
             $builder->where('v.voucher_type', $voucher_type);
         }
@@ -3770,4 +3880,41 @@ class AdminModel extends Model
         ];
     }
 
+
+    /**
+     * Get detailed history of tyre exchanges between vehicles and stock
+     */
+    public function getExchangeHistory($filters = [])
+    {
+        $builder = $this->db->table('tyre_exchange_history eh')
+            ->select([
+                'eh.*',
+                'v.vehicle_no',
+                'old_t.tyer_sl_no AS old_serial',
+                'old_t.brand_name AS old_brand',
+                'new_t.tyer_sl_no AS new_serial',
+                'new_t.brand_name AS new_brand'
+            ])
+            ->join('vehicle v', 'v.id = eh.vehicle_id', 'left')
+            ->join('tyer_management old_t', 'old_t.id = eh.from_tyre_id', 'left')
+            ->join('tyer_management new_t', 'new_t.id = eh.to_tyre_id', 'left');
+
+        if (!empty($filters['search'])) {
+            $s = $filters['search'];
+            $builder->groupStart()
+                ->like('v.vehicle_no', $s)
+                ->orLike('old_t.tyer_sl_no', $s)
+                ->orLike('new_t.tyer_sl_no', $s)
+                ->groupEnd();
+        }
+
+        if (!empty($filters['vehicle_id'])) {
+            $builder->where('eh.vehicle_id', $filters['vehicle_id']);
+        }
+
+        return $builder->orderBy('eh.exchange_date', 'DESC')
+            ->orderBy('eh.id', 'DESC')
+            ->get()
+            ->getResult();
+    }
 }

@@ -1,6 +1,9 @@
 <?php include("header.php"); ?>
 <link rel='stylesheet' href='https://maxcdn.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css'>
+<link href="https://cdnjs.cloudflare.com/ajax/libs/select2/4.0.6-rc.0/css/select2.min.css" rel="stylesheet" />
 <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<script src='https://maxcdn.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js'></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/select2/4.0.6-rc.0/js/select2.min.js"></script>
 <!-- Page Body Start-->
 <div class="page-body-wrapper" style="background:#f9f9f9;">
     <?php include("mainsidebar.php"); ?>
@@ -16,6 +19,16 @@
             </div>
         </div>
         <!-- Container-fluid starts-->
+        <style>
+            .select2-container--default .select2-selection--single {
+                height: 38px !important;
+                border: 1px solid #ced4da !important;
+                padding-top: 5px;
+            }
+            .select2-container {
+                display: block !important;
+            }
+        </style>
         <div class="container-fluid default-dashboard">
             <form name="add_name" id="add_inhouse_maintenance" action="<?php echo base_url();?>/Admin/insert_inhouse" method="post">
                 <div class="uk-card uk-card-body uk-card-small" style="border:solid 1px #ccc;">
@@ -62,7 +75,7 @@
                         </div>
                         <div>
                             <label>Checked by</label>
-                            <select name="check_by" class="form-control" required>
+                            <select name="check_by" id="check_by" class="form-control" required>
                                 <option value="">Select User</option>
                                 <?php foreach($users as $u): ?>
                                     <option value="<?= $u->id; ?> - <?= $u->full_name; ?>"><?= $u->id; ?> - <?= $u->full_name; ?></option>
@@ -136,11 +149,6 @@
     <!-- Footer start-->
     <?php include("footer.php"); ?>
 
-<script src='https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js'></script>
-<script src='https://maxcdn.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js'></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/select2/4.0.6-rc.0/js/select2.min.js"></script>
-<link href="https://cdnjs.cloudflare.com/ajax/libs/select2/4.0.6-rc.0/css/select2.min.css" rel="stylesheet" />
-
 <script>
     
     // Global mechanic options for dynamic rows
@@ -151,6 +159,7 @@
 
     var currentItemsOptions = '';  // latest options
     var i = $('#dynamic_field tr').length;
+    var selectedItems = [];
 
     function loadItemsForLocation(locationId, callback) {
         if (locationId) {
@@ -214,7 +223,6 @@
         applySelect2(newRow);
     }
 
-
     function applySelect2(element) {
         element.find('.items').select2({
             placeholder: "Select an option",
@@ -222,11 +230,41 @@
             width: '100%'
         });
     }
+
     $(document).ready(function () {
+        // Initialize Select2 for main form fields
+        $('#vehicle, #single, #check_by').select2({
+            placeholder: "Select an option",
+            allowClear: true,
+            width: '100%'
+        });
+
         $('.items').select2({
             placeholder: "Search or select an item",
             allowClear: true,
-            width: '100%'       // Ensures full width inside table
+            width: '100%'
+        });
+
+        // Vehicle details listener
+        $('#vehicle').on('change', function() {
+            var vehicle_id = $(this).val();
+            if (vehicle_id) {
+                $.ajax({
+                    url: '<?= base_url('Admin/get_vehicle_driver'); ?>',
+                    type: 'POST',
+                    data: { vehicle_id: vehicle_id },
+                    dataType: 'json',
+                    success: function(res) {
+                        if (res.status === 'success') {
+                            $('#vehicle-details input[name="driver"]').val(res.driver_name);
+                        } else {
+                            $('#vehicle-details input[name="driver"]').val('');
+                        }
+                    }
+                });
+            } else {
+                $('#vehicle-details input[name="driver"]').val('');
+            }
         });
     });
 
@@ -260,7 +298,7 @@
 
         var row = $(this).closest('tr');
         row.data('unit-price', unitPrice);
-        row.find('.availableqty').text( ' unitsname '+ unitnames +' | Available: ' + available + ' | Unit Price: ' + unitPrice.toFixed(2));
+        row.find('.availableqty').text('Units: '+ unitnames +' | Available: ' + available + ' | Price: ' + unitPrice.toFixed(2));
         row.find('.qty').attr('max', available);
 
         calculatePrice(row);

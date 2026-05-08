@@ -18,6 +18,16 @@
                  </div>
                  
                   <div class="container-fluid default-dashboard">
+                   <style>
+                        .select2-container--default .select2-selection--single {
+                            height: 38px !important;
+                            border: 1px solid #ced4da !important;
+                            padding-top: 5px;
+                        }
+                        .select2-container {
+                            display: block !important;
+                        }
+                    </style>
             <div class="uk-grid-small" uk-grid>
                 <div class="uk-width-1-1@m">
                     <div class="uk-card uk-card-body uk-card-default uk-card-small">
@@ -25,7 +35,7 @@
                             <div class="uk-grid-small uk-child-width-expand" uk-grid>
                                 <div class="form-group">
                                     <label for="year">Year</label>
-                                    <select class="form-control" name="year" id="year">
+                                    <select class="form-control select2-search" name="year" id="year">
                                         <?php
 $currentYear = date('Y');
 for ($y = 2023; $y <= 2040; $y++): ?>
@@ -37,7 +47,7 @@ endfor; ?>
                                 
                                 <div class="form-group">
                                     <label for="month">Month</label>
-                                    <select class="form-control" name="month" id="month">
+                                    <select class="form-control select2-search" name="month" id="month">
                                         <?php
 $currentMonth = date('n');
 $months = [
@@ -53,7 +63,7 @@ endforeach; ?>
                                 
                                 <div class="form-group">
                                     <label for="location">Location</label>
-                                    <select name="location" id="location" class="form-control">
+                                    <select name="location" id="location" class="form-control select2-search">
                                         <option value="">Select location</option>
                                         <?php foreach ($location as $loc): ?>
                                             <option value="<?= $loc->location_id; ?>"><?= $loc->location_name; ?></option>
@@ -109,7 +119,7 @@ endforeach; ?>
         
         
         
-        <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+
 
         <!-- UIkit Loader -->
 
@@ -229,6 +239,12 @@ background:rgba(0,0,0,0.5);z-index:99999;display:flex;align-items:center;justify
 }
 
 $(document).ready(function() {
+    $('#location, #driver_id, #year, #month').select2({
+        placeholder: "Select an option",
+        allowClear: true,
+        width: '100%'
+    });
+
     $('#selectionForm').on('submit', function(e) {
         e.preventDefault(); // Prevent the default form submission
 

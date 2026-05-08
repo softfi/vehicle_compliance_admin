@@ -23,6 +23,16 @@
             </div>
           </div>
           <!-- Container-fluid starts-->
+          <style>
+            .select2-container--default .select2-selection--single {
+                height: 38px !important;
+                border: 1px solid #ced4da !important;
+                padding-top: 5px;
+            }
+            .select2-container {
+                display: block !important;
+            }
+          </style>
           <div class="container-fluid default-dashboard">
             <div class="uk-grid-small uk-child-width-expand" uk-grid>
                 <div class="uk-width-1-4">
@@ -121,7 +131,7 @@
                 </div>
                 <div class="uk-width-1-1 uk-margin-bottom-small">
                     <label>Mechanic Name</label>
-                    <select name="mechanic_name" class="uk-select" required>
+                    <select name="mechanic_name" id="mechanic_id" class="form-control select2-search" required>
                         <option value="">Select Mechanic</option>
                         <?php foreach($mechanics as $mechanic): ?>
                             <option value="<?= $mechanic->name; ?>"><?= $mechanic->name; ?></option>
@@ -130,7 +140,7 @@
                 </div>
                 <div class="uk-width-1-1 uk-margin-bottom-small">
                     <label>Checked By</label>
-                    <select name="checked_by" class="uk-select" required>
+                    <select name="checked_by" id="checked_by" class="form-control select2-search" required>
                         <option value="">Select User</option>
                         <?php foreach($users as $user): ?>
                             <option value="<?= $user->id; ?> - <?= $user->full_name; ?>"><?= $user->id; ?> - <?= $user->full_name; ?></option>
@@ -229,3 +239,12 @@ foreach ($regularcheckup as $record) {
         </style>
         <!-- footer start-->
        <?php include("footer.php");?>
+       <script>
+           $(document).ready(function() {
+               $('#mechanic_id, #checked_by, #single').select2({
+                   placeholder: "Select an option",
+                   allowClear: true,
+                   width: '100%'
+               });
+           });
+       </script>

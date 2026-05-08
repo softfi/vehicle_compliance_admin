@@ -138,8 +138,10 @@
                                     <span class="format-badge"><b>A:</b> Staff ID</span>
                                     <span class="format-badge"><b>B:</b> Date (YYYY-MM-DD)</span>
                                     <span class="format-badge"><b>C:</b> Status</span>
-                                    <span class="format-badge"><b>D:</b> Notes</span>
-                                    <span class="format-badge"><b>E:</b> Leave Type</span>
+                                    <span class="format-badge"><b>D:</b> Check-in (HH:MM)</span>
+                                    <span class="format-badge"><b>E:</b> Check-out (HH:MM)</span>
+                                    <span class="format-badge"><b>F:</b> Notes</span>
+                                    <span class="format-badge"><b>G:</b> Leave Type</span>
                                 </div>
                             </div>
 
@@ -162,23 +164,27 @@
                                     <h6 class="mb-1">Example Data Row</h6>
                                     <div class="table-responsive">
                                         <table class="table table-sm table-bordered mt-2 small bg-light text-dark">
-                                            <thead class="bg-white text-dark">
-                                                <tr>
-                                                    <th class="text-dark">Staff ID</th>
-                                                    <th class="text-dark">Date</th>
-                                                    <th class="text-dark">Status</th>
-                                                    <th class="text-dark">Notes</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody class="text-dark">
-                                                <tr>
-                                                    <td class="text-dark">123</td>
-                                                    <td class="text-dark">2026-04-14</td>
-                                                    <td class="text-dark">Present</td>
-                                                    <td class="text-dark">Bulk record</td>
-                                                </tr>
-                                            </tbody>
-                                        </table>
+                                             <thead class="bg-white text-dark">
+                                                 <tr>
+                                                     <th class="text-dark">Staff ID</th>
+                                                     <th class="text-dark">Date</th>
+                                                     <th class="text-dark">Status</th>
+                                                     <th class="text-dark">Check-in</th>
+                                                     <th class="text-dark">Check-out</th>
+                                                     <th class="text-dark">Notes</th>
+                                                 </tr>
+                                             </thead>
+                                             <tbody class="text-dark">
+                                                 <tr>
+                                                     <td class="text-dark">123</td>
+                                                     <td class="text-dark">2026-04-14</td>
+                                                     <td class="text-dark">Present</td>
+                                                     <td class="text-dark">09:00</td>
+                                                     <td class="text-dark">18:00</td>
+                                                     <td class="text-dark">Bulk record</td>
+                                                 </tr>
+                                             </tbody>
+                                         </table>
                                     </div>
                                 </div>
                             </div>

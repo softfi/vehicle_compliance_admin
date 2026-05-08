@@ -2,7 +2,7 @@
 
 <div class="page-body-wrapper" style="background:#f4f7f6;">
     <?php include("mainsidebar.php"); ?>
-    
+
     <div class="page-body">
         <div class="container-fluid">
             <div class="page-title">
@@ -31,35 +31,31 @@
                 <div class="card-body">
                     <form id="voucherForm" action="<?= base_url('admin/saveVoucher'); ?>" method="post">
                         <input type="hidden" name="voucher_type" value="Receipt">
-                        
+
                         <div class="row mb-4">
                             <div class="col-md-3">
-                                <label class="form-label font-weight-bold">Voucher No <span class="text-danger">*</span></label>
-                                <input type="text" name="voucher_no" class="form-control" value="<?= (string)$next_no ?>" readonly style="background: #e9ecef;">
+                                <label class="form-label font-weight-bold">Voucher No <span
+                                        class="text-danger">*</span></label>
+                                <input type="text" name="voucher_no" class="form-control"
+                                    value="<?= (string) $next_no ?>" readonly style="background: #e9ecef;">
                             </div>
                             <div class="col-md-3">
-                                <label class="form-label font-weight-bold">Date <span class="text-danger">*</span></label>
-                                <input type="date" name="voucher_date" class="form-control" value="<?= date('Y-m-d') ?>" required>
+                                <label class="form-label font-weight-bold">Date <span
+                                        class="text-danger">*</span></label>
+                                <input type="date" name="voucher_date" class="form-control" value="<?= date('Y-m-d') ?>"
+                                    required>
                             </div>
                             <div class="col-md-3">
                                 <label class="form-label font-weight-bold">Financial Year</label>
                                 <select name="fy_id" class="form-control" required>
-                                    <?php foreach($financial_years as $fy): ?>
+                                    <?php foreach ($financial_years as $fy): ?>
                                         <option value="<?= $fy->fy_id ?>" <?= $fy->status == 1 ? 'selected' : '' ?>>
                                             <?= date('Y', strtotime($fy->from_date)) ?>-<?= date('y', strtotime($fy->to_date)) ?>
                                         </option>
                                     <?php endforeach; ?>
                                 </select>
                             </div>
-                            <div class="col-md-3">
-                                <label class="form-label font-weight-bold">Location <span class="text-danger">*</span></label>
-                                <select name="location_id" class="form-control" required>
-                                    <option value="">-- Select --</option>
-                                    <?php foreach($locations as $loc): ?>
-                                        <option value="<?= $loc->location_id ?>"><?= $loc->location_name ?></option>
-                                    <?php endforeach; ?>
-                                </select>
-                            </div>
+
                         </div>
 
                         <div class="table-responsive">
@@ -69,7 +65,7 @@
                                         <th width="10%">Dr/Cr</th>
                                         <th width="20%">Group</th>
                                         <th width="20%">Particulars</th>
-                                        <th width="20%">Select Cash/Bank Account</th>
+
                                         <th width="15%">Amount</th>
                                         <th width="5%"><span class="fa fa-trash"></span></th>
                                     </tr>
@@ -78,15 +74,17 @@
                                     <tr class="row-item">
                                         <td>
                                             <select name="type[]" class="form-control type-select" required>
-                                                <option value="1">Dr</option>
-                                                <option value="2" selected>Cr</option>
+                                                <option value="1">Cr</option>
+                                                <option value="2" selected>Dr</option>
                                             </select>
                                         </td>
                                         <td>
                                             <select name="group_id[]" class="form-control group-select" required>
                                                 <option value="">Select Group</option>
-                                                <?php foreach($groups as $g): ?>
-                                                    <option value="<?= $g->group_id ?>"><?= htmlspecialchars($g->group_name) ?></option>
+                                                <?php foreach ($groups as $g): ?>
+                                                    <option value="<?= $g->group_id ?>">
+                                                        <?= htmlspecialchars($g->group_name) ?>
+                                                    </option>
                                                 <?php endforeach; ?>
                                             </select>
                                         </td>
@@ -95,18 +93,14 @@
                                                 <option value="">Select Particular...</option>
                                             </select>
                                         </td>
+
                                         <td>
-                                            <select name="bank_id[]" class="form-control bank-select">
-                                                <option value="">-- No Auto-Contra --</option>
-                                                <option value="Cash">Cash</option>
-                                                <option value="Bank">Bank</option>
-                                            </select>
+                                            <input type="number" step="0.01" name="amount[]"
+                                                class="form-control amount-input" placeholder="0.00" required>
                                         </td>
                                         <td>
-                                            <input type="number" step="0.01" name="amount[]" class="form-control amount-input" placeholder="0.00" required>
-                                        </td>
-                                        <td>
-                                            <button type="button" class="btn btn-danger btn-sm remove-row"><i class="fa fa-times"></i></button>
+                                            <button type="button" class="btn btn-danger btn-sm remove-row"><i
+                                                    class="fa fa-times"></i></button>
                                         </td>
                                     </tr>
                                 </tbody>
@@ -115,7 +109,8 @@
 
                         <div class="row mt-3">
                             <div class="col-md-12">
-                                <button type="button" class="btn btn-info btn-sm" id="addVoucherRow"><i class="fa fa-plus"></i> Add Line</button>
+                                <button type="button" class="btn btn-info btn-sm" id="addVoucherRow"><i
+                                        class="fa fa-plus"></i> Add Line</button>
                             </div>
                         </div>
 
@@ -124,7 +119,8 @@
                         <div class="row align-items-end">
                             <div class="col-md-7">
                                 <label class="font-weight-bold">Narration</label>
-                                <textarea name="narration" class="form-control" rows="2" placeholder="Overall voucher narration..."></textarea>
+                                <textarea name="narration" class="form-control" rows="2"
+                                    placeholder="Overall voucher narration..."></textarea>
                             </div>
                             <div class="col-md-5 text-right">
                                 <button type="submit" class="btn btn-success btn-lg px-5" id="submitBtn">
@@ -138,74 +134,81 @@
 
         </div>
     </div>
-<!-- page-body-wrapper closed by footer.php -->
+    <!-- page-body-wrapper closed by footer.php -->
 
-<style>
-    .ledger-select + .select2-container .select2-selection { height: 38px; border: 1px solid #ced4da; }
-    .select2-container--default .select2-selection--single .select2-selection__rendered { line-height: 36px; }
-    .select2-container--default .select2-selection--single .select2-selection__arrow { height: 36px; }
-</style>
-
-<script>
-/* Voucher script - jQuery & Select2 loaded in header */
-$(document).ready(function() {
-    function initSelect2(element) {
-        if ($(element).hasClass('select2-hidden-accessible')) {
-            $(element).select2('destroy');
+    <style>
+        .ledger-select+.select2-container .select2-selection {
+            height: 38px;
+            border: 1px solid #ced4da;
         }
-        $(element).select2({ placeholder: "Search...", width: '100%' });
-    }
 
-    // Initialize Select2
-    $('.group-select, .ledger-select, .bank-select, select[name="location_id"]').each(function() { initSelect2(this); });
+        .select2-container--default .select2-selection--single .select2-selection__rendered {
+            line-height: 36px;
+        }
 
-    $(document).on('change', '.group-select', function() {
-        var group_id = $(this).val();
-        var $row = $(this).closest('tr');
-        var $particularSelect = $row.find('.ledger-select');
-        
-        $particularSelect.html('<option value="">Loading...</option>').trigger('change');
-        
-        if (group_id) {
-            $.post('<?= base_url('admin/getParticularsByGroup') ?>', {group_id: group_id}, function(data) {
-                var options = '<option value="">Select Particular...</option>';
-                $.each(data, function(i, item) {
-                    options += '<option value="' + item.id + '">' + item.name + '</option>';
-                });
-                $particularSelect.html(options).trigger('change');
-                initSelect2($particularSelect);
+        .select2-container--default .select2-selection--single .select2-selection__arrow {
+            height: 36px;
+        }
+    </style>
+
+    <script>
+        /* Voucher script - jQuery & Select2 loaded in header */
+        $(document).ready(function () {
+            function initSelect2(element) {
+                if ($(element).hasClass('select2-hidden-accessible')) {
+                    $(element).select2('destroy');
+                }
+                $(element).select2({ placeholder: "Search...", width: '100%' });
+            }
+
+            // Initialize Select2
+            $('.group-select, .ledger-select').each(function () { initSelect2(this); });
+
+            $(document).on('change', '.group-select', function () {
+                var group_id = $(this).val();
+                var $row = $(this).closest('tr');
+                var $particularSelect = $row.find('.ledger-select');
+
+                $particularSelect.html('<option value="">Loading...</option>').trigger('change');
+
+                if (group_id) {
+                    $.post('<?= base_url('admin/getParticularsByGroup') ?>', { group_id: group_id }, function (data) {
+                        var options = '<option value="">Select Particular...</option>';
+                        $.each(data, function (i, item) {
+                            options += '<option value="' + item.id + '">' + item.name + '</option>';
+                        });
+                        $particularSelect.html(options).trigger('change');
+                        initSelect2($particularSelect);
+                    });
+                } else {
+                    $particularSelect.html('<option value="">Select Particular...</option>').trigger('change');
+                }
             });
-        } else {
-            $particularSelect.html('<option value="">Select Particular...</option>').trigger('change');
-        }
-    });
 
-    $('#addVoucherRow').on('click', function(e) {
-        e.preventDefault();
-        var $tableBody = $('#voucherTable tbody');
-        
-        var $newRow = $('<tr class="row-item">' +
-            '<td><select name="type[]" class="form-control type-select" required><option value="1">Dr</option><option value="2" selected>Cr</option></select></td>' +
-            '<td><select name="group_id[]" class="form-control group-select" required><option value="">Select Group</option><?php foreach($groups as $g): ?><option value="<?= $g->group_id ?>"><?= htmlspecialchars($g->group_name) ?></option><?php endforeach; ?></select></td>' +
-            '<td><select name="ledger_id[]" class="form-control ledger-select" required><option value="">Select Particular...</option></select></td>' +
-            '<td><select name="bank_id[]" class="form-control bank-select"><option value="">-- No Auto-Contra --</option><option value="Cash">Cash</option><option value="Bank">Bank</option></select></td>' +
-            '<td><input type="number" step="0.01" name="amount[]" class="form-control amount-input" placeholder="0.00" required></td>' +
-            '<td><button type="button" class="btn btn-danger btn-sm remove-row"><i class="fa fa-times"></i></button></td>' +
-            '</tr>');
+            $('#addVoucherRow').on('click', function (e) {
+                e.preventDefault();
+                var $tableBody = $('#voucherTable tbody');
 
-        $tableBody.append($newRow);
-        initSelect2($newRow.find('.group-select'));
-        initSelect2($newRow.find('.ledger-select'));
-        initSelect2($newRow.find('.bank-select'));
-    });
+                var $newRow = $('<tr class="row-item">' +
+                    '<td><select name="type[]" class="form-control type-select" required><option value="1">Cr</option><option value="2" selected>Dr</option></select></td>' +
+                    '<td><select name="group_id[]" class="form-control group-select" required><option value="">Select Group</option><?php foreach ($groups as $g): ?><option value="<?= $g->group_id ?>"><?= htmlspecialchars($g->group_name) ?></option><?php endforeach; ?></select></td>' +
+                    '<td><select name="ledger_id[]" class="form-control ledger-select" required><option value="">Select Particular...</option></select></td>' +
+                    '<td><input type="number" step="0.01" name="amount[]" class="form-control amount-input" placeholder="0.00" required></td>' +
+                    '<td><button type="button" class="btn btn-danger btn-sm remove-row"><i class="fa fa-times"></i></button></td>' +
+                    '</tr>');
 
-    $(document).on('click', '.remove-row', function() {
-        if ($('.row-item').length > 1) {
-            $(this).closest('tr').remove();
-        }
-    });
-});
-</script>
+                $tableBody.append($newRow);
+                initSelect2($newRow.find('.group-select'));
+                initSelect2($newRow.find('.ledger-select'));
 
-<?php include("footer.php"); ?>
+            });
 
+            $(document).on('click', '.remove-row', function () {
+                if ($('.row-item').length > 1) {
+                    $(this).closest('tr').remove();
+                }
+            });
+        });
+    </script>
+
+    <?php include("footer.php"); ?>

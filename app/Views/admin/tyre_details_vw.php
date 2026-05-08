@@ -27,6 +27,82 @@
                 </div>
             </div>
 
+            <!-- Tyre Info Card -->
+            <?php if (!empty($tyre)): ?>
+            <div class="card border-0 shadow-sm mb-4">
+                <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
+                    <div>
+                        <h5 class="mb-0">🔍 Tyre: <?= esc($tyre->tyer_sl_no) ?></h5>
+                        <?php if (!empty($tyre->replaced_from_serial)): ?>
+                            <small class="text-warning d-block">
+                                <i class="fas fa-arrow-left"></i> Replaced From: 
+                                <a href="<?= base_url('Admin/tyre_details_vw/'.$tyre->replaced_from_id) ?>" class="text-warning text-decoration-none fw-bold">
+                                    <?= esc($tyre->replaced_from_serial) ?>
+                                </a>
+                            </small>
+                        <?php endif; ?>
+                        <?php if (!empty($tyre->replaced_to_serial)): ?>
+                            <small class="text-info d-block">
+                                <i class="fas fa-arrow-right"></i> Replaced To: 
+                                <a href="<?= base_url('Admin/tyre_details_vw/'.$tyre->replaced_to_id) ?>" class="text-info text-decoration-none fw-bold">
+                                    <?= esc($tyre->replaced_to_serial) ?>
+                                </a>
+                            </small>
+                        <?php endif; ?>
+                    </div>
+                    <span class="badge bg-light text-dark"><?= esc($tyre->brand_name) ?></span>
+                </div>
+                <div class="card-body">
+                    <div class="row g-3">
+                        <div class="col-md-3">
+                            <small class="text-muted d-block">Brand</small>
+                            <p class="fw-bold mb-0 text-dark"><?= esc($tyre->brand_name) ?></p>
+                        </div>
+                        <div class="col-md-3">
+                            <small class="text-muted d-block">Type / Model</small>
+                            <p class="mb-0"><?= esc($tyre->tyer_type) ?> | <?= esc($tyre->model) ?></p>
+                        </div>
+                        <div class="col-md-3">
+                            <small class="text-muted d-block">Current Status</small>
+                            <p class="mb-0">
+                                <?php if ($tyre->status == 1): ?>
+                                    <span class="badge bg-success">✅ In Stock</span>
+                                <?php elseif ($tyre->status == 2): ?>
+                                    <span class="badge bg-primary">🚚 Assigned</span>
+                                <?php elseif ($tyre->status == 3): ?>
+                                    <span class="badge bg-danger">🛠️ In Scrap Yard</span>
+                                <?php elseif ($tyre->status == 4): ?>
+                                    <span class="badge bg-warning text-dark">🔧 Under Repair</span>
+                                <?php elseif ($tyre->status == 7): ?>
+                                    <span class="badge bg-dark">💰 Sold</span>
+                                <?php elseif ($tyre->status == 10): ?>
+                                    <span class="badge bg-info text-dark">📦 Returned (Claimed)</span>
+                                <?php endif; ?>
+                            </p>
+                        </div>
+                        <div class="col-md-3">
+                            <small class="text-muted d-block">Location</small>
+                            <p class="mb-0 fw-bold"><?= esc($tyre->location_name ?? 'N/A') ?></p>
+                        </div>
+                        <div class="col-md-3">
+                            <small class="text-muted d-block">Purchased From</small>
+                            <p class="mb-0"><?= esc($tyre->vendor_name ?? '—') ?></p>
+                        </div>
+                        <div class="col-md-3">
+                            <small class="text-muted d-block">Purchase Date</small>
+                            <p class="mb-0"><?= !empty($tyre->date) ? date('d-M-Y', strtotime($tyre->date)) : '—' ?></p>
+                        </div>
+                        <?php if(!empty($tyre->vehicle_no)): ?>
+                        <div class="col-md-3">
+                            <small class="text-muted d-block">Assigned To</small>
+                            <p class="mb-0 text-primary fw-bold"><i class="fas fa-truck"></i> <?= esc($tyre->vehicle_no) ?></p>
+                        </div>
+                        <?php endif; ?>
+                    </div>
+                </div>
+            </div>
+            <?php endif; ?>
+                            
             <!-- Advanced Filters Panel -->
             <div class="card shadow-sm mb-4" id="filterPanel" style="display: none;">
                 <div class="card-header bg-light">
@@ -41,18 +117,19 @@
                                        placeholder="Serial, Vehicle, Remarks..." 
                                        value="<?= esc($_GET['search'] ?? '') ?>">
                             </div>
-                            <div class="col-md-2">
+                            <div class="col-md-3">
                                 <label class="form-label small">Event Type</label>
                                 <select class="form-select form-select-sm" name="event_type" id="eventTypeFilter">
                                     <option value="">All Events</option>
-                                    <option value="1">Purchase/Stock</option>
-                                    <option value="2">Transfer</option>
-                                    <option value="3">Assign</option>
-                                    <option value="4">Exchange</option>
-                                    <option value="5">Repair</option>
+                                    <option value="1">Purchased</option>
+                                    <option value="2">Transferred</option>
+                                    <option value="3">Assigned</option>
+                                    <option value="4">Exchanged</option>
+                                    <option value="5">Sent for Repair</option>
                                     <option value="6">Back to Stock</option>
-                                    <option value="7">Report Exchange</option>
-                                    <option value="8">Trash</option>
+                                    <option value="7">Sold</option>
+                                    <option value="8">Rotation</option>
+                                    <option value="9">Moved to Scrap</option>
                                 </select>
                             </div>
                             <div class="col-md-1 d-flex align-items-end">
@@ -87,6 +164,7 @@
                                         <th width="150">Tyre Serial</th>
                                         <th width="120">Brand</th>
                                         <th width="120">Assign Vehicle</th>
+                                        <th width="120">Position</th>
                                         <th width="150">Event Type</th>
                                         <th width="120">Event Date</th>
                                         <th width="150">Vendor</th>
@@ -95,36 +173,54 @@
                                         <th width="120">To</th>
                                         <th width="200">Remarks</th>
                                         <th width="150">Created At</th>
-                                        <th width="100">Actions</th>
+                                        <th width="60">Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     <?php 
                                     $eventTypes = [
-                                        1 => ['label' => 'Purchase/Stock', 'class' => 'success', 'icon' => 'fa-shopping-cart'],
-                                        2 => ['label' => 'Transfer', 'class' => 'info', 'icon' => 'fa-exchange-alt'],
-                                        3 => ['label' => 'Assign', 'class' => 'primary', 'icon' => 'fa-link'],
-                                        4 => ['label' => 'Exchange', 'class' => 'warning', 'icon' => 'fa-sync'],
-                                        5 => ['label' => 'Repair', 'class' => 'danger', 'icon' => 'fa-wrench'],
-                                        6 => ['label' => 'Back to Stock', 'class' => 'secondary', 'icon' => 'fa-undo'],
-                                        7 => ['label' => 'Report Exchange', 'class' => 'dark', 'icon' => 'fa-file-alt'],
-                                        8 => ['label' => 'Trash', 'class' => 'danger', 'icon' => 'fa-trash']
+                                        1 => ['label' => 'Purchased',       'class' => 'success',   'icon' => 'fa-shopping-cart'],
+                                        2 => ['label' => 'Transferred',     'class' => 'info',      'icon' => 'fa-exchange-alt'],
+                                        3 => ['label' => 'Assigned',        'class' => 'primary',   'icon' => 'fa-link'],
+                                        4 => ['label' => 'Exchanged',       'class' => 'warning',   'icon' => 'fa-sync'],
+                                        5 => ['label' => 'Sent for Repair', 'class' => 'warning',   'icon' => 'fa-wrench'],
+                                        6 => ['label' => 'Back to Stock',   'class' => 'secondary', 'icon' => 'fa-undo'],
+                                        7 => ['label' => 'Sold',            'class' => 'success',   'icon' => 'fa-money-bill'],
+                                        8 => ['label' => 'Rotation',        'class' => 'dark',      'icon' => 'fa-rotate'],
+                                        9 => ['label' => 'Moved to Scrap',  'class' => 'danger',    'icon' => 'fa-trash'],
+                                        10 => ['label' => 'Exchange Requested', 'class' => 'warning', 'icon' => 'fa-sync-alt'],
+                                        11 => ['label' => 'Exchange Completed', 'class' => 'success', 'icon' => 'fa-check-double'],
                                     ];
                                     $i = 1; 
+                                    $current_tyre_serial = $tyre->tyer_sl_no ?? '';
                                     foreach ($history as $row): 
                                         $event = $eventTypes[$row->event_type] ?? ['label' => 'Unknown', 'class' => 'secondary', 'icon' => 'fa-question'];
+                                        $is_old_tyre = ($row->tyer_sl_no != $current_tyre_serial);
                                     ?>
                                         <tr data-event-type="<?= $row->event_type ?>" 
                                             data-vehicle-id="<?= $row->vehicle_id ?? '' ?>"
-                                            data-date="<?= $row->event_date ?>">
+                                            data-date="<?= $row->event_date ?>"
+                                            class="<?= $is_old_tyre ? 'bg-light' : '' ?>">
                                             <td><span class="text-muted"><?= $i++; ?></span></td>
                                             <td>
-                                                <strong class="text-primary"><?= esc($row->tyer_sl_no ?? '—') ?></strong>
+                                                <strong class="<?= $is_old_tyre ? 'text-muted' : 'text-primary' ?>">
+                                                    <?= esc($row->tyer_sl_no ?? '—') ?>
+                                                </strong>
+                                                <?php if ($is_old_tyre): ?>
+                                                    <br><span class="badge bg-secondary" style="font-size: 0.65rem;">OLD TYRE</span>
+                                                <?php endif; ?>
                                             </td>
                                             <td><?= esc($row->brand_name ?? '—') ?></td>
                                             <td>
                                                 <?php if (!empty($row->vehicle_no)): ?>
                                                     <span class="badge bg-dark"><?= esc($row->vehicle_no) ?></span>
+                                                <?php else: ?>
+                                                    <span class="text-muted">—</span>
+                                                <?php endif; ?>
+                                            </td>
+                                            <td>
+                                                <?php if (!empty($row->tyre_position)): ?>
+                                                    <span class="badge bg-secondary"><?= esc($row->tyre_position) ?></span>
                                                 <?php else: ?>
                                                     <span class="text-muted">—</span>
                                                 <?php endif; ?>
@@ -307,8 +403,8 @@ function resetFilters() {
 // View Details Modal
 function viewDetails(data) {
     const eventTypes = {
-        1: 'Purchase/Stock', 2: 'Transfer', 3: 'Assign', 4: 'Exchange',
-        5: 'Repair', 6: 'Back to Stock', 7: 'Report Exchange', 8: 'Trash'
+        1: 'Purchased', 2: 'Transferred', 3: 'Assigned', 4: 'Exchanged',
+        5: 'Sent for Repair', 6: 'Back to Stock', 7: 'Sold', 8: 'Rotation', 9: 'Moved to Scrap', 10: 'Exchange Requested', 11: 'Exchange Completed'
     };
 
     const content = `

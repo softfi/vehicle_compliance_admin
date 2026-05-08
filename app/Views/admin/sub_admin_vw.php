@@ -120,9 +120,11 @@
                                     </thead>
                                     <tbody>
                                           <?php
-                             $i=1;
-                             foreach($allsubadmin as $subadmin ){
-                             ?>
+                                          $currentPage = $pager->getCurrentPage();
+                                          $perPage = 10;
+                                          $i = 1 + ($perPage * ($currentPage - 1));
+                                          foreach($allsubadmin as $subadmin ){
+                                          ?>
                                         <tr>
                                             <td class="text-center"><?= $i++;?></td>
                                             <?php if($subadmin->profile_image != '' ){?>
@@ -389,7 +391,7 @@
                 <input type="checkbox" name="role[]" class="uk-checkbox" value="33.1"<?php if(in_array(33.1,$jobAssign)){ echo "checked";}?>/>Submit
             </li>
             <li>
-                <input type="checkbox" name="role[]" class="uk-checkbox" value="38" <?php if(in_array(38,$jobAssign)){ echo "checked";}?>/>Trash Tyer<br>
+                <input type="checkbox" name="role[]" class="uk-checkbox" value="38" <?php if(in_array(38,$jobAssign)){ echo "checked";}?>/>Scrap Tyre<br>
                 <input type="checkbox" name="role[]" class="uk-checkbox" value="38.1"<?php if(in_array(38.1,$jobAssign)){ echo "checked";}?>/>Back To Stock
             </li>
           </li>
@@ -453,6 +455,9 @@
                                   
                                     </tbody>
                                 </table>
+                                <div class="d-flex justify-content-center mt-3">
+                                    <?= $pager->links() ?>
+                                </div>
                                 
 <?php foreach($allsubadmin as $subadmin ){ ?>                                       
 <div id="modal-center<?= $subadmin->id;?>" class="uk-flex-top" uk-modal>

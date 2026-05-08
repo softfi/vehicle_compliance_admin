@@ -29,3 +29,12 @@ $routes->get('admin/attendance/calendar', 'Attendance::calendarView');
 $routes->get('admin/attendance/analytics', 'Attendance::analytics');
 $routes->get('admin/attendance/get-data/(:num)', 'Attendance::getAttendanceData/$1');
 $routes->get('admin/attendance/api/staff-list', 'Attendance::getStaffList');
+
+// Diesel Entry Routes
+$routes->get('admin/diesel_entry/download_sample', 'Admin::download_diesel_sample');
+
+// Despatch Entry Routes
+$routes->get('admin/despatch_entry/download_sample', 'Admin::download_despatch_sample');
+
+// Staff Advance Routes
+$routes->get('admin/staf_advance/download_sample', 'Admin::download_staffadvance_sample');

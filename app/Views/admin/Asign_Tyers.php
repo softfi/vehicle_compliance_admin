@@ -20,7 +20,12 @@
                                 <h4 class="mb-0 text-white fw-bold">
                                     <i class="fa fa-edit me-2"></i>Assign Tyre to Vehicle
                                 </h4>
-                                <small class="text-white-50">Fill in the details below</small>
+                                <div class="mt-2">
+                                    <span class="badge bg-white text-primary px-3 py-1">
+                                        <i class="fa fa-truck me-1"></i> <?= $vehicle_no ?>
+                                    </span>
+                                </div>
+                                <small class="text-white-50 d-block mt-1">Fill in the details below</small>
                             </div>
                             <div class="form-body">
                                 <form method="post" action="<?= base_url(); ?>/Admin/update_tyer_data">
@@ -62,8 +67,10 @@
                                         <label class="form-label-custom">
                                             <i class="fa fa-calendar-alt me-2"></i>Assign Date
                                         </label>
-                                        <input type="date" id="asign_date" class="form-control-modern" name="asign_date" required />
+                                        <input type="date" id="asign_date" class="form-control-modern" name="asign_date" value="<?= date('Y-m-d') ?>" required />
                                     </div>
+
+
 
                                     <button class="btn-gradient-submit" type="submit">
                                         <i class="fa fa-check-circle me-2"></i>Submit Assignment

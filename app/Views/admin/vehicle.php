@@ -1,6 +1,9 @@
 <?php include("header.php");?>
+<?php 
+$validation = session('validation') ?? \Config\Services::validation();
+?>
 <style>
- #myTable thead th {
+ #row_create thead th {
         position: sticky;
         top: 0;
         background: white; /* Or match your table background */
@@ -31,7 +34,7 @@
                  <button class="btn btn-primary" style="float:right" type="button" data-bs-toggle="modal" data-bs-target="#uploadexcel" data-whatever="@getbootstrap">Upload EXCEL</button>
                  <?php }?> 
                  <?php if(in_array(13.3,$jobAssign)){ ?>
-                 <a href="<?php echo base_url(); ?>/sampleexcel/vehicle_excel-ok.xlsx" target="_blank" class="btn btn-primary" style="float:right" type="button" > sample excel</a>
+                 <a href="<?php echo base_url(); ?>/Admin/download_vehicle_sample_excel" class="btn btn-primary" style="float:right" type="button" > sample excel</a>
                  <?php }?>
             </div>
           </div
@@ -49,14 +52,20 @@
                                                 <?= session()->getFlashdata('msg') ?>
                                                 </div>
                                             <?php endif;?>
+                                            <?php if(session()->getFlashdata('error')):?>
+                                                <div class="alert alert-danger">
+                                                    <?= session()->getFlashdata('error') ?>
+                                                </div>
+                                            <?php endif;?>
                                             
                   <div class="uk-card uk-card-body uk-card-default uk-card-small uk-margin-top">
                             <div style="max-height: 400px; overflow-y: auto;">
-                                <table id="myTable" class="uk-table uk-table-small uk-table-divider" style="width:100%">
+                                <table id="row_create" class="uk-table uk-table-small uk-table-divider" style="width:100%">
     <thead>
         <tr>
             <th>Sr.No</th>
             <th>Vehicle Number</th>
+            <th>Vehicle Type</th>
             <th>Chassis No.</th>
             <th>Engine No.</th>
             <th>Fitness Expiry Date</th>
@@ -104,6 +113,7 @@ foreach ($vehicle as $vehic) { ?>
     <tr>
         <td><?= $sr_no++; ?></td>
         <td><?= $vehic->vehicle_no; ?></td>
+        <td><?= htmlspecialchars($vehic->type_name ?? ''); ?></td>
         <td><?= $vehic->chassis_no; ?></td>
         <td><?= $vehic->engine_no; ?></td>
         <td><?= (new DateTime($vehic->fitness_exp_date))->format('d-m-Y'); ?></td>
@@ -199,15 +209,30 @@ foreach ($vehicle as $vehic) { ?>
     
      <form action="<?php echo base_url(); ?>/Admin/Insertvehicle" enctype="multipart/form-data" method="post">
     <div class="modal-body">
+        
+        <?php if ($validation->getErrors()): ?>
+            <div class="alert alert-danger">
+                <strong>Please fix the following errors:</strong>
+                <ul class="mb-0">
+                    <?php foreach ($validation->getErrors() as $error): ?>
+                        <li><?= $error ?></li>
+                    <?php endforeach; ?>
+                </ul>
+            </div>
+        <?php endif; ?>
 
         <!-- Vehicle Type -->
         <div class="form-group">
             <label>Vehicle Type</label>
             <select class="form-control" name="vehicle_type" id="vehicle_type" required>
                 <option value="">Select Type</option>
-                <option value="1">Truck</option>
-                <option value="2">Loader</option>
+                <?php foreach($vehicle_types as $type): ?>
+                    <option value="<?= $type->id ?>" <?= old('vehicle_type') == $type->id ? 'selected' : '' ?>><?= htmlspecialchars($type->type_name) ?></option>
+                <?php endforeach; ?>
             </select>
+            <?php if ($validation->hasError('vehicle_type')): ?>
+                <span class="text-danger" style="color: red !important; display: block; font-size: 12px;"><?= $validation->getError('vehicle_type') ?></span>
+            <?php endif; ?>
         </div>
 
         <div class="uk-child-width-1-2@m uk-grid-small" uk-grid>
@@ -215,73 +240,118 @@ foreach ($vehicle as $vehic) { ?>
             <!-- Common Fields -->
             <div class="form-group">
                 <label>Truck/Loader Number</label>
-                <input class="form-control" type="text" name="vehicle_no">
+                <input class="form-control" type="text" name="vehicle_no" value="<?= old('vehicle_no') ?>">
+                <?php if ($validation->hasError('vehicle_no')): ?>
+                    <span class="text-danger" style="color: red !important; display: block; font-size: 12px;"><?= $validation->getError('vehicle_no') ?></span>
+                <?php endif; ?>
             </div>
 
             <div class="form-group">
                 <label>Chassis Number</label>
-                <input class="form-control" type="text" name="chassis_no">
+                <input class="form-control" type="text" name="chassis_no" value="<?= old('chassis_no') ?>">
+                <?php if ($validation->hasError('chassis_no')): ?>
+                    <span class="text-danger" style="color: red !important; display: block; font-size: 12px;"><?= $validation->getError('chassis_no') ?></span>
+                <?php endif; ?>
             </div>
 
             <div class="form-group">
                 <label>Engine Number</label>
-                <input class="form-control" type="text" name="engine_no">
+                <input class="form-control" type="text" name="engine_no" value="<?= old('engine_no') ?>">
+                <?php if ($validation->hasError('engine_no')): ?>
+                    <span class="text-danger" style="color: red !important; display: block; font-size: 12px;"><?= $validation->getError('engine_no') ?></span>
+                <?php endif; ?>
             </div>
 
             <div class="form-group">
                 <label>Fitness Expiry Date</label>
-                <input class="form-control" type="date" name="fitness_exp_date">
+                <input class="form-control" type="date" name="fitness_exp_date" value="<?= old('fitness_exp_date') ?>">
+                <?php if ($validation->hasError('fitness_exp_date')): ?>
+                    <span class="text-danger" style="color: red !important; display: block; font-size: 12px;"><?= $validation->getError('fitness_exp_date') ?></span>
+                <?php endif; ?>
             </div>
 
             <div class="form-group">
                 <label>Fitness Amount</label>
-                <input class="form-control" type="text" name="fitness_amount">
+                <input class="form-control" type="text" name="fitness_amount" value="<?= old('fitness_amount') ?>">
+                <?php if ($validation->hasError('fitness_amount')): ?>
+                    <span class="text-danger" style="color: red !important; display: block; font-size: 12px;"><?= $validation->getError('fitness_amount') ?></span>
+                <?php endif; ?>
             </div>
 
             <div class="form-group">
                 <label>Road Tax Expiry Date</label>
-                <input class="form-control" type="date" name="tax_exp_date">
+                <input class="form-control" type="date" name="tax_exp_date" value="<?= old('tax_exp_date') ?>">
+                <?php if (isset($validation) && is_object($validation) && $validation->hasError('tax_exp_date')): ?>
+                    <div class="text-danger small"><?= $validation->getError('tax_exp_date') ?></div>
+                <?php endif; ?>
             </div>
 
             <div class="form-group">
                 <label>Road Tax Amount</label>
-                <input class="form-control" type="text" name="road_tax_amount">
+                <input class="form-control" type="text" name="road_tax_amount" value="<?= old('road_tax_amount') ?>">
+                <?php if (isset($validation) && is_object($validation) && $validation->hasError('road_tax_amount')): ?>
+                    <div class="text-danger small"><?= $validation->getError('road_tax_amount') ?></div>
+                <?php endif; ?>
             </div>
 
             <div class="form-group">
                 <label>Insurance Company</label>
-                <input class="form-control" type="text" name="ins_company">
+                <input class="form-control" type="text" name="ins_company" value="<?= old('ins_company') ?>">
+                <?php if (isset($validation) && is_object($validation) && $validation->hasError('ins_company')): ?>
+                    <div class="text-danger small"><?= $validation->getError('ins_company') ?></div>
+                <?php endif; ?>
             </div>
 
             <div class="form-group">
                 <label>Insurance Expiry Date</label>
-                <input class="form-control" type="date" name="ins_exp_date">
+                <input class="form-control" type="date" name="ins_exp_date" value="<?= old('ins_exp_date') ?>">
+                <?php if (isset($validation) && is_object($validation) && $validation->hasError('ins_exp_date')): ?>
+                    <div class="text-danger small"><?= $validation->getError('ins_exp_date') ?></div>
+                <?php endif; ?>
             </div>
 
             <div class="form-group">
                 <label>Insurance Amount</label>
-                <input class="form-control" type="text" name="Insurance_Amount">
+                <input class="form-control" type="text" name="Insurance_Amount" value="<?= old('Insurance_Amount') ?>">
+                <?php if (isset($validation) && is_object($validation) && $validation->hasError('Insurance_Amount')): ?>
+                    <div class="text-danger small"><?= $validation->getError('Insurance_Amount') ?></div>
+                <?php endif; ?>
             </div>
             <div class="form-group">
                 <label for="example-nf-email">PUCC</label>
-                <input class="form-control" type="date" name="Pucc" id="Pucc">
+                <input class="form-control" type="date" name="Pucc" id="Pucc" value="<?= old('Pucc') ?>">
+                <?php if (isset($validation) && is_object($validation) && $validation->hasError('Pucc')): ?>
+                    <div class="text-danger small"><?= $validation->getError('Pucc') ?></div>
+                <?php endif; ?>
             </div>
                         
             <div class="form-group">
                 <label for="example-nf-email">PUCC Amount </label>
-                <input class="form-control" type="text" name="Pucc_amount" id="Pucc_amount">
+                <input class="form-control" type="text" name="Pucc_amount" id="Pucc_amount" value="<?= old('Pucc_amount') ?>">
+                <?php if (isset($validation) && is_object($validation) && $validation->hasError('Pucc_amount')): ?>
+                    <div class="text-danger small"><?= $validation->getError('Pucc_amount') ?></div>
+                <?php endif; ?>
             </div>
             <div class="form-group">
                 <label for="example-nf-email">Finance company/ Funding bank  </label>
-                <input class="form-control" type="text" name="finance" id="finance">
+                <input class="form-control" type="text" name="finance" id="finance" value="<?= old('finance') ?>">
+                <?php if (isset($validation) && is_object($validation) && $validation->hasError('finance')): ?>
+                    <div class="text-danger small"><?= $validation->getError('finance') ?></div>
+                <?php endif; ?>
             </div>
             <div class="form-group">
                 <label for="example-nf-email">Deduct Amount</label>
-                <input class="form-control" type="text" name="deduct_Amount" id="deduct_Amount">
+                <input class="form-control" type="text" name="deduct_Amount" id="deduct_Amount" value="<?= old('deduct_Amount') ?>">
+                <?php if (isset($validation) && is_object($validation) && $validation->hasError('deduct_Amount')): ?>
+                    <div class="text-danger small"><?= $validation->getError('deduct_Amount') ?></div>
+                <?php endif; ?>
             </div>
             <div class="form-group">
                 <label for="example-nf-email">Account from EMI deducted</label>
-                <input class="form-control" type="text" name="emi_account" id="emi_account">
+                <input class="form-control" type="text" name="emi_account" id="emi_account" value="<?= old('emi_account') ?>">
+                <?php if (isset($validation) && is_object($validation) && $validation->hasError('emi_account')): ?>
+                    <div class="text-danger small"><?= $validation->getError('emi_account') ?></div>
+                <?php endif; ?>
             </div>
 
         </div>
@@ -293,92 +363,146 @@ foreach ($vehicle as $vehic) { ?>
 
                 <div class="form-group">
                     <label>Permit Expiry Date</label>
-                    <input class="form-control" type="date" name="permit_exp_date">
-                </div>
+                <input class="form-control" type="date" name="permit_exp_date" value="<?= old('permit_exp_date') ?>">
+                <?php if (isset($validation) && is_object($validation) && $validation->hasError('permit_exp_date')): ?>
+                    <div class="text-danger small"><?= $validation->getError('permit_exp_date') ?></div>
+                <?php endif; ?>
+            </div>
 
                 <div class="form-group">
                     <label>Permit Amount</label>
-                    <input class="form-control" type="text" name="Permit_Amount">
-                </div>
+                <input class="form-control" type="text" name="Permit_Amount" value="<?= old('Permit_Amount') ?>">
+                <?php if (isset($validation) && is_object($validation) && $validation->hasError('Permit_Amount')): ?>
+                    <div class="text-danger small"><?= $validation->getError('Permit_Amount') ?></div>
+                <?php endif; ?>
+            </div>
 
                 <div class="form-group">
                     <label>National Permit Expiry Date</label>
-                    <input class="form-control" type="date" name="npermit_exp_date">
-                </div>
+                <input class="form-control" type="date" name="npermit_exp_date" value="<?= old('npermit_exp_date') ?>">
+                <?php if (isset($validation) && is_object($validation) && $validation->hasError('npermit_exp_date')): ?>
+                    <div class="text-danger small"><?= $validation->getError('npermit_exp_date') ?></div>
+                <?php endif; ?>
+            </div>
 
                 <div class="form-group">
                     <label>National Permit Amount</label>
-                    <input class="form-control" type="text" name="nPermit_Amount">
-                </div>
+                <input class="form-control" type="text" name="nPermit_Amount" value="<?= old('nPermit_Amount') ?>">
+                <?php if (isset($validation) && is_object($validation) && $validation->hasError('nPermit_Amount')): ?>
+                    <div class="text-danger small"><?= $validation->getError('nPermit_Amount') ?></div>
+                <?php endif; ?>
+            </div>
 
                 <div class="form-group">
                     <label>Horse Make</label>
-                    <input class="form-control" type="text" name="horsemake">
+                    <input class="form-control" type="text" name="horsemake" value="<?= old('horsemake') ?>">
+                    <?php if (isset($validation) && is_object($validation) && $validation->hasError('horsemake')): ?>
+                        <div class="text-danger small"><?= $validation->getError('horsemake') ?></div>
+                    <?php endif; ?>
                 </div>
 
                 <div class="form-group">
                     <label>Horse Model</label>
-                    <input class="form-control" type="text" name="HorseModel">
+                    <input class="form-control" type="text" name="HorseModel" value="<?= old('HorseModel') ?>">
+                    <?php if (isset($validation) && is_object($validation) && $validation->hasError('HorseModel')): ?>
+                        <div class="text-danger small"><?= $validation->getError('HorseModel') ?></div>
+                    <?php endif; ?>
                 </div>
 
                 <div class="form-group">
                     <label>Horse Rate</label>
-                    <input class="form-control" type="text" name="HorseRate">
+                    <input class="form-control" type="text" name="HorseRate" value="<?= old('HorseRate') ?>">
+                    <?php if (isset($validation) && is_object($validation) && $validation->hasError('HorseRate')): ?>
+                        <div class="text-danger small"><?= $validation->getError('HorseRate') ?></div>
+                    <?php endif; ?>
                 </div>
 
                 <div class="form-group">
                     <label>Dala Rate</label>
-                    <input class="form-control" type="text" name="DalaRate">
+                    <input class="form-control" type="text" name="DalaRate" value="<?= old('DalaRate') ?>">
+                    <?php if (isset($validation) && is_object($validation) && $validation->hasError('DalaRate')): ?>
+                        <div class="text-danger small"><?= $validation->getError('DalaRate') ?></div>
+                    <?php endif; ?>
                 </div>
 
                 <div class="form-group">
                     <label>Dala Make</label>
-                    <input class="form-control" type="text" name="DalaMake">
+                    <input class="form-control" type="text" name="DalaMake" value="<?= old('DalaMake') ?>">
+                    <?php if (isset($validation) && is_object($validation) && $validation->hasError('DalaMake')): ?>
+                        <div class="text-danger small"><?= $validation->getError('DalaMake') ?></div>
+                    <?php endif; ?>
                 </div>
 
                 <div class="form-group">
                     <label>RTO Expenses</label>
-                    <input class="form-control" type="text" name="RTOExpenses">
+                    <input class="form-control" type="text" name="RTOExpenses" value="<?= old('RTOExpenses') ?>">
+                    <?php if (isset($validation) && is_object($validation) && $validation->hasError('RTOExpenses')): ?>
+                        <div class="text-danger small"><?= $validation->getError('RTOExpenses') ?></div>
+                    <?php endif; ?>
                 </div>
 
                 <div class="form-group">
                     <label>AMC</label>
-                    <input class="form-control" type="text" name="amc">
+                    <input class="form-control" type="text" name="amc" value="<?= old('amc') ?>">
+                    <?php if (isset($validation) && is_object($validation) && $validation->hasError('amc')): ?>
+                        <div class="text-danger small"><?= $validation->getError('amc') ?></div>
+                    <?php endif; ?>
                 </div>
 
                 <div class="form-group">
                     <label>AMC Frequency</label>
-                    <input class="form-control" type="text" name="amc_frequency">
+                    <input class="form-control" type="text" name="amc_frequency" value="<?= old('amc_frequency') ?>">
+                    <?php if (isset($validation) && is_object($validation) && $validation->hasError('amc_frequency')): ?>
+                        <div class="text-danger small"><?= $validation->getError('amc_frequency') ?></div>
+                    <?php endif; ?>
                 </div>
 
                 <div class="form-group">
                     <label>AMC Monthly Amount</label>
-                    <input class="form-control" type="text" name="amcamount">
+                    <input class="form-control" type="text" name="amcamount" value="<?= old('amcamount') ?>">
+                    <?php if (isset($validation) && is_object($validation) && $validation->hasError('amcamount')): ?>
+                        <div class="text-danger small"><?= $validation->getError('amcamount') ?></div>
+                    <?php endif; ?>
                 </div>
 
                 <div class="form-group">
                     <label>AMC Expiry Date</label>
-                    <input class="form-control" type="date" name="amc_expary">
+                    <input class="form-control" type="date" name="amc_expary" value="<?= old('amc_expary') ?>">
+                    <?php if (isset($validation) && is_object($validation) && $validation->hasError('amc_expary')): ?>
+                        <div class="text-danger small"><?= $validation->getError('amc_expary') ?></div>
+                    <?php endif; ?>
                 </div>
 
                 <div class="form-group">
                     <label>I3MS Expiry</label>
-                    <input class="form-control" type="date" name="I3MSexpairy">
+                    <input class="form-control" type="date" name="I3MSexpairy" value="<?= old('I3MSexpairy') ?>">
+                    <?php if (isset($validation) && is_object($validation) && $validation->hasError('I3MSexpairy')): ?>
+                        <div class="text-danger small"><?= $validation->getError('I3MSexpairy') ?></div>
+                    <?php endif; ?>
                 </div>
 
                 <div class="form-group">
                     <label>I3MS Recharge</label>
-                    <input class="form-control" type="text" name="I3MSRECHARGE">
+                    <input class="form-control" type="text" name="I3MSRECHARGE" value="<?= old('I3MSRECHARGE') ?>">
+                    <?php if (isset($validation) && is_object($validation) && $validation->hasError('I3MSRECHARGE')): ?>
+                        <div class="text-danger small"><?= $validation->getError('I3MSRECHARGE') ?></div>
+                    <?php endif; ?>
                 </div>
 
                 <div class="form-group">
                     <label>KHANIJ Expiry</label>
-                    <input class="form-control" type="date" name="KHANIJEXPIRI">
+                    <input class="form-control" type="date" name="KHANIJEXPIRI" value="<?= old('KHANIJEXPIRI') ?>">
+                    <?php if (isset($validation) && is_object($validation) && $validation->hasError('KHANIJEXPIRI')): ?>
+                        <div class="text-danger small"><?= $validation->getError('KHANIJEXPIRI') ?></div>
+                    <?php endif; ?>
                 </div>
 
                 <div class="form-group">
                     <label>KHANIJ Amount</label>
-                    <input class="form-control" type="text" name="khanij_amount">
+                    <input class="form-control" type="text" name="khanij_amount" value="<?= old('khanij_amount') ?>">
+                    <?php if (isset($validation) && is_object($validation) && $validation->hasError('khanij_amount')): ?>
+                        <div class="text-danger small"><?= $validation->getError('khanij_amount') ?></div>
+                    <?php endif; ?>
                 </div>
 
             </div>
@@ -390,9 +514,12 @@ foreach ($vehicle as $vehic) { ?>
             <select class="form-control" name="location_name" required>
                 <option value="">Select Location</option>
                 <?php foreach ($locations as $loc) { ?>
-                    <option value="<?= $loc->location_id ?>"><?= $loc->location_name ?></option>
+                    <option value="<?= $loc->location_id ?>" <?= old('location_name') == $loc->location_id ? 'selected' : '' ?>><?= $loc->location_name ?></option>
                 <?php } ?>
             </select>
+            <?php if ($validation->hasError('location_name')): ?>
+                <span class="text-danger" style="color: red !important; display: block; font-size: 12px;"><?= $validation->getError('location_name') ?></span>
+            <?php endif; ?>
         </div>
 
         <!-- Remark -->
@@ -422,9 +549,23 @@ foreach ($vehicle as $vehic) { ?>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
     <!-- JS to toggle truck/loader -->
 <script>
-document.getElementById("vehicle_type").addEventListener("change", function () {
-    var type = this.value;
-    document.getElementById("truck_fields").style.display = (type === "1") ? "block" : "none";
+$(document).ready(function() {
+    function toggleTruckFields() {
+        var type = $('#vehicle_type').val();
+        if (type === "1") {
+            $('#truck_fields').show();
+        } else {
+            $('#truck_fields').hide();
+        }
+    }
+
+    // Initial check
+    toggleTruckFields();
+
+    // On change
+    $('#vehicle_type').on('change', function() {
+        toggleTruckFields();
+    });
 });
 </script>
 <script>
@@ -515,3 +656,11 @@ document.getElementById("vehicle_type").addEventListener("change", function () {
 
         <!-- footer start-->
        <?php include("footer.php");?>
+       
+       <?php if (isset($validation) && is_object($validation) && $validation->getErrors()): ?>
+       <script>
+           $(document).ready(function() {
+               UIkit.offcanvas('#addnewvehicle').show();
+           });
+       </script>
+       <?php endif; ?>

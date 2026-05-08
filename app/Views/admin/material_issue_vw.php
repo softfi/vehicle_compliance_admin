@@ -54,6 +54,10 @@
                                     </select>
                                 </div>
                                 <div class="form-group">
+                                    <label>Assigned Vehicle</label>
+                                    <input type="text" id="assigned_vehicle" class="form-control" readonly placeholder="Auto-fetched after driver selection">
+                                </div>
+                                <div class="form-group">
                                     <label>Issued Date</label>
                                     <input type="date" name="issued_date" class="form-control" value="<?= date('Y-m-d'); ?>" required>
                                 </div>
@@ -195,4 +199,30 @@ function editIssue(data) {
     
     $('#editModal').modal('show');
 }
+
+$(document).ready(function() {
+    $('#driver_data').on('change', function() {
+        var driver_id = $(this).val();
+        if (driver_id) {
+            $.ajax({
+                url: '<?= base_url('Admin/get_driver_vehicle'); ?>',
+                type: 'POST',
+                data: { driver_id: driver_id },
+                dataType: 'json',
+                success: function(res) {
+                    if (res.status === 'success') {
+                        $('#assigned_vehicle').val(res.vehicle_no);
+                    } else {
+                        $('#assigned_vehicle').val('No vehicle assigned');
+                    }
+                },
+                error: function() {
+                    $('#assigned_vehicle').val('Error fetching vehicle');
+                }
+            });
+        } else {
+            $('#assigned_vehicle').val('');
+        }
+    });
+});
 </script>

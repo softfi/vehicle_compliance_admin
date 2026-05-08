@@ -19,6 +19,16 @@
         </div>
         
         <!-- Container-fluid starts -->
+        <style>
+            .select2-container--default .select2-selection--single {
+                height: 38px !important;
+                border: 1px solid #ced4da !important;
+                padding-top: 5px;
+            }
+            .select2-container {
+                display: block !important;
+            }
+        </style>
         <div class="container-fluid">
             <!-- Filter form and buttons -->
             <div class="uk-width-2-3@m">
@@ -133,7 +143,6 @@
 </div>
 
 <!-- JavaScript for AJAX view and Excel download -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
 <script>
     function viewitems(id) {
         $.ajax({
@@ -149,6 +158,16 @@
             }
         });
     }
+
+    $(document).ready(function() {
+        if ($.fn.select2) {
+            $('#single').select2({
+                placeholder: "Select location",
+                allowClear: true,
+                width: '100%'
+            });
+        }
+    });
 
     document.getElementById('download_excel').addEventListener('click', function() {
         const fromDate = document.getElementById('from_date').value;

@@ -10,6 +10,18 @@
                   <h3>Despatch view </h3>
                 </div>
                 <div class="col-sm-6 p-0">
+                  <?php if (session()->getFlashdata('success')): ?>
+                      <div class="alert alert-success alert-dismissible fade show" role="alert">
+                          <?= session()->getFlashdata('success') ?>
+                          <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                      </div>
+                  <?php endif; ?>
+                  <?php if (session()->getFlashdata('error')): ?>
+                      <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                          <?= session()->getFlashdata('error') ?>
+                          <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                      </div>
+                  <?php endif; ?>
                 </div>
               </div>
             </div>
@@ -61,7 +73,8 @@
                       </div>
                      </form>
                        <hr>
-                             <a href="<?php echo base_url();?>/sampleexcel/DESPACH_EXCEL.xlsx">click here</a> to download sample excel
+                             <a href="<?php echo base_url();?>/admin/despatch_entry/download_sample">click here</a> to download sample excel
+                             <small class="text-muted d-block">Format: Date (dd/mm/yyyy) | Vehicle No | DO No | Quantity | Ref No</small>
                              <form action="<?php echo base_url();?>/Admin/excel_despatch" method="post" enctype="multipart/form-data">
                                  <div class="uk-margin-bottom">
                                 
@@ -112,8 +125,8 @@
 
                         <div class="uk-card uk-card-body uk-card-default uk-card-small ">
                             <form method="post" action="<?= base_url(); ?>/Admin/delete_multiple_despatch">
-                                <div class="table-responsive custom-scrollbar custom-scrollbar">
-                                    <table class="display" id="row_create" style="width:100%">
+                                <div class="custom-scrollbar">
+                                    <table class="display table-bordered" id="row_create" style="width:100%">
             <thead>
                 <tr>
                     <th>Sl no</th>
@@ -196,6 +209,12 @@ function edit_despatch(id) {
 
             // Open the off-canvas component
             UIkit.offcanvas('#offcanvas-edit').show();
+
+            // Re-initialize Select2 for edit fields
+            $('.select2-edit').select2({
+                dropdownParent: $('#offcanvas-edit'),
+                width: '100%'
+            });
         },
         error: function(xhr, status, error) {
             console.error('Error fetching item data:', error);
@@ -263,18 +282,47 @@ document.getElementById('download_excel').addEventListener('click', function() {
 </script>
 
 
-<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+
 <script>
     $(document).ready(function() {
         // Check/Uncheck all checkboxes when the 'checkAll' checkbox is clicked
         $('#checkAll').click(function() {
             $('.delete-checkbox').prop('checked', $(this).prop('checked'));
         });
-
-       
     });
 </script>
+
+<style>
+    /* Clean alignment and spacing */
+    #row_create {
+        width: 100% !important;
+        margin: 15px 0 !important;
+        border-collapse: collapse !important;
+    }
+
+    #row_create th, #row_create td {
+        white-space: nowrap !important;
+        padding: 12px 20px !important;
+        text-align: left;
+        vertical-align: middle !important;
+        border: 1px solid #dee2e6 !important;
+    }
+
+    #row_create thead th {
+        background-color: #f8f9fa !important;
+        font-weight: 600;
+        color: #333;
+    }
+
+    /* Set minimum widths for columns to prevent squashing */
+    #row_create th:nth-child(3), #row_create td:nth-child(3) { min-width: 150px !important; } /* Vehicle No */
+    #row_create th:nth-child(4), #row_create td:nth-child(4) { min-width: 120px !important; } /* Date */
+    #row_create th:nth-child(6), #row_create td:nth-child(6) { min-width: 300px !important; } /* DO No */
+    #row_create th:nth-child(7), #row_create td:nth-child(7) { min-width: 200px !important; } /* Ref No */
+</style>
 
 
 
        <?php include("footer.php");?>
+
+

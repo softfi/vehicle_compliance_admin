@@ -11,6 +11,16 @@
                         <h3>Attendance Management</h3>
                         <p class="text-muted mt-1">Daily records and personnel check-ins</p>
                     </div>
+                    <style>
+                        .select2-container--default .select2-selection--single {
+                            height: 38px !important;
+                            border: 1px solid #ced4da !important;
+                            padding-top: 5px;
+                        }
+                        .select2-container {
+                            display: block !important;
+                        }
+                    </style>
                     <div class="col-sm-6 text-right d-flex justify-content-end align-items-center" style="gap: 10px;">
                         <a href="<?= base_url('admin/attendance/bulk'); ?>" class="btn btn-outline-primary btn-action shadow-sm" style="border-radius: 8px; padding: 8px 16px; font-weight: 600;">
                             <i class="fa fa-upload mr-1"></i> Bulk Upload
@@ -45,7 +55,7 @@
                         </div>
                         <div class="col-md-2">
                             <label>Staff Member</label>
-                            <select class="form-control" name="staff_id">
+                            <select class="form-control select2-search" name="staff_id">
                                 <option value="">-- Select Staff --</option>
                                 <?php foreach ($staff as $s): ?>
                                     <option value="<?= $s->id; ?>" <?= isset($filters['staff_id']) && $filters['staff_id'] == $s->id ? 'selected' : ''; ?>>
@@ -67,7 +77,7 @@
                         </div>
                         <div class="col-md-2">
                             <label>Location</label>
-                            <select class="form-control" name="location_id">
+                            <select class="form-control select2-search" name="location_id">
                                 <option value="">-- All --</option>
                                 <?php foreach ($locations as $loc): ?>
                                     <option value="<?= $loc->location_id; ?>" <?= isset($filters['location_id']) && $filters['location_id'] == $loc->location_id ? 'selected' : ''; ?>>
@@ -141,31 +151,40 @@
                 </div>
 
                 <!-- Pagination -->
-                <?php if ($pagination['totalPages'] > 1): ?>
+                <?php if ($pagination['totalPages'] > 1):
+                    // Build the base query string with all current filters
+                    $filterQuery = http_build_query([
+                        'from_date'   => $from_date,
+                        'to_date'     => $to_date,
+                        'staff_id'    => $filters['staff_id'] ?? '',
+                        'status'      => $filters['status'] ?? '',
+                        'location_id' => $filters['location_id'] ?? '',
+                    ]);
+                ?>
                     <div class="card-footer">
                         <nav aria-label="Page navigation">
                             <ul class="pagination">
                                 <?php if ($pagination['page'] > 1): ?>
                                     <li class="page-item">
-                                        <a class="page-link" href="<?= base_url('admin/attendance?page=1&from_date=' . $from_date . '&to_date=' . $to_date); ?>">First</a>
+                                        <a class="page-link" href="<?= base_url('admin/attendance?page=1&' . $filterQuery); ?>">First</a>
                                     </li>
                                     <li class="page-item">
-                                        <a class="page-link" href="<?= base_url('admin/attendance?page=' . ($pagination['page'] - 1) . '&from_date=' . $from_date . '&to_date=' . $to_date); ?>">Previous</a>
+                                        <a class="page-link" href="<?= base_url('admin/attendance?page=' . ($pagination['page'] - 1) . '&' . $filterQuery); ?>">Previous</a>
                                     </li>
                                 <?php endif; ?>
 
                                 <?php for ($i = max(1, $pagination['page'] - 2); $i <= min($pagination['totalPages'], $pagination['page'] + 2); $i++): ?>
                                     <li class="page-item <?= $i == $pagination['page'] ? 'active' : ''; ?>">
-                                        <a class="page-link" href="<?= base_url('admin/attendance?page=' . $i . '&from_date=' . $from_date . '&to_date=' . $to_date); ?>"><?= $i; ?></a>
+                                        <a class="page-link" href="<?= base_url('admin/attendance?page=' . $i . '&' . $filterQuery); ?>"><?= $i; ?></a>
                                     </li>
                                 <?php endfor; ?>
 
                                 <?php if ($pagination['page'] < $pagination['totalPages']): ?>
                                     <li class="page-item">
-                                        <a class="page-link" href="<?= base_url('admin/attendance?page=' . ($pagination['page'] + 1) . '&from_date=' . $from_date . '&to_date=' . $to_date); ?>">Next</a>
+                                        <a class="page-link" href="<?= base_url('admin/attendance?page=' . ($pagination['page'] + 1) . '&' . $filterQuery); ?>">Next</a>
                                     </li>
                                     <li class="page-item">
-                                        <a class="page-link" href="<?= base_url('admin/attendance?page=' . $pagination['totalPages'] . '&from_date=' . $from_date . '&to_date=' . $to_date); ?>">Last</a>
+                                        <a class="page-link" href="<?= base_url('admin/attendance?page=' . $pagination['totalPages'] . '&' . $filterQuery); ?>">Last</a>
                                     </li>
                                 <?php endif; ?>
                             </ul>
@@ -192,7 +211,7 @@
                         <div class="col-md-6">
                             <div class="form-group">
                                 <label>Location</label>
-                                <select class="form-control" id="modal_filter_location" onchange="filterStaffByLocation()">
+                                <select class="form-control select2-search" id="modal_filter_location" onchange="filterStaffByLocation()">
                                     <option value="">-- All Locations --</option>
                                     <?php foreach ($locations as $loc): ?>
                                         <option value="<?= $loc->location_id; ?>"><?= $loc->location_name; ?></option>
@@ -203,7 +222,7 @@
                         <div class="col-md-6">
                             <div class="form-group">
                                 <label>Staff Member <span class="text-danger">*</span></label>
-                                <select class="form-control" name="staff_id" id="modal_staff_id" required>
+                                <select class="form-control select2-search" name="staff_id" id="modal_staff_id" required>
                                     <option value="">-- Select Staff --</option>
                                     <?php foreach ($staff as $s): ?>
                                         <option value="<?= $s->id; ?>" data-location="<?= $s->location_id; ?>"><?= $s->name; ?> (<?= $s->staff_code; ?>)</option>
@@ -368,6 +387,23 @@ function toggleModalFields() {
         $('#modal_time_fields').hide();
     }
 }
+$(document).ready(function() {
+    $('.select2-search').each(function() {
+        var $this = $(this);
+        var options = {
+            placeholder: "Select an option",
+            allowClear: true,
+            width: '100%'
+        };
+        
+        // If element is inside a modal, add dropdownParent
+        if ($this.closest('.modal').length) {
+            options.dropdownParent = $this.closest('.modal');
+        }
+        
+        $this.select2(options);
+    });
+});
 </script>
 
 <?php include("footer.php"); ?>

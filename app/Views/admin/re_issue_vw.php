@@ -48,6 +48,10 @@
                                         <?php endforeach; ?>
                                     </select>
                                 </div>
+                                <div class="form-group">
+                                    <label>Assigned Vehicle</label>
+                                    <input type="text" id="assigned_vehicle" class="form-control" readonly placeholder="Auto-fetched">
+                                </div>
 
                                 <div class="form-group">
                                     <label>Select Item to Replace</label>
@@ -187,7 +191,26 @@
 
 <script>
 function fetchMaterials(driverId) {
-    if (!driverId) return;
+    if (!driverId) {
+        $('#assigned_vehicle').val('');
+        return;
+    }
+
+    // Fetch assigned vehicle
+    $.ajax({
+        url: '<?= base_url('Admin/get_driver_vehicle'); ?>',
+        type: 'POST',
+        data: { driver_id: driverId },
+        dataType: 'json',
+        success: function(res) {
+            if (res.status === 'success') {
+                $('#assigned_vehicle').val(res.vehicle_no);
+            } else {
+                $('#assigned_vehicle').val('No vehicle assigned');
+            }
+        }
+    });
+
     $.ajax({
         url: '<?= base_url('admin/get_driver_active_materials'); ?>',
         method: 'POST',

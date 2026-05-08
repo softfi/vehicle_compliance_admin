@@ -32,7 +32,7 @@ class Attendance extends BaseController
         if (!$this->session->get('user_id')) {
             return redirect()->to('/admin');
         }
-        
+
         if ($this->session->get('user_type') != 1 && $this->session->get('user_type') != 2) {
             return redirect()->to('/admin');
         }
@@ -69,9 +69,12 @@ class Attendance extends BaseController
         $page = $this->request->getGet('page') ?? 1;
 
         $filters = [];
-        if ($staff_id) $filters['staff_id'] = $staff_id;
-        if ($status) $filters['status'] = $status;
-        if ($location_id) $filters['location_id'] = $location_id;
+        if ($staff_id)
+            $filters['staff_id'] = $staff_id;
+        if ($status)
+            $filters['status'] = $status;
+        if ($location_id)
+            $filters['location_id'] = $location_id;
 
         $result = $this->attendanceModel->searchAttendance($from_date, $to_date, $filters, $page);
 
@@ -305,8 +308,16 @@ class Attendance extends BaseController
             $errors = [];
             $userId = $this->session->get('user_id');
 
+            // Get all valid staff for mapping staff_code to id
+            $validStaff = $this->attendanceModel->getAllStaff();
+            $staffMap = [];
+            foreach ($validStaff as $s) {
+                $staffMap[$s->staff_code] = $s->id;
+            }
+
             foreach ($rows as $key => $row) {
-                if ($key == 0) continue; // Skip header row
+                if ($key == 0)
+                    continue; // Skip header row
 
                 // Validate and prepare data
                 if (empty($row[0]) || empty($row[1]) || empty($row[2])) {
@@ -314,9 +325,59 @@ class Attendance extends BaseController
                     continue;
                 }
 
-                $staffId = (int)$row[0];
+                $staffCode = trim((string) $row[0]);
+
+                // Validate staff code exists and get ID
+                if (!isset($staffMap[$staffCode])) {
+                    $errors[] = "Row " . ($key + 1) . ": Staff Code '$staffCode' does not exist or is not a STAFF member.";
+                    continue;
+                }
+
+                $staffId = $staffMap[$staffCode];
+
                 $date = $row[1];
+                $formattedDate = null;
+
+                // 1. Handle Excel serial date (numeric)
+                if (is_numeric($date)) {
+                    try {
+                        $formattedDate = \PhpOffice\PhpSpreadsheet\Shared\Date::excelToDateTimeObject($date)->format('Y-m-d');
+                    } catch (\Exception $e) {
+                        // fallback to next check
+                    }
+                }
+
+                // 2. If not already formatted, try parsing as string
+                if (!$formattedDate && !empty($date)) {
+                    $dateStr = trim((string) $date);
+
+                    // Try YYYY-MM-DD
+                    if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $dateStr)) {
+                        $formattedDate = $dateStr;
+                    }
+                    // Try DD/MM/YYYY or DD-MM-YYYY
+                    else {
+                        $formats = ['d/m/Y', 'd-m-Y', 'Y/m/d', 'm/d/Y'];
+                        foreach ($formats as $f) {
+                            $d = \DateTime::createFromFormat($f, $dateStr);
+                            if ($d && $d->format($f) === $dateStr) {
+                                $formattedDate = $d->format('Y-m-d');
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                if (!$formattedDate) {
+                    $errors[] = "Row " . ($key + 1) . ": Invalid date format '$date'. Expected YYYY-MM-DD or DD/MM/YYYY.";
+                    continue;
+                }
+
+                $date = $formattedDate;
+
                 $status = $row[2];
+                $checkIn = $row[3] ?? null;
+                $checkOut = $row[4] ?? null;
 
                 // Validate status
                 $validStatuses = ['Present', 'Absent', 'Leave', 'Half-day', 'Sick-leave'];
@@ -336,8 +397,10 @@ class Attendance extends BaseController
                     'staff_id' => $staffId,
                     'attendance_date' => $date,
                     'status' => $status,
-                    'notes' => $row[3] ?? null,
-                    'leave_type' => $row[4] ?? null,
+                    'check_in_time' => $checkIn,
+                    'check_out_time' => $checkOut,
+                    'notes' => $row[5] ?? null,
+                    'leave_type' => $row[6] ?? null,
                     'created_by' => $userId,
                     'created_at' => date('Y-m-d H:i:s'),
                     'updated_at' => date('Y-m-d H:i:s')
@@ -371,30 +434,36 @@ class Attendance extends BaseController
         $sheet = $spreadsheet->getActiveSheet();
 
         // Add headers
-        $sheet->setCellValue('A1', 'Staff ID');
+        $sheet->setCellValue('A1', 'Staff Code');
         $sheet->setCellValue('B1', 'Attendance Date (YYYY-MM-DD)');
         $sheet->setCellValue('C1', 'Status');
-        $sheet->setCellValue('D1', 'Notes');
-        $sheet->setCellValue('E1', 'Leave Type');
+        $sheet->setCellValue('D1', 'Check-in (HH:MM)');
+        $sheet->setCellValue('E1', 'Check-out (HH:MM)');
+        $sheet->setCellValue('F1', 'Notes');
+        $sheet->setCellValue('G1', 'Leave Type');
 
         // Style header row
-        $sheet->getStyle('A1:E1')->getFont()->setBold(true);
-        $sheet->getStyle('A1:E1')->getFill()->setFillType(\PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID);
-        $sheet->getStyle('A1:E1')->getFill()->getStartColor()->setARGB('FFFF00');
+        $sheet->getStyle('A1:G1')->getFont()->setBold(true);
+        $sheet->getStyle('A1:G1')->getFill()->setFillType(\PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID);
+        $sheet->getStyle('A1:G1')->getFill()->getStartColor()->setARGB('FFFF00');
 
         // Add sample data
-        $sheet->setCellValue('A2', '1');
+        $sheet->setCellValue('A2', 'ST001');
         $sheet->setCellValue('B2', date('Y-m-d'));
         $sheet->setCellValue('C2', 'Present');
-        $sheet->setCellValue('D2', 'Sample note');
-        $sheet->setCellValue('E2', '');
+        $sheet->setCellValue('D2', '09:00');
+        $sheet->setCellValue('E2', '18:00');
+        $sheet->setCellValue('F2', 'Sample note');
+        $sheet->setCellValue('G2', '');
 
         // Set column widths
-        $sheet->getColumnDimension('A')->setWidth(12);
+        $sheet->getColumnDimension('A')->setWidth(15);
         $sheet->getColumnDimension('B')->setWidth(25);
         $sheet->getColumnDimension('C')->setWidth(15);
-        $sheet->getColumnDimension('D')->setWidth(20);
-        $sheet->getColumnDimension('E')->setWidth(15);
+        $sheet->getColumnDimension('D')->setWidth(18);
+        $sheet->getColumnDimension('E')->setWidth(18);
+        $sheet->getColumnDimension('F')->setWidth(20);
+        $sheet->getColumnDimension('G')->setWidth(15);
 
         $writer = new Xlsx($spreadsheet);
         $filename = 'attendance_template_' . date('Y-m-d_H-i-s') . '.xlsx';
@@ -423,9 +492,12 @@ class Attendance extends BaseController
         $location_id = $this->request->getGet('location_id');
 
         $filters = [];
-        if ($staff_id) $filters['staff_id'] = $staff_id;
-        if ($status) $filters['status'] = $status;
-        if ($location_id) $filters['location_id'] = $location_id;
+        if ($staff_id)
+            $filters['staff_id'] = $staff_id;
+        if ($status)
+            $filters['status'] = $status;
+        if ($location_id)
+            $filters['location_id'] = $location_id;
 
         $attendance = $this->attendanceModel->getAttendanceReport($from_date, $to_date, $filters);
 
@@ -499,8 +571,10 @@ class Attendance extends BaseController
         $location_id = $this->request->getGet('location_id');
 
         $filters = [];
-        if ($staff_id) $filters['staff_id'] = $staff_id;
-        if ($location_id) $filters['location_id'] = $location_id;
+        if ($staff_id)
+            $filters['staff_id'] = $staff_id;
+        if ($location_id)
+            $filters['location_id'] = $location_id;
 
         $attendance = $this->attendanceModel->getAttendanceReport($from_date, $to_date, $filters);
         $stats = $this->attendanceModel->getAttendanceStats($from_date, $to_date, $filters);
@@ -581,7 +655,7 @@ class Attendance extends BaseController
 
         if ($staff_id) {
             $trends = $this->attendanceModel->getAttendanceTrends($staff_id, $year);
-            
+
             $fromDate = $year . '-01-01';
             $toDate = $year . '-12-31';
             $present = $this->attendanceModel->getPresentCount($staff_id, $fromDate, $toDate);
@@ -589,7 +663,7 @@ class Attendance extends BaseController
             $leave = $this->attendanceModel->getLeaveCount($staff_id, $fromDate, $toDate);
             $percentage = $this->attendanceModel->getAttendancePercentage($staff_id, $fromDate, $toDate);
 
-            $stats = (object)[
+            $stats = (object) [
                 'present' => $present,
                 'absent' => $absent,
                 'leave' => $leave,
@@ -617,6 +691,7 @@ class Attendance extends BaseController
         $search = $this->request->getGet('q');
         $staff = $this->db->table('staff')
             ->select('id, name, staff_code')
+            ->where('user_type', 'STAFF')
             ->where('status !=', 'Inactive')
             ->like('name', $search)
             ->orderBy('name', 'ASC')

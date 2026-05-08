@@ -29,12 +29,13 @@
                                 </div>
                                 <div class="form-group">
                                     <label>Select Driver</label>
-                                    <select class="form-control" name="driver" required>
+                                    <select class="form-control" id="driver_select" disabled required>
                                         <option value="">Select Driver</option>
                                         <?php foreach($drivers as $dr){?>
                                         <option value="<?=$dr->id?>"><?=$dr->name?> (<?=$dr->staff_code?>)</option>
                                         <?php } ?>
                                     </select>
+                                    <input type="hidden" name="driver" id="driver_hidden">
                                 </div>
                                 <div class="form-group">
                                     <label>Date</label>
@@ -77,7 +78,7 @@
                                     </div>
                                     <div>
                                         <label>Vehicle:</label>
-                                        <select name="filter_vehicle" class="uk-select">
+                                        <select name="filter_vehicle" class="uk-select select2-filter">
                                             <option value="">All Vehicles</option>
                                             <?php foreach($vehicle as $v){ ?>
                                             <option value="<?=$v->id?>" <?=($filter_date['vehicle_id']==$v->id)?'selected':''?>><?=$v->vehicle_no?></option>
@@ -86,7 +87,7 @@
                                     </div>
                                     <div>
                                         <label>Driver:</label>
-                                        <select name="filter_driver" class="uk-select">
+                                        <select name="filter_driver" class="uk-select select2-filter">
                                             <option value="">All Drivers</option>
                                             <?php foreach($drivers as $d){ ?>
                                             <option value="<?=$d->id?>" <?=($filter_date['driver_id']==$d->id)?'selected':''?>><?=$d->name?></option>
@@ -173,8 +174,68 @@
             success: function(response) {
                 $('#edit-form-content').html(response);
                 UIkit.modal('#modal-edit').show();
+                
+                // Add listener for edit modal vehicle change
+                $('#vehicle_select_edit').on('change', function() {
+                    var vehicle_id = $(this).val();
+                    if (vehicle_id) {
+                        $.ajax({
+                            url: '<?= base_url('Admin/get_vehicle_driver'); ?>',
+                            type: 'POST',
+                            data: { vehicle_id: vehicle_id },
+                            dataType: 'json',
+                            success: function(res) {
+                                if (res.status === 'success') {
+                                    $('#driver_select_edit').val(res.driver_id);
+                                    $('#driver_hidden_edit').val(res.driver_id);
+                                } else {
+                                    $('#driver_select_edit').val('');
+                                    $('#driver_hidden_edit').val('');
+                                }
+                            }
+                        });
+                    } else {
+                        $('#driver_select_edit').val('');
+                        $('#driver_hidden_edit').val('');
+                    }
+                });
             }
         });
     }
+
+    $(document).ready(function() {
+        // Initialize Select2 only for filter fields
+        if ($.fn.select2) {
+            $('.select2-filter').select2({
+                placeholder: "Select an option",
+                allowClear: true,
+                width: '100%'
+            });
+        }
+
+        $('#single1').on('change', function() {
+            var vehicle_id = $(this).val();
+            if (vehicle_id) {
+                $.ajax({
+                    url: '<?= base_url('Admin/get_vehicle_driver'); ?>',
+                    type: 'POST',
+                    data: { vehicle_id: vehicle_id },
+                    dataType: 'json',
+                    success: function(response) {
+                        if (response.status === 'success') {
+                            $('#driver_select').val(response.driver_id);
+                            $('#driver_hidden').val(response.driver_id);
+                        } else {
+                            $('#driver_select').val('');
+                            $('#driver_hidden').val('');
+                        }
+                    }
+                });
+            } else {
+                $('#driver_select').val('');
+                $('#driver_hidden').val('');
+            }
+        });
+    });
     </script>
 <?php include("footer.php");?>
