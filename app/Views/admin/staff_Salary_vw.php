@@ -7,12 +7,22 @@
             <div class="page-title">
                 <div class="row">
                     <div class="col-sm-6 p-0">
-                        <h3>Driver Salary </h3>
+                        <h3>Staff Salary </h3>
                     </div>
                 </div>
             </div>
         </div>
         <!-- Container-fluid starts-->
+        <style>
+            .select2-container--default .select2-selection--single {
+                height: 38px !important;
+                border: 1px solid #ced4da !important;
+                padding-top: 5px;
+            }
+            .select2-container {
+                display: block !important;
+            }
+        </style>
         <div class="container-fluid default-dashboard">
             <div class="uk-grid-small" uk-grid>
                 <div class="uk-width-1-1@m">
@@ -21,7 +31,7 @@
     <div class="uk-grid-small uk-child-width-expand" uk-grid>
         <div class="form-group">
             <label for="year">Year</label>
-            <select class="form-control" name="year" id="year">
+            <select class="form-control select2-search" name="year" id="year">
                 <?php 
                 $currentYear = date('Y');
                 for ($y = 2023; $y <= 2040; $y++): ?>
@@ -32,7 +42,7 @@
         
         <div class="form-group">
             <label for="month">Month</label>
-            <select class="form-control" name="month" id="month">
+            <select class="form-control select2-search" name="month" id="month">
                 <?php
                 $currentMonth = date('n');
                 $months = [
@@ -47,7 +57,7 @@
         
         <div class="form-group">
             <label for="location">Location</label>
-            <select name="location" id="location" class="form-control">
+            <select name="location" id="location" class="form-control select2-search">
                 <option value="">Select location</option>
                 <?php foreach ($location as $loc): ?>
                     <option value="<?= $loc->location_id; ?>"><?= $loc->location_name; ?></option>
@@ -74,10 +84,16 @@
         <!-- Container-fluid Ends-->
     </div>
 </div>
-<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+
 
 <script>
     $(document).ready(function() {
+        $('#location, #year, #month').select2({
+            placeholder: "Select an option",
+            allowClear: true,
+            width: '100%'
+        });
+
         $('#selectionForm').on('submit', function(e) {
             e.preventDefault(); // Prevent the default form submission
 

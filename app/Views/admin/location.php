@@ -36,6 +36,25 @@
                                 <?php if (isset($validation)) { ?><span class="text-danger"><?= $error = $validation->getError('short_name'); ?></span><?php } ?>
                             </div>
                             <div class="uk-margin-bottom">
+                                <lable>Opening Balance</lable>
+                                <input type="number" step="0.01" name="opening_balance" placeholder="enter opening balance" id="opening_balance" class="uk-input" value="<?= set_value('opening_balance', '0.00') ?>" />
+                                <?php if (isset($validation)) { ?><span class="text-danger"><?= $error = $validation->getError('opening_balance'); ?></span><?php } ?>
+                            </div>
+                            <div class="uk-margin-bottom">
+                                <lable>Radius</lable>
+                                <input type="number" step="0.01" name="radius" placeholder="enter radius" id="radius" class="uk-input" value="<?= set_value('radius', '0.00') ?>" />
+                                <?php if (isset($validation)) { ?><span class="text-danger"><?= $error = $validation->getError('radius'); ?></span><?php } ?>
+                            </div>
+
+                            <div class="uk-margin-bottom">
+                                <lable>Status</lable>
+                                <select name="status" id="status" class="uk-select">
+                                    <option value="Active">Active</option>
+                                    <option value="Inactive">Inactive</option>
+                                </select>
+                            </div>
+
+                            <div class="uk-margin-bottom">
                                 <?php if (in_array(19.1, $jobAssign)) { ?>
                                     <button type="submit" class="btn btn-primary">Submit</button>
                                 <?php } ?>
@@ -64,6 +83,9 @@
                                     <th>Sl no</th>
                                     <th>Location Name</th>
                                     <th>Location Short Name</th>
+                                    <th>Opening Balance</th>
+                                    <th>Radius</th>
+                                    <th>Status</th>
                                     <th>Edit</th>
                                     <th>Delete</th>
                                     <th></th>
@@ -80,6 +102,15 @@
                                         <td><?= $loc->location_name ?></td>
                                         <td><?= $loc->location_shordname ?></td>
 
+                                        <td><?= $loc->opening_balance ?? '0.00' ?></td>
+                                        <td><?= $loc->radius ?? '0.00' ?></td>
+                                        <td>
+                                            <div class="media-body text-end icon-state">
+                                                <label class="switch">
+                                                    <input type="checkbox" onchange="updatestatus(<?= $loc->location_id ?>, this.checked ? 'Active' : 'Inactive')" <?= (($loc->status ?? 'Active') == 'Active') ? 'checked' : '' ?>><span class="switch-state"></span>
+                                                </label>
+                                            </div>
+                                        </td>
                                         <td>
                                             <?php if (in_array(19.3, $jobAssign)) { ?>
                                                 <a class="btn btn-warning" href="#modal-center<?= $loc->location_id ?>" uk-toggle>Edit</a>
@@ -98,6 +129,21 @@
                                                             <lable>Short Name</lable>
                                                             <input type="text" name="sname" value="<?= $loc->location_shordname ?>" id="" class="uk-input" required />
                                                         </div>
+                                                        <div class="uk-margin-bottom">
+                                                                <lable>Opening Balance</lable>
+                                                                <input type="number" step="0.01" name="opening_balance" value="<?= $loc->opening_balance ?? '0.00' ?>" id="" class="uk-input" />
+                                                            </div>
+                                                            <div class="uk-margin-bottom">
+                                                                <lable>Radius</lable>
+                                                                <input type="number" step="0.01" name="radius" value="<?= $loc->radius ?? '0.00' ?>" id="" class="uk-input" />
+                                                            </div>
+                                                            <div class="uk-margin-bottom">
+                                                                <lable>Status</lable>
+                                                                <select name="status" class="uk-select">
+                                                                    <option value="Active" <?= (($loc->status ?? 'Active') == 'Active') ? 'selected' : '' ?>>Active</option>
+                                                                    <option value="Inactive" <?= (($loc->status ?? 'Active') == 'Inactive') ? 'selected' : '' ?>>Inactive</option>
+                                                                </select>
+                                                            </div>
                                                         <div class="uk-margin-bottom">
                                                             <button type="submit" class="btn btn-primary">Submit</button>
                                                         </div>
@@ -121,8 +167,11 @@
                             <tfoot>
                                 <tr>
                                     <th>Sl no</th>
-                                    <th>Location Unit Name</th>
+                                    <th>Location Name</th>
                                     <th>Location Short Name</th>
+                                    <th>Opening Balance</th>
+                                    <th>Radius</th>
+                                    <th>Status</th>
                                     <th>Edit</th>
                                     <th>Delete</th>
                                     <th></th>
@@ -157,7 +206,23 @@
         const url = `${baseUrl}`;
         window.location.href = url;
     });
+    function updatestatus(id, status) {
+        $.ajax({
+            url: "<?= base_url('Admin/update_location_status') ?>",
+            type: "POST",
+            data: {
+                id: id,
+                status: status
+            },
+            success: function(response) {
+                if(response.status == 1) {
+                    alert('Status updated successfully');
+                } else {
+                    alert('Status update failed');
+                }
+            }
+        });
+    }
 </script>
-
 
 <?php include("footer.php"); ?>

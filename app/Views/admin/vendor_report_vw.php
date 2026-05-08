@@ -29,7 +29,7 @@
                         </div>
                             <div class="uk-width-1-4@s">
                             <label>Select Vendor</label>
-                            <select name="pump_id" class="uk-input" id="single" required>
+                            <select name="pump_id" class="uk-input select2-search" id="single" required>
                                 <option value="">Select Vendor</option>
                                 <?php foreach ($Allvendor as $pump) { ?>
                                     <option value="<?= $pump->id ?>" <?= $filter_data['pump_id'] == $pump->id ? "selected" : "" ?>><?= $pump->name ?></option>
@@ -219,29 +219,54 @@
             </div>
         </div>
 
-        <!-- Footer Scripts -->
-        <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-      <script>
-    $(document).ready(function () {
-        $('#downloadExcel').click(function () {
-            const fromDate = $('#from_date').val();
-            const toDate = $('#to_date').val();
-            const pumpId = $('#single').val();
-
-            if (!fromDate || !toDate || !pumpId) {
-                alert('Please select From Date, To Date and Party.');
-                return;
+        <style>
+            /* Select2 Searchable Dropdown Styling */
+            .select2-container--default .select2-selection--single {
+                height: 38px !important;
+                padding: 5px;
+                border: 1px solid #e5e5e5;
+                border-radius: 4px;
             }
+            .select2-container--default .select2-selection--single .select2-selection__rendered {
+                line-height: 26px !important;
+                color: #333;
+            }
+            .select2-container--default .select2-selection--single .select2-selection__arrow {
+                height: 36px !important;
+            }
+            .select2-search { width: 100% !important; }
+        </style>
 
-            const exportUrl = '<?= base_url(); ?>/Admin/exportvendor_paymentExcel?from_date='
-                + encodeURIComponent(fromDate) + '&to_date='
-                + encodeURIComponent(toDate) + '&pump_id='
-                + encodeURIComponent(pumpId);
+        <script>
+            $(document).ready(function () {
+                // Initialize Select2 for vendor selection
+                if ($('.select2-search').length > 0) {
+                    $('.select2-search').select2({
+                        placeholder: "Select Vendor",
+                        allowClear: true,
+                        width: '100%'
+                    });
+                }
 
-            window.location.href = exportUrl;
-        });
-    });
-</script>
+                $('#downloadExcel').click(function () {
+                    const fromDate = $('#from_date').val();
+                    const toDate = $('#to_date').val();
+                    const pumpId = $('#single').val();
+
+                    if (!fromDate || !toDate || !pumpId) {
+                        alert('Please select From Date, To Date and Vendor.');
+                        return;
+                    }
+
+                    const exportUrl = '<?= base_url(); ?>/Admin/exportvendor_paymentExcel?from_date='
+                        + encodeURIComponent(fromDate) + '&to_date='
+                        + encodeURIComponent(toDate) + '&pump_id='
+                        + encodeURIComponent(pumpId);
+
+                    window.location.href = exportUrl;
+                });
+            });
+        </script>
     </div>
 </div>
         <?php include("footer.php"); ?>

@@ -8,7 +8,21 @@
                     <div class="page-title">
                       <div class="row">
                         <div class="col-sm-6 p-0">
-                          <h3>Staff Advance </h3>
+                          <h3>Advance </h3>
+                        </div>
+                        <div class="col-sm-6 p-0">
+                          <?php if (session()->getFlashdata('success')): ?>
+                              <div class="alert alert-success alert-dismissible fade show" role="alert">
+                                  <?= session()->getFlashdata('success') ?>
+                                  <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                              </div>
+                          <?php endif; ?>
+                          <?php if (session()->getFlashdata('error')): ?>
+                              <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                                  <?= session()->getFlashdata('error') ?>
+                                  <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                              </div>
+                          <?php endif; ?>
                         </div>
                       </div>
                     </div>
@@ -42,20 +56,18 @@
                                                         <select id="staffFilter" name="staff_id" class="uk-input"  required>
                                                             <option value="">Select </option>
                                                             <?php foreach ($allstaf as $staff) { ?>
-                                                                <option data-user-type="<?= htmlspecialchars($staff->user_type) ?>" value="<?= htmlspecialchars($staff->id) ?>">
-                                                                    <?= htmlspecialchars($staff->name) ?> (<?= htmlspecialchars($staff->staff_code) ?>)
-                                                                </option>
+                                                <option data-user-type="<?= htmlspecialchars($staff->user_type) ?>" data-location-id="<?= htmlspecialchars($staff->location_id) ?>" value="<?= htmlspecialchars($staff->id) ?>">
+                                                    <?= htmlspecialchars($staff->name) ?> (<?= htmlspecialchars($staff->staff_code) ?>)
+                                                </option>
 
-                                                            <?php } ?>
+                                            <?php } ?>
                                                         </select>
                                                     </div>
-                                                <!--<div id="responseContainer">-->
-                                                <!--      <label>Vehicle</label>-->
-                                                <!--     <input type="text" readonly  class="uk-input"/> -->
-                                                <!-- </div>  -->
-                                                <div class="">
-                                                     <label>Date</label>
-                                                     <input type="date" id="date" name="date" class="uk-input" value="<?php echo date('Y-m-d'); ?>"/> 
+                                                 <div class="">
+                                                      <label>Date</label>
+                                                      <input type="date" id="date" name="date" class="uk-input" value="<?php echo date('Y-m-d'); ?>"/> 
+                                                  </div>
+                                                 <div id="responseContainer">
                                                  </div>
                                                 <div class="uk-form-controls">
                                                          <label>Bank/Cash</label>
@@ -64,15 +76,24 @@
                                                             <option>Cash</option>
                                                             <option>Bank</option>
                                                         </select>
-                                                    </div>
+                                                     </div>
+                                                 <div class="uk-form-controls">
+                                                         <label>Cash Paid By</label>
+                                                        <select class="uk-select" name="paid_by" id="paidByFilter" style="width: 100%;">
+                                                            <option value="">Select</option>
+                                                            <?php foreach($admin_users as $admin){ ?>
+                                                                <option value="<?= htmlspecialchars($admin->full_name) ?>"><?= htmlspecialchars($admin->full_name) ?> (<?= $admin->user_type == 1 ? 'Admin' : 'Subadmin' ?>)</option>
+                                                            <?php } ?>
+                                                        </select>
+                                                     </div>
                                                 <div class="">
                                                     <label>Amount</label>
                                                     <input type="number" name="amount" placeholder="Enter Amount" id="amount" class="uk-input" value="" />
                                                 </div>
                                                 <div class="">
                                                     <label>Location</label>
-                                                     <select name="location_id" class="uk-input" required>
-                                                       <option>Select Location</option>
+                                                     <select name="location_id" id="location_select" class="uk-input select2-search" required>
+                                                       <option value="">Select Location</option>
                                                        <?php foreach($location as $loc){?>
                                                             <option value="<?=$loc->location_id?>"><?=$loc->location_name?></option>
                                                        <?php } ?>
@@ -92,7 +113,8 @@
                                                  
                                         </form>
                                         <hr>
-                                       <a href="<?php echo base_url();?>/sampleexcel/staff_advance_new.xlsx">click here</a> to download sample excel
+                                       <a href="<?php echo base_url();?>/admin/staf_advance/download_sample">click here</a> to download sample excel
+                                       <small class="text-muted d-block">Format: Staff Code | Staff Name | Date (dd/mm/yyyy) | Bank/Cash | Amount | Location</small>
                              <form action="<?php echo base_url();?>/Admin/upload_staf_advance" method="post" enctype="multipart/form-data">
                                  <div class="uk-margin-bottom">
                                 
@@ -150,13 +172,14 @@
                                                 <th>Amount</th>
                                                 <th>Location</th>
                                                 <th>File</th>
+                                                <th>Print</th>
                                                 <th>Edit</th>
                                                 <th>Delete</th>
                                             </tr>
                                         </thead>
                                         <tbody>
                                             <?php $sl_no = 1; foreach ($staffadvance as $record) { ?>
-                                                <tr>
+                                                <tr data-staff-type="<?= htmlspecialchars($record->user_type); ?>">
                                                     <td><?= $sl_no++; ?></td>
                                                     <td><input type="checkbox" class="delete-checkbox" name="select_del[]" value="<?=$record->id; ?>" /></td>
                                                     <td>
@@ -172,6 +195,9 @@
                                                         <?php else: ?>
                                                             No Image
                                                         <?php endif; ?>
+                                                    </td>
+                                                    <td>
+                                                        <a href="<?= base_url(); ?>/Admin/print_advance/<?= $record->id; ?>" target="_blank" class="btn btn-info">Print</a>
                                                     </td>
                                     
                                                     <td>
@@ -198,33 +224,34 @@
                                                         
                                                         
                                                          <div class="">
-                                                                                                <label>Staff Type</label>
-                                                                                                <?php
-                                                                                                // Group by user_type
-                                                                                                $user_types = [];
-                                                                                                foreach ($allstaf as $staff) {
-                                                                                                    $user_types[$staff->user_type] = $staff->user_type;
-                                                                                                }
-                                                                                                ?>
-                                                                                                <select id="typeFilter" name="type" class="form-control">
-                                                                                                    <option value="">Select Type</option>
-                                                                                                    <?php foreach ($user_types as $user_type) { ?>
-                                                                                                        <option value="<?= htmlspecialchars($user_type) ?>"><?= htmlspecialchars($user_type) ?></option>
-                                                                                                    <?php } ?>
-                                                                                                </select>
-                                                                                            </div>
+                                                                                        <div class="" style="display:none;">
+                                                         <label>Staff Type</label>
+                                                         <?php
+                                                         // Group by user_type
+                                                         $user_types = [];
+                                                         foreach ($allstaf as $staff) {
+                                                             $user_types[$staff->user_type] = $staff->user_type;
+                                                         }
+                                                         ?>
+                                                         <select id="typeFilter" name="type" class="form-control">
+                                                             <option value="">Select Type</option>
+                                                             <?php foreach ($user_types as $user_type) { ?>
+                                                                 <option value="<?= htmlspecialchars($user_type) ?>"><?= htmlspecialchars($user_type) ?></option>
+                                                             <?php } ?>
+                                                         </select>
+                                                     </div>                                       </div>
                                                         
-                                                        <div class="">
-                                                                                                <label>Employ Name</label>
-                                                                                                <select id="staffFilter" name="staff_id" class="uk-input"  required>
-                                                                                                    <option value="">Select </option>
-                                                                                                    <?php foreach ($allstaf as $staff) { ?>
-                                                                                                        <option data-user-type="<?= htmlspecialchars($staff->user_type) ?>" value="<?= htmlspecialchars($staff->id) ?>">
-                                                                                                            <?= htmlspecialchars($staff->name) ?>
-                                                                                                        </option>
-                                                                                                    <?php } ?>
-                                                                                                </select>
-                                                                                            </div>
+                                                                <div class="">
+                                                                    <label>Employ Name</label>
+                                                                    <select id="modalStaffFilter" name="staff_id" class="uk-input" required>
+                                                                        <option value="">Select </option>
+                                                                        <?php foreach ($allstaf as $staff) { ?>
+                                                                            <option data-user-type="<?= htmlspecialchars($staff->user_type) ?>" value="<?= htmlspecialchars($staff->id) ?>">
+                                                                                <?= htmlspecialchars($staff->name) ?> (<?= htmlspecialchars($staff->staff_code) ?>)
+                                                                            </option>
+                                                                        <?php } ?>
+                                                                    </select>
+                                                                </div>
                                                                                             
                                                                                             
                                                         <div class="uk-margin-bottom">
@@ -244,8 +271,8 @@
                                                         </div>
                                                         <div class="uk-margin-bottom">
                                                             <label>Location</label>
-                                                            <select name="location_id" id="modal-location" class="uk-input" required>
-                                                                <option>Select Location</option>
+                                                             <select name="location_id" id="modal-location" class="uk-input select2-search" required>
+                                                                <option value="">Select Location</option>
                                                                 <?php foreach($location as $loc){ ?>
                                                                     <option value="<?= $loc->location_id ?>"><?= $loc->location_name ?></option>
                                                                 <?php } ?>
@@ -274,15 +301,47 @@
                 <!-- Container-fluid Ends-->
             </div>
         </div>
-    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
 <script>
     $(document).ready(function() {
+        // Initialize Select2 for Employee Name
+        $('#staffFilter').select2({ 
+            placeholder: "Select Employee", 
+            allowClear: true, 
+            width: '100%' 
+        });
+
+        // Initialize Select2 for Cash Paid By
+        $('#paidByFilter').select2({ 
+            placeholder: "Select", 
+            allowClear: true, 
+            width: '100%' 
+        });
+        
+        $('#modalStaffFilter').select2({ 
+            placeholder: "Select Employee", 
+            allowClear: true, 
+            width: '100%', 
+            dropdownParent: $('#modal-center') 
+        });
+
+        // Initialize Select2 for Location
+        $('#location_select').select2({
+            placeholder: "Select Location",
+            allowClear: true,
+            width: '100%'
+        });
+
+        $('#modal-location').select2({
+            placeholder: "Select Location",
+            allowClear: true,
+            width: '100%',
+            dropdownParent: $('#modal-center')
+        });
+
         // Check/Uncheck all checkboxes when the 'checkAll' checkbox is clicked
         $('#checkAll').click(function() {
             $('.delete-checkbox').prop('checked', $(this).prop('checked'));
         });
-
-       
     });
 </script>
 <script>
@@ -344,18 +403,66 @@
 </script>  
 <script>
     $(document).ready(function() {
+        // Store a master copy of all staff options for clean filtering
+        var allStaffOptions = $('#staffFilter option').clone();
+
+        // Custom DataTable filtering for Staff Type
+        $.fn.dataTable.ext.search.push(
+            function(settings, data, dataIndex) {
+                var selectedType = $('#typeFilter').val();
+                if (!selectedType) return true; // Show all if no filter
+                
+                var row = settings.aoData[dataIndex].nTr;
+                var staffType = $(row).data('staff-type');
+                
+                return staffType === selectedType;
+            }
+        );
+
         $('#typeFilter').change(function() {
             var selectedType = $(this).val();
-            $('#staffFilter option').each(function() {
+            
+            // 1. Filter the Employ Name Dropdown (Select2)
+            var $staffFilter = $('#staffFilter');
+            $staffFilter.select2('destroy'); // Destroy current Select2
+            $staffFilter.empty(); // Clear current options
+            
+            // Re-add matching options from the master list
+            $staffFilter.append('<option value="">Select Employee</option>');
+            allStaffOptions.each(function() {
                 var userType = $(this).data('user-type');
-                if (selectedType === "" || userType === selectedType) {
-                    $(this).show();
-                } else {
-                    $(this).hide();
+                var val = $(this).val();
+                
+                if (val !== "" && (selectedType === "" || userType === selectedType)) {
+                    $staffFilter.append($(this).clone());
                 }
             });
+            
+            // Re-init Select2
+            $staffFilter.select2({
+                placeholder: "Select Employee",
+                allowClear: true,
+                width: '100%'
+            });
+
+            // 2. Filter the Table Listing
+            // Redraw the table to trigger the custom search filter defined above
+            $('#row_create').DataTable().draw();
+
             // Reset the staff selection
-            $('#staffFilter').val('');
+            $('#staffFilter').val('').trigger('change');
+            $('#responseContainer').html('');
+        });
+
+        $('#staffFilter').change(function() {
+            var selectedOption = $(this).find('option:selected');
+            var userType = selectedOption.data('user-type');
+            var locationId = selectedOption.data('location-id');
+
+            // Automatically select the location if the staff type is Staff Master (STAFF)
+            if (userType === 'STAFF' && locationId) {
+                $('select[name="location_id"]').val(locationId);
+            }
         });
     });
 </script>
@@ -383,6 +490,8 @@
                         $('#responseContainer').html('<p>An error occurred while processing your request.</p>'); // Display error message
                     }
                 });
+            } else {
+                $('#responseContainer').html('');
             }
         });
     });

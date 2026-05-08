@@ -65,7 +65,14 @@ foreach ($orderdtls as $orddtls){} // First record for static fields
 
                         <div>
                             <label>Checked by</label>
-                            <input type="text" name="check_by" class="form-control" value="<?= $orddtls->check_by ?>" />
+                            <select name="check_by" class="form-control" required>
+                                <option value="">Select User</option>
+                                <?php foreach($users as $u): ?>
+                                    <option value="<?= $u->id; ?> - <?= $u->full_name; ?>" <?= ($orddtls->check_by == $u->id . ' - ' . $u->full_name) ? 'selected' : '' ?>>
+                                        <?= $u->id; ?> - <?= $u->full_name; ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
                         </div>
                     </div>
                 </div>
@@ -73,6 +80,18 @@ foreach ($orderdtls as $orddtls){} // First record for static fields
                 <hr>
 
                 <table class="table table-bordered table-hover" id="dynamic_field">
+                    <thead>
+                        <tr>
+                            <th>S.No</th>
+                            <th>Usage Type</th>
+                            <th>Item Name</th>
+                            <th>Quantity</th>
+                            <th>Unit Price</th>
+                            <th>Total Amount</th>
+                            <th>Mechanic Name</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
                     <?php $i = 1; foreach ($orderdtls as $ordtlsRow): ?>
                     <tr id="row<?= $i; ?>">
                         <td><?= $i; ?></td>
@@ -121,6 +140,16 @@ foreach ($orderdtls as $orddtls){} // First record for static fields
                             <input type="text" name="total[]" value="<?= number_format($ordtlsRow->price * $ordtlsRow->qty, 2) ?>" class="form-control total" readonly>
                         </td>
                         <td>
+                            <select name="mechanic_name[]" class="form-control mechanic-select">
+                                <option value="">Select Mechanic</option>
+                                <?php foreach($mechanics as $mec): ?>
+                                    <option value="<?= $mec->name ?>" <?= (isset($ordtlsRow->mechanic_name) && $ordtlsRow->mechanic_name == $mec->name) ? 'selected' : '' ?>>
+                                        <?= $mec->name ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                        </td>
+                        <td>
                             <button type="button" class="btn btn-danger btn_remove">X</button>
                         </td>
                     </tr>
@@ -128,7 +157,7 @@ foreach ($orderdtls as $orddtls){} // First record for static fields
 
                     <!-- Add More Button Row -->
                     <tr id="add_more_row">
-                        <td colspan="7" class="text-center">
+                        <td colspan="8" class="text-center">
                             <button type="button" id="add" class="btn btn-primary">Add More</button>
                         </td>
                     </tr>
@@ -145,6 +174,10 @@ foreach ($orderdtls as $orddtls){} // First record for static fields
 <script>
 $(document).ready(function () {
     var selectedItems = [];
+    var mechOptGlobal = '<option value="">Select Mechanic</option>';
+    <?php foreach($mechanics as $mec): ?>
+    mechOptGlobal += '<option value="<?= $mec->name ?>"><?= $mec->name ?></option>';
+    <?php endforeach; ?>
 
     function loadItems(locationId, selectedItemId = null, targetSelect) {
         if (!locationId) return;
@@ -203,6 +236,7 @@ $(document).ready(function () {
             '<td><select name="items[]" class="form-control items-select"><option value="">Select Item</option></select><small class="availableqty text-muted d-block mt-1"></small></td>'+
             '<td><input type="number" name="qty[]" class="form-control qty" min="1"></td>'+
             '<td><input type="text" name="price[]" class="form-control price" readonly></td>'+
+            '<td><select name="mechanic_name[]" class="form-control mechanic-select">'+mechOptGlobal+'</select></td>'+
             '<td><button type="button" class="btn btn-danger btn_remove">X</button></td>'+
         '</tr>');
         $('#add_more_row').before(newRow);

@@ -35,7 +35,7 @@ class AditionalAdminPart extends BaseController
 	{
         $builder = $this->db->table('staff');
 		$builder->select('staff.*,location.location_name');
-		$builder->join('location', 'location.location_id = staff.address','left');
+		$builder->join('location', 'location.location_id = staff.location_id','left');
 		return $builder->get()->getResult();
 	}
 
@@ -46,19 +46,27 @@ class AditionalAdminPart extends BaseController
         $sheet = $spreadsheet->getActiveSheet();
         // Set header row (removing 'File' column)
         $headers = [
-            'Sl no',
-            'User Type',
-            'Name',
-            'Staf Code',
-            'Name In Bank',
-            'A/c No',
-            'IFSC Code',
-            'Dl Number',
-            'DL Expiry',
-            'Salary',
-            'Contact No',
-            'Dob',
-            'Address'
+            'Sl No',
+            'User Type (DRIVER/STAFF/MECHANIC)*',
+            'Name*',
+            'DOJ (DD/MM/YYYY)*',
+            'Salary*',
+            'Bank Account Name*',
+            'A/c No*',
+            'IFSC Code*',
+            'DL Number (For Driver)*',
+            'DL Expiry (For Driver)*',
+            'Aadhaar Number*',
+            'PAN Number',
+            'Contact No*',
+            'Father Name*',
+            'Spouse Name',
+            'DOB (DD/MM/YYYY)*',
+            'Family Contact',
+            'Blood Group',
+            'Opening Balance',
+            'Location Name*',
+            'Address*'
         ];
         $sheet->fromArray($headers, NULL, 'A1');
 
@@ -68,16 +76,24 @@ class AditionalAdminPart extends BaseController
             $sheet->setCellValue('A' . $row, $index + 1);
             $sheet->setCellValue('B' . $row, $record->user_type);
             $sheet->setCellValue('C' . $row, $record->name);
-            $sheet->setCellValue('D' . $row, $record->staff_code);
-            $sheet->setCellValue('E' . $row, $record->name_bank);
-            $sheet->setCellValue('F' . $row, $record->ac_no);
-            $sheet->setCellValue('G' . $row, $record->ifsc);
-            $sheet->setCellValue('H' . $row, $record->dl_number);
-            $sheet->setCellValue('I' . $row, date('d-m-Y', strtotime($record->dl_expiry)));
-            $sheet->setCellValue('J' . $row, $record->salary);
-            $sheet->setCellValue('K' . $row, $record->tel);
-            $sheet->setCellValue('L' . $row, date('d-m-Y', strtotime($record->doj)));
-            $sheet->setCellValue('M' . $row, $record->location_name);
+            $sheet->setCellValue('D' . $row, !empty($record->doj) ? date('d/m/Y', strtotime($record->doj)) : '');
+            $sheet->setCellValue('E' . $row, $record->salary);
+            $sheet->setCellValue('F' . $row, $record->name_bank);
+            $sheet->setCellValue('G' . $row, $record->ac_no);
+            $sheet->setCellValue('H' . $row, $record->ifsc);
+            $sheet->setCellValue('I' . $row, $record->dl_number);
+            $sheet->setCellValue('J' . $row, !empty($record->dl_expiry) ? date('d/m/Y', strtotime($record->dl_expiry)) : '');
+            $sheet->setCellValue('K' . $row, $record->aadhaar_no);
+            $sheet->setCellValue('L' . $row, $record->pan_no);
+            $sheet->setCellValue('M' . $row, $record->tel);
+            $sheet->setCellValue('N' . $row, $record->fathers_name);
+            $sheet->setCellValue('O' . $row, $record->spouse_name);
+            $sheet->setCellValue('P' . $row, !empty($record->dob) ? date('d/m/Y', strtotime($record->dob)) : '');
+            $sheet->setCellValue('Q' . $row, $record->family_contact);
+            $sheet->setCellValue('R' . $row, $record->blood_group);
+            $sheet->setCellValue('S' . $row, $record->opening_balance);
+            $sheet->setCellValue('T' . $row, $record->location_name);
+            $sheet->setCellValue('U' . $row, $record->address);
             $row++;
         }
 
@@ -246,7 +262,7 @@ class AditionalAdminPart extends BaseController
 
     public function download_excel_location()
     {
-        $recordData = $this->db->query("SELECT * FROM location")->getResult();
+        $recordData = $this->db->query("SELECT * FROM location WHERE (status IS NULL OR status='Active')")->getResult();
         $spreadsheet = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
         $sheet = $spreadsheet->getActiveSheet();
         // Set header row (removing 'File' column)
@@ -254,6 +270,8 @@ class AditionalAdminPart extends BaseController
             'Sl no',
             'Location Name',
             'Location Short Name',
+            'Opening Balance',
+            'Radius',
         ];
         $sheet->fromArray($headers, NULL, 'A1');
 
@@ -263,6 +281,8 @@ class AditionalAdminPart extends BaseController
             $sheet->setCellValue('A' . $row, $index + 1);
             $sheet->setCellValue('B' . $row, $record->location_name);
             $sheet->setCellValue('C' . $row, $record->location_shordname);
+            $sheet->setCellValue('D' . $row, $record->opening_balance);
+            $sheet->setCellValue('E' . $row, $record->radius);
             $row++;
         }
 

@@ -181,16 +181,17 @@
                                                     <?php
                                                     // Mapping for display
                                                     $userTypeMap = [
-                                                        'Party'  => 'PARTY',
-                                                        'Pump'   => 'PUMP',
-                                                        'Vendor' => 'VENDOR',
-                                                        'DRIVER' => 'Driver',
-                                                        'STAFF'  => 'Staff'
+                                                        'Party'    => 'PARTY',
+                                                        'Pump'     => 'PUMP',
+                                                        'Vendor'   => 'VENDOR',
+                                                        'DRIVER'   => 'Driver',
+                                                        'STAFF'    => 'Staff',
+                                                        'MECHANIC' => 'Mechanic'
                                                     ];
                                                     ?>
                                                     <td><?= isset($userTypeMap[$record->user_type]) ? $userTypeMap[$record->user_type] : $record->user_type; ?></td>
                                                     <td>
-                                                        <?php if (in_array($record->user_type, ['DRIVER', 'STAFF'])): ?>
+                                                        <?php if (in_array($record->user_type, ['DRIVER', 'STAFF', 'MECHANIC'])): ?>
                                                             <?= $record->staff_name . ' (' . $record->staff_code . ')' ?>
                                                         <?php else: ?>
                                                             <?= $record->vendor_name . ' (' . $record->vendor_type . ')' ?>

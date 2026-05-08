@@ -10,6 +10,18 @@
                   <h3>Diesel Entry </h3>
                 </div>
                 <div class="col-sm-6 p-0">
+                  <?php if (session()->getFlashdata('success')): ?>
+                      <div class="alert alert-success alert-dismissible fade show" role="alert">
+                          <?= session()->getFlashdata('success') ?>
+                          <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                      </div>
+                  <?php endif; ?>
+                  <?php if (session()->getFlashdata('error')): ?>
+                      <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                          <?= session()->getFlashdata('error') ?>
+                          <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                      </div>
+                  <?php endif; ?>
                 </div>
               </div>
             </div>
@@ -22,7 +34,7 @@
                            <form action="<?php echo base_url();?>/Admin/insert_diesel" method="post">
                                <div class="form-group">
                                         <label>Select Pump</label>
-                                        <select class="form-control" name="vendor" id="single">
+                                        <select class="form-control" name="vendor" id="petrol">
                                             <option value="">Select vendor</option>
                                             <?php foreach($vendor as $loc){
                                             if($loc->type=="Pump"){
@@ -73,7 +85,8 @@
                 
                            </form>
                            <hr>
-                           <a href="<?php echo base_url();?>/sampleexcel/diselentry.xlsx">click here</a> to download sample excel
+                           <a href="<?php echo base_url();?>/admin/diesel_entry/download_sample">click here</a> to download sample excel
+                           <small class="text-muted d-block">Format: Vendor Name | Vehicle No | Date (dd/mm/yyyy) | Qty | Rate</small>
                              <form action="<?php echo base_url();?>/Admin/excel_dieselentry" method="post" enctype="multipart/form-data">
                                  <div class="uk-margin-bottom">
                                 
@@ -299,5 +312,25 @@ document.getElementById('download_excel').addEventListener('click', function() {
     });       
         
 </script> 
+<!-- Select2 CSS & JS -->
+<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+
+<script>
+$(document).ready(function() {
+    $('#petrol').select2({
+        placeholder: "Search and Select Pump",
+        allowClear: true,
+        width: '100%'
+    });
+    
+    $('#single1').select2({
+        placeholder: "Search and Select Vehicle",
+        allowClear: true,
+        width: '100%'
+    });
+});
+</script>
+
 <?php include("footer.php");?>
            

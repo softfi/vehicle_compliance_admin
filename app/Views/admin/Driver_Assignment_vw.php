@@ -1,6 +1,4 @@
 <?php include("header.php"); ?>
-<link rel='stylesheet' href='https://maxcdn.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css'>
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
 
 <style>
     :root {
@@ -14,9 +12,7 @@
         --hover-shadow: 0 4px 12px rgba(0,0,0,0.15);
     }
 
-    .page-body-wrapper {
-        background: var(--light-bg);
-    }
+    .page-body { padding-top: 20px; }
 
     .card-modern {
         background: white;
@@ -101,16 +97,21 @@
     }
 
     .table-container {
-        max-height: 500px;
-        overflow-y: auto;
-        overflow-x: auto;
+        max-height: 600px; /* Increased height */
+        overflow: auto; /* Enable both scrolls */
         border-radius: 8px;
         border: 1px solid #e9ecef;
+        width: 100%;
+        position: relative;
     }
 
     .table-modern {
         margin-bottom: 0;
         width: 100%;
+        min-width: 1200px; /* Increased to ensure all columns fit */
+        table-layout: auto;
+        border-collapse: separate;
+        border-spacing: 0;
     }
 
     .table-modern thead th {
@@ -139,6 +140,7 @@
         padding: 12px 15px;
         vertical-align: middle;
         border-bottom: 1px solid #e9ecef;
+        white-space: nowrap; /* Prevent content from wrapping */
     }
 
     /* New Search Box Styles */
@@ -281,11 +283,11 @@
 
     .grid-container {
         display: grid;
-        grid-template-columns: 350px 1fr;
+        grid-template-columns: 350px minmax(0, 1fr); /* minmax(0, 1fr) is crucial for grid items to shrink and allow scroll */
         gap: 20px;
     }
 
-    @media (max-width: 1024px) {
+    @media (max-width: 1200px) {
         .grid-container {
             grid-template-columns: 1fr;
         }
@@ -300,20 +302,18 @@
 
     /* Custom Scrollbar */
     .table-container::-webkit-scrollbar {
-        width: 8px;
-        height: 8px;
+        width: 10px;
+        height: 10px;
     }
-
     .table-container::-webkit-scrollbar-track {
         background: #f1f1f1;
-        border-radius: 4px;
+        border-radius: 10px;
     }
-
     .table-container::-webkit-scrollbar-thumb {
         background: #888;
-        border-radius: 4px;
+        border-radius: 10px;
+        border: 2px solid #f1f1f1;
     }
-
     .table-container::-webkit-scrollbar-thumb:hover {
         background: #555;
     }

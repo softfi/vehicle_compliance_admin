@@ -10,7 +10,7 @@ foreach($single_stafadv as $stf_adv){}
                     <div class="page-title">
                       <div class="row">
                         <div class="col-sm-6 p-0">
-                          <h3>Staff Advance </h3>
+                          <h3>Advance </h3>
                         </div>
                       </div>
                     </div>
@@ -25,7 +25,7 @@ foreach($single_stafadv as $stf_adv){}
                               <div class="uk-grid-small uk-child-width-1-1" uk-grid>
                                   
                                                 <input type="hidden" name="adv_id" value="<?=$stf_adv->id;?>" />
-                                                <div class="">
+                                                <div class="" style="display:none;">
                                                         <label>Staff Type</label>
                                                         <?php
                                                         // Group by user_type
@@ -46,7 +46,7 @@ foreach($single_stafadv as $stf_adv){}
                                                         <select id="staffFilter" name="staff_id" class="uk-input"  required>
                                                             <option value="">Select </option>
                                                             <?php foreach ($allstaf as $staff) { ?>
-                                                                <option  <?php if($stf_adv->staff_id==$staff->id){echo "selected";}?>  data-user-type="<?= htmlspecialchars($staff->user_type) ?>" value="<?= htmlspecialchars($staff->id) ?>">
+                                                                <option  <?php if($stf_adv->staff_id==$staff->id){echo "selected";}?>  data-user-type="<?= htmlspecialchars($staff->user_type) ?>" data-location-id="<?= htmlspecialchars($staff->address) ?>" value="<?= htmlspecialchars($staff->id) ?>">
                                                                     <?= htmlspecialchars($staff->name) ?>
                                                                 </option>
                                                             <?php } ?>
@@ -64,10 +64,20 @@ foreach($single_stafadv as $stf_adv){}
                                                          <label>Bank/Cash</label>
                                                         <select class="uk-select" name="bank_cash" id="form-stacked-select">
                                                             <option>select</option>
-                                                            <option <?php if($stf_adv->adv_date=="Cash"){echo "selected";}?> >Cash</option>
-                                                            <option <?php if($stf_adv->adv_date=="Bank"){echo "selected";}?> >Bank</option>
+                                                            <option <?php if($stf_adv->bank_cash=="Cash"){echo "selected";}?> >Cash</option>
+                                                            <option <?php if($stf_adv->bank_cash=="Bank"){echo "selected";}?> >Bank</option>
                                                         </select>
-                                                    </div>
+                                                     </div>
+                                                 <div class="uk-form-controls">
+                                                         <label>Cash Paid By</label>
+                                                        <select class="uk-select" name="paid_by">
+                                                            <option value="">Select</option>
+                                                            <option value="Self" <?php if(($stf_adv->paid_by ?? '')=="Self"){echo "selected";}?> >Self</option>
+                                                            <option value="Admin" <?php if(($stf_adv->paid_by ?? '')=="Admin"){echo "selected";}?> >Admin</option>
+                                                            <option value="Dispatcher" <?php if(($stf_adv->paid_by ?? '')=="Dispatcher"){echo "selected";}?> >Dispatcher</option>
+                                                            <option value="Pump" <?php if(($stf_adv->paid_by ?? '')=="Pump"){echo "selected";}?> >Pump</option>
+                                                        </select>
+                                                     </div>
                                                 <div class="">
                                                     <label>Amount</label>
                                                     <input type="number" name="amount" placeholder="Enter Amount" id="amount" class="uk-input" value="<?=$stf_adv->amount;?>" />
@@ -128,6 +138,17 @@ $(document).ready(function() {
         });
         // Reset the staff selection
         $('#staffFilter').val('');
+    });
+
+    $('#staffFilter').change(function() {
+        var selectedOption = $(this).find('option:selected');
+        var userType = selectedOption.data('user-type');
+        var locationId = selectedOption.data('location-id');
+
+        // Automatically select the location if the staff type is Staff Master (STAFF)
+        if (userType === 'STAFF' && locationId) {
+            $('select[name="location_id"]').val(locationId);
+        }
     });
 });
 </script>

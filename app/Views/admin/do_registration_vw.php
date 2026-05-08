@@ -77,7 +77,7 @@
                                 <select class="js-states form-control uk-padding-reove uk-margin-remove" name="party" id="single1">
                                     <option value="">Select Party</option>
                                     <?php foreach ($partyNames as $pn) { ?>
-                                    <option value="<?= $pn->name . ' (' . $pn->id . ')' ?>"><?= $pn->name ?></option>
+                                    <option value="<?= $pn->id ?>"><?= $pn->name ?></option>
                                     <?php } ?>
                                 </select>
                                 <?php if (isset($validation)) { ?><span class="text-danger"><?= $validation->getError('party'); ?></span><?php } ?>
@@ -157,7 +157,8 @@
                             </div>
                             <div class="">
                                 <label>TDS Rate (%)</label>
-                                <input type="text" class="uk-input" value="2" disabled />
+                                <input type="number" step="0.01" name="tds_percentage" id="tds_percentage" placeholder="Enter TDS Percentage" class="uk-input" value="<?= set_value('tds_percentage', '2.00'); ?>" />
+                                <?php if (isset($validation)) { ?><span class="text-danger"><?= $validation->getError('tds_percentage'); ?></span><?php } ?>
                             </div>
                             <div class="">
                                 <label>Shortage Qty</label>
@@ -208,6 +209,7 @@
                                         <th>To Date</th>
                                         <th>Party Rate</th>
                                         <th>Diesel Rate</th>
+                                        <th>TDS (%)</th>
                                         <!-- <th>Add Shortage</th> -->
                                         <th>Change</th>
                                         <th>Edit Price</th>
@@ -236,11 +238,12 @@
                                         <td><?= isset($doreg->shortage_qty) ? $doreg->shortage_qty : '-'; ?></td>
                                         <td><?= isset($doreg->shortage_rate) ? $doreg->shortage_rate : '-'; ?></td>
                                         <td><?= (isset($doreg->special_shortage) && $doreg->special_shortage == 1) ? 'Yes' : 'No'; ?></td>
-                                        <td><?=$doreg->party;?></td>
+                                        <td><?= $doreg->party_name ?? '-'; ?></td>
                                         <td><?=$doreg->from_date;?></td>
                                         <td><?=$doreg->to_date;?></td>
                                         <td><?=$doreg->rate;?></td>
                                         <td><?=$doreg->diesel_rate ?? '-';?></td>
+                                        <td><?= isset($doreg->tds_percentage) ? number_format($doreg->tds_percentage, 2) . '%' : '2.00%'; ?></td>
                                         
                                         <!-- <td>
                                             <a style="white-space:nowrap" class="btn btn-primary" href="javascript:void(0);" onClick="addshortage('<?=$doreg->do_registration_id;?>');">Add Shortage</a>
@@ -282,7 +285,8 @@
                                         <th>From Date</th>
                                         <th>To Date</th>
                                         <th>Party Rate</th>
-                                        <th>Diesel Rate</th>    
+                                        <th>Diesel Rate</th>
+                                        <th>TDS (%)</th>
                                         <!-- <th>Add Shortage</th> -->
                                         <th>Change</th>
                                         <th>Edit</th>
