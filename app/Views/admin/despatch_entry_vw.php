@@ -90,7 +90,7 @@
                 </div>
                     <div class="uk-width-2-3@m">
                        <div class="uk-card uk-card-body uk-card-default uk-card-small uk-margin-bottom uk-margin-small">
-                           <form method="post" action="<?php echo base_url(); ?>/Admin/despatch_entry">
+                           <form method="get" action="<?php echo base_url(); ?>/Admin/despatch_entry">
                                 <?php
                                 $default_from_date = $date['from_date'] ?? date('Y-m-01');
                                 $default_to_date = $date['to_date'] ?? date('Y-m-d');

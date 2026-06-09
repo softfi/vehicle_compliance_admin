@@ -27,6 +27,68 @@ class Admin extends BaseController
         helper(['form', 'url', 'validation']);
     }
 
+    /**
+     * Convert diesel_type text (e.g. "Trip-40") to numeric liters.
+     * Hyphen here is a separator, not a negative sign.
+     */
+    private function parseDieselForTrip($dieselForTrip): float
+    {
+        if (is_numeric($dieselForTrip)) {
+            return (float) $dieselForTrip;
+        }
+
+        if ($dieselForTrip === null) {
+            return 0.0;
+        }
+
+        preg_match('/\d+(\.\d+)?/', (string) $dieselForTrip, $matches);
+        return isset($matches[0]) ? (float) $matches[0] : 0.0;
+    }
+
+    /**
+     * Sum allowed trip diesel (litres) for one driver assignment only.
+     */
+    private function calculateDriverTripDieselLitres($vehicleId, $driverId, $fromDate, $toDate): float
+    {
+        if (empty($vehicleId) || empty($driverId) || empty($fromDate) || empty($toDate)) {
+            return 0.0;
+        }
+
+        $rows = $this->db->table('despatch')
+            ->select('despatch.despatch_id, do_registration.diesel_type')
+            ->join('do_registration', 'do_registration.do_registration_id = despatch.do_no', 'left')
+            ->join(
+                'driver_assignment',
+                'driver_assignment.vehicle_no = despatch.vehicle_no AND driver_assignment.driver = ' . (int) $driverId,
+                'inner'
+            )
+            ->where('driver_assignment.from_date', $fromDate)
+            ->where('driver_assignment.to_date', $toDate)
+            ->where('despatch.vehicle_no', $vehicleId)
+            ->where('despatch.des_date >=', $fromDate)
+            ->where('despatch.des_date <=', $toDate)
+            ->where('despatch.deleted_at IS NULL', null, false)
+            ->where('despatch.deleted_by IS NULL', null, false)
+            ->groupBy('despatch.despatch_id')
+            ->get()
+            ->getResult();
+
+        $total = 0.0;
+        $seenTripIds = [];
+        foreach ($rows as $row) {
+            $tripId = (int) ($row->despatch_id ?? 0);
+            if ($tripId > 0 && isset($seenTripIds[$tripId])) {
+                continue;
+            }
+            if ($tripId > 0) {
+                $seenTripIds[$tripId] = true;
+            }
+            $total += $this->parseDieselForTrip($row->diesel_type ?? 0);
+        }
+
+        return $total;
+    }
+
     public function index()
     {
         return view('admin/login');
@@ -1161,6 +1223,12 @@ class Admin extends BaseController
 
         // Validate the input data
         if ($this->validate($rules)) {
+            $doj = $this->request->getPost('doj');
+            $resign_date = $this->request->getPost('resign_date');
+
+            if (!empty($resign_date) && !empty($doj) && $doj != '0000-00-00' && $resign_date < $doj) {
+                return redirect()->back()->withInput()->with('error', 'Resignation date cannot be before Joining date.');
+            }
 
             // Retrieve input data
             $user_type = $this->request->getPost('user_type');
@@ -1182,6 +1250,7 @@ class Admin extends BaseController
             $opening_balance = $this->request->getPost('opening_balance');
             $address = $this->request->getPost('address');
             $location_id = $this->request->getPost('location_id');
+            $resign_date = $this->request->getPost('resign_date');
 
             // Handle file uploads
             $imgPath = $this->uploadFile('img');
@@ -1216,6 +1285,7 @@ class Admin extends BaseController
                 'opening_balance' => $opening_balance,
                 'address' => $address,
                 'location_id' => $location_id ?: null,
+                'resign_date' => $resign_date ?: null,
             ];
 
             $yearMonth = date('Y-m-d');
@@ -1506,14 +1576,23 @@ class Admin extends BaseController
                         </div>
                         <div class="col-sm-6">
                             <div class="form-group">
-                                <label>Salary</label>
-                                <input type="text" class="form-control" name="salary" placeholder="Enter Salary"
-                                    value="<?= $staff->salary; ?>">
-                                <?php if (isset($validation) && $validation->getError('salary')): ?>
-                                    <span class="text-danger"><?= $validation->getError('salary'); ?></span>
-                                <?php endif; ?>
+                                <label>Resign Date</label>
+                                <input type="date" class="form-control" name="resign_date" placeholder="Enter Resign Date"
+                                    value="<?= $staff->resign_date; ?>">
                             </div>
                         </div>
+                        <?php if ($this->session->get('user_type') == 1) { ?>
+                            <div class="col-sm-6">
+                                <div class="form-group">
+                                    <label>Salary</label>
+                                    <input type="text" class="form-control" name="salary" placeholder="Enter Salary"
+                                        value="<?= $staff->salary; ?>">
+                                    <?php if (isset($validation) && $validation->getError('salary')): ?>
+                                        <span class="text-danger"><?= $validation->getError('salary'); ?></span>
+                                    <?php endif; ?>
+                                </div>
+                            </div>
+                        <?php } ?>
                         <div class="col-sm-6">
                             <label>Upload Image</label>
                             <input type="file" name="img" class="form-control">
@@ -1742,7 +1821,7 @@ class Admin extends BaseController
         $rules = [
             'user_type' => 'required',
             'name' => 'required|max_length[100]',
-            'salary' => 'required|numeric',
+            'salary' => ($this->session->get('user_type') == 1) ? 'required|numeric' : 'permit_empty',
             'tel' => 'required|numeric|min_length[10]|max_length[15]',
             'address' => 'permit_empty|max_length[255]',
             'location_id' => 'permit_empty',
@@ -1769,7 +1848,16 @@ class Admin extends BaseController
                 'opening_balance' => $this->request->getVar('opening_balance'),
                 'address' => $this->request->getVar('address'),
                 'location_id' => $this->request->getVar('location_id') ?: null,
+                'resign_date' => $this->request->getVar('resign_date') ?: null,
             ];
+
+            if ($this->session->get('user_type') != 1) {
+                unset($data['salary']);
+            }
+
+            if (!empty($data['resign_date']) && !empty($data['doj']) && $data['doj'] != '0000-00-00' && $data['resign_date'] < $data['doj']) {
+                return redirect()->back()->withInput()->with('error', 'Resignation date cannot be before Joining date.');
+            }
 
             // Handle file uploads correctly
             $fileFields = ['img', 'dl_front', 'dl_back', 'aadhaar_front', 'aadhaar_back'];
@@ -2000,8 +2088,13 @@ class Admin extends BaseController
                     'opening_balance' => $row['S'] ?? 0,
                     'location_id' => $location_id,
                     'address' => $row['U'] ?? '',
-                    'img' => $row['V'] ?? ''
+                    'img' => $row['V'] ?? '',
+                    'resign_date' => $parseDate($row['W'] ?? null)
                 ];
+
+                if (!empty($staffData['resign_date']) && !empty($staffData['doj']) && $staffData['doj'] != '0000-00-00' && $staffData['resign_date'] < $staffData['doj']) {
+                    $staffData['resign_date'] = null; // Reset invalid resign date
+                }
                 $this->db->table('staff')->insert($staffData);
                 $lastInsertID = $this->db->insertID();
 
@@ -3160,9 +3253,25 @@ class Admin extends BaseController
         if ($this->session->get('user_id')) {
 
             $user_id = $this->session->get('user_id');
+            $singleuser = $this->AdminModel->userdata($user_id);
+            $roles = '';
+            foreach ($singleuser as $user) {
+                $roles = $user->roles;
+            }
+            $jobAssign = explode(',', $roles);
+            if (!in_array('1.4', $jobAssign)) {
+                return redirect()->to('admin/Purchase_Voucher')->with('error', 'You do not have permission to edit stock.');
+            }
+
             $segment = $this->request->getUri()->getSegment(3);
+
+            // Clear leftover cart items if this is a fresh visit to the edit page
+            if (!$this->request->getVar('keep_cart')) {
+                $this->db->table('cart')->delete(['user_id' => $user_id, 'cart_type' => 1]);
+            }
+
             $data['setting'] = $this->AdminModel->Settingdata();
-            $data['singleuser'] = $this->AdminModel->userdata($user_id);
+            $data['singleuser'] = $singleuser;
             $data['stock_edit'] = $this->AdminModel->stockdata($segment);
             $data['product'] = $this->AdminModel->items();
             $data['cart_dtls'] = $this->AdminModel->purcartdetails($user_id);
@@ -3183,6 +3292,17 @@ class Admin extends BaseController
     {
         if (!$this->session->get('user_id')) {
             return redirect()->to('Admin');
+        }
+
+        $user_id = $this->session->get('user_id');
+        $singleuser = $this->AdminModel->userdata($user_id);
+        $roles = '';
+        foreach ($singleuser as $user) {
+            $roles = $user->roles;
+        }
+        $jobAssign = explode(',', $roles);
+        if (!in_array('1.4', $jobAssign)) {
+            return redirect()->to('admin/Purchase_Voucher')->with('error', 'You do not have permission to edit stock.');
         }
 
         $stock_id = $this->request->getPost('stock_id');
@@ -3207,12 +3327,67 @@ class Admin extends BaseController
         $updated = $builder->update($data);
 
         if ($updated) {
-            return redirect()->to('admin/Purchase_Voucher');
-            // return $this->response->setJSON(['status' => 'success', 'message' => 'Updated successfully.']);
+            return redirect()->back(); // Redirect back to keep editing if needed
         } else {
             return redirect()->to('admin/');
-            // return $this->response->setJSON(['status' => 'error', 'message' => 'Update failed or no changes made.']);
         }
+    }
+
+    public function finalize_edit_stock()
+    {
+        if (!$this->session->get('user_id')) {
+            return redirect()->to('Admin');
+        }
+
+        $user_id = $this->session->get('user_id');
+        $singleuser = $this->AdminModel->userdata($user_id);
+        $roles = '';
+        foreach ($singleuser as $user) {
+            $roles = $user->roles;
+        }
+        $jobAssign = explode(',', $roles);
+        if (!in_array('1.4', $jobAssign)) {
+            return redirect()->to('admin/Purchase_Voucher')->with('error', 'You do not have permission to edit stock.');
+        }
+        $stock_code = $this->request->getPost('stock_code');
+        $invoicedate = $this->request->getPost('invoicedate');
+        $invoiceno = $this->request->getPost('invoiceno');
+
+        // 1. Update header for all existing items in this batch
+        if (!empty($stock_code)) {
+            $headerData = [
+                'date' => $invoicedate,
+                'invoice_date' => $invoicedate,
+                'invoice_number' => $invoiceno
+            ];
+            $this->db->table('stock')->where('stock_code', $stock_code)->update($headerData);
+        }
+
+        // 2. Move new items from cart to stock
+        $cart_dtls = $this->AdminModel->purcartdetails($user_id);
+        foreach ($cart_dtls as $cart) {
+            $total = $cart->qty * $cart->rate;
+            $data = [
+                'stock_code'     => $stock_code,
+                'sproduct_id'    => $cart->product_id,
+                'date'           => $invoicedate,
+                'supplier_id'    => $cart->supplier_id,
+                'invoice_date'   => $invoicedate,
+                'quantity'       => $cart->qty,
+                'available_qty'  => $cart->qty,
+                'rate'           => $cart->rate,
+                'amount'         => $total,
+                'gst_amount'     => $total, // Simplified logic
+                'invoice_number' => $invoiceno,
+                'location_id'    => $cart->location,
+            ];
+            $this->db->table('stock')->insert($data);
+        }
+
+        // 3. Clear cart
+        $this->db->table('cart')->delete(['user_id' => $user_id, 'cart_type' => 1]);
+
+        return redirect()->to('admin/Purchase_Voucher')->with('success', 'Batch updated successfully.');
     }
 
     function Purchase_Voucher()
@@ -3695,6 +3870,159 @@ class Admin extends BaseController
             return redirect()->to('Admin/stock_transfer');
         } else {
             return redirect()->to('Admin/');
+        }
+    }
+
+    private function get_editstock_cart_response($user_id)
+    {
+        $cart_dtls = $this->AdminModel->purcartdetails($user_id);
+        $html = '';
+        $cart_total = 0;
+        
+        // Count existing stock items dynamically from POST or set a default start index
+        // Actually, we'll just not show SI.No or show it as a dash, or recalculate on frontend.
+        // For simplicity, let's just put a dash or icon for new items.
+        
+        foreach ($cart_dtls as $cart) {
+            $amount = $cart->qty * $cart->rate;
+            $cart_total += $amount;
+            
+            $html .= '<tr class="table-info">';
+            $html .= '<td><span class="badge bg-warning text-dark">New</span></td>';
+            $html .= '<td>' . htmlspecialchars($cart->item_name ?? '') . '</td>';
+            $html .= '<td>' . htmlspecialchars($cart->supplier_name ?? '') . '</td>';
+            $html .= '<td>' . htmlspecialchars($cart->location_name ?? '') . '</td>';
+            $html .= '<td>';
+            $html .= '<input type="hidden" name="cart_id" value="' . $cart->cart_id . '" class="form-control cart-data"/>';
+            $html .= '<input type="number" name="qty" value="' . $cart->qty . '" class="form-control cart-data d-inline-block" min="0.01" step="any" style="width: 80px; background-color: #fff;"/> ' . htmlspecialchars($cart->unit_name ?? '');
+            $html .= '</td>';
+            $html .= '<td>';
+            $html .= '<input type="number" name="rate" value="' . $cart->rate . '" class="form-control cart-data" step="any" style="width: 100px; background-color: #fff;"/>';
+            $html .= '</td>';
+            $html .= '<td class="cart-amount">' . number_format($amount, 2, '.', '') . '</td>';
+            $html .= '<td><a href="javascript:void(0);" onClick="deleteRecord(\'' . $cart->cart_id . '\');" class="btn btn-sm btn-danger"><i class="fas fa-trash"></i> Delete</a></td>';
+            $html .= '</tr>';
+        }
+        
+        return $this->response->setJSON(['html' => $html, 'cart_total' => $cart_total]);
+    }
+
+    public function frm_addtocart_editstock()
+    {
+        $user_id = $this->session->get('user_id');
+        if (empty($user_id)) {
+            return $this->response->setJSON(['status' => 'error', 'msg' => 'Unauthorized']);
+        }
+
+        $singleuser = $this->AdminModel->userdata($user_id);
+        $roles = '';
+        foreach ($singleuser as $user) {
+            $roles = $user->roles;
+        }
+        $jobAssign = explode(',', $roles);
+        if (!in_array('1.4', $jobAssign)) {
+            return $this->response->setJSON(['status' => 'error', 'msg' => 'You do not have permission to edit stock.']);
+        }
+
+        $supplier_id = $this->request->getPost('supplierId');
+        $product_id = $this->request->getPost('productId');
+        $invoicedate = $this->request->getPost('invoicedate');
+        $invoiceno = $this->request->getPost('invoiceno');
+        $location = $this->request->getPost('location_id');
+
+        if (empty($supplier_id) || empty($product_id) || empty($invoicedate)) {
+            return $this->response->setJSON(['status' => 'error', 'msg' => 'Missing fields']);
+        }
+
+        $CountProduct = $this->db->query("SELECT * FROM cart WHERE user_id = ? AND product_id = ? AND cart_type IN ('1','2')", [$user_id, $product_id])->getResult();
+        $ProductDTLS = $this->db->query("SELECT * FROM items WHERE id = ?", [$product_id])->getResult();
+
+        if (count($CountProduct) == 0 && !empty($ProductDTLS)) {
+            $prd = $ProductDTLS[0];
+            $data = [
+                'user_id' => $user_id,
+                'qty' => 1,
+                'sup-cust_id' => $supplier_id,
+                'product_id' => $product_id,
+                'invoicedate' => $invoicedate,
+                'invoiceno' => $invoiceno,
+                'location' => $location,
+                'rate' => $prd->amount,
+                'cart_type' => 1,
+            ];
+            $this->db->table('cart')->insert($data);
+            return $this->get_editstock_cart_response($user_id);
+        } else {
+            return $this->response->setJSON(['status' => 'exists', 'msg' => 'Item already added']);
+        }
+    }
+
+    public function frm_updatecart_editstock()
+    {
+        $user_id = $this->session->get('user_id');
+        if (empty($user_id)) {
+            return $this->response->setJSON(['status' => 'error', 'msg' => 'Unauthorized']);
+        }
+
+        $singleuser = $this->AdminModel->userdata($user_id);
+        $roles = '';
+        foreach ($singleuser as $user) {
+            $roles = $user->roles;
+        }
+        $jobAssign = explode(',', $roles);
+        if (!in_array('1.4', $jobAssign)) {
+            return $this->response->setJSON(['status' => 'error', 'msg' => 'You do not have permission to edit stock.']);
+        }
+
+        $cart_id = $this->request->getPost('cart_id');
+        $qty = $this->request->getPost('qty');
+        $rate = $this->request->getPost('rate');
+
+        $this->db->table('cart')->update(['qty' => $qty, 'rate' => $rate], ['cart_id' => $cart_id]);
+        return $this->get_editstock_cart_response($user_id);
+    }
+    
+    public function delete_cart_editstock()
+    {
+        $user_id = $this->session->get('user_id');
+        if (empty($user_id)) {
+            return $this->response->setJSON(['status' => 'error', 'msg' => 'Unauthorized']);
+        }
+
+        $singleuser = $this->AdminModel->userdata($user_id);
+        $roles = '';
+        foreach ($singleuser as $user) {
+            $roles = $user->roles;
+        }
+        $jobAssign = explode(',', $roles);
+        if (!in_array('1.4', $jobAssign)) {
+            return $this->response->setJSON(['status' => 'error', 'msg' => 'You do not have permission to edit stock.']);
+        }
+
+        $cart_id = $this->request->getPost('cartid');
+        $this->db->table('cart')->delete(['cart_id' => $cart_id]);
+        return $this->get_editstock_cart_response($user_id);
+    }
+    
+    public function delete_edit_stock_cart()
+    {
+        $user_id = $this->session->get('user_id');
+        if ($user_id) {
+            $singleuser = $this->AdminModel->userdata($user_id);
+            $roles = '';
+            foreach ($singleuser as $user) {
+                $roles = $user->roles;
+            }
+            $jobAssign = explode(',', $roles);
+            if (!in_array('1.4', $jobAssign)) {
+                return $this->response->setJSON(['status' => 'error', 'msg' => 'You do not have permission to edit stock.']);
+            }
+
+            $cart_id = $this->request->getPost('cartid');
+            $this->db->table('cart')->delete(['cart_id' => $cart_id]);
+            return $this->response->setJSON(['status' => 'success']);
+        } else {
+            return $this->response->setJSON(['status' => 'error']);
         }
     }
     public function frm_addtocartpurchase()
@@ -4532,9 +4860,22 @@ class Admin extends BaseController
 
     function insert_staf_advance()
     {
+        $staff_id = $this->request->getPost('staff_id');
+        $adv_date = $this->request->getPost('date');
+        $staff = $this->db->table('staff')->where('id', $staff_id)->get()->getRow();
+
+        if ($staff) {
+            if ($staff->doj != '0000-00-00' && !empty($staff->doj) && $adv_date < $staff->doj) {
+                return redirect()->back()->with('error', 'Staff joined on ' . date('d-m-Y', strtotime($staff->doj)) . '. Advance cannot be recorded before this date.');
+            }
+            if ($staff->resign_date != '0000-00-00' && !empty($staff->resign_date) && $adv_date > $staff->resign_date) {
+                return redirect()->back()->with('error', 'Staff resigned on ' . date('d-m-Y', strtotime($staff->resign_date)) . '. Advance cannot be recorded after this date.');
+            }
+        }
+
         $data = [
-            'staff_id' => $this->request->getPost('staff_id'),
-            'adv_date' => $this->request->getPost('date'),
+            'staff_id' => $staff_id,
+            'adv_date' => $adv_date,
             'bank_cash' => $this->request->getPost('bank_cash'),
             'amount' => $this->request->getPost('amount'),
             'location_id' => $this->request->getPost('location_id'),
@@ -4660,6 +5001,16 @@ class Admin extends BaseController
                         $formattedDate = date('Y-m-d');
                     }
 
+                    // Date validation for join/resign
+                    if ($staff_dtl) {
+                        if ($staff_dtl->doj != '0000-00-00' && !empty($staff_dtl->doj) && $formattedDate < $staff_dtl->doj) {
+                            $is_valid = false;
+                        }
+                        if ($staff_dtl->resign_date != '0000-00-00' && !empty($staff_dtl->resign_date) && $formattedDate > $staff_dtl->resign_date) {
+                            $is_valid = false;
+                        }
+                    }
+
                     $insertData = [
                         'adv_date' => $formattedDate,
                         'bank_cash' => $rowData[3] ?? '',
@@ -4769,12 +5120,24 @@ class Admin extends BaseController
     function update_StaffAdvance()
     {
         $said = $this->request->getPost('adv_id');
+        $staff_id = $this->request->getPost('staff_id');
+        $adv_date = $this->request->getPost('date');
+        $staff = $this->db->table('staff')->where('id', $staff_id)->get()->getRow();
+
+        if ($staff) {
+            if ($staff->doj != '0000-00-00' && !empty($staff->doj) && $adv_date < $staff->doj) {
+                return redirect()->back()->with('error', 'Staff joined on ' . date('d-m-Y', strtotime($staff->doj)) . '. Advance cannot be recorded before this date.');
+            }
+            if ($staff->resign_date != '0000-00-00' && !empty($staff->resign_date) && $adv_date > $staff->resign_date) {
+                return redirect()->back()->with('error', 'Staff resigned on ' . date('d-m-Y', strtotime($staff->resign_date)) . '. Advance cannot be recorded after this date.');
+            }
+        }
 
         // Prepare data array without the file initially
         $data = [
-            'staff_id' => $this->request->getPost('staff_id'),
+            'staff_id' => $staff_id,
+            'adv_date' => $adv_date,
             'bank_cash' => $this->request->getPost('bank_cash'),
-            'adv_date' => $this->request->getPost('date'),
             'amount' => $this->request->getPost('amount'),
             'location_id' => $this->request->getPost('location_id'),
             'despatch_id' => $this->request->getPost('despatch_id'),
@@ -4827,7 +5190,18 @@ class Admin extends BaseController
             $data['selected_location'] = $loc;
             $data['opening_balance'] = $loc->opening_balance ?? 0;
 
-            // 1. Staff Advances (Debit/Outflow)
+            // Payment vouchers for cash staff advance (Dr staff + Cr cash) — shown only via staff_advance row below
+            $excludeStaffAdvanceVoucherSql = "
+                SELECT DISTINCT av_sa.id
+                FROM account_vouchers av_sa
+                INNER JOIN account_voucher_entries ave_cash ON ave_cash.voucher_id = av_sa.id
+                    AND ave_cash.group_id = 2 AND ave_cash.entry_type = 2 AND ave_cash.ledger_id = ?
+                INNER JOIN account_voucher_entries ave_party ON ave_party.voucher_id = av_sa.id
+                    AND ave_party.group_id IN (4, 5) AND ave_party.entry_type = 1
+                WHERE av_sa.voucher_type = 'Payment'
+            ";
+
+            // 1. Staff Advances (Debit/Outflow) — single debit line per advance (no duplicate voucher credit)
             $advances = $this->db->query("
                 SELECT sa.adv_date as date, CONCAT('Staff Advance: ', s.name) as particulars, 'Staff Advance' as source, sa.amount as debit, 0 as credit
                 FROM staff_advance sa
@@ -4870,7 +5244,8 @@ class Admin extends BaseController
                 WHERE ave.group_id = 2  -- Pull the Cash Book entry itself
                   AND ave.ledger_id = ? -- For THIS location
                   AND av.voucher_date BETWEEN ? AND ?
-            ", [$location_id, $location_id, $from_date, $to_date])->getResult();
+                  AND av.id NOT IN ({$excludeStaffAdvanceVoucherSql})
+            ", [$location_id, $location_id, $location_id, $from_date, $to_date])->getResult();
 
             $data['entries'] = array_merge($advances, $expenses, $vouchers);
 
@@ -4888,7 +5263,8 @@ class Admin extends BaseController
                 FROM account_vouchers av
                 JOIN account_voucher_entries ave ON ave.voucher_id = av.id
                 WHERE ave.group_id = 2 AND ave.ledger_id = ? AND av.voucher_date < ?
-            ", [$location_id, $from_date])->getRow()->net ?? 0;
+                  AND av.id NOT IN ({$excludeStaffAdvanceVoucherSql})
+            ", [$location_id, $from_date, $location_id])->getRow()->net ?? 0;
 
             // Equation: Opening + (Cr_Inflow - Dr_Outflow) - StaffAdv - OverallExp
             $data['opening_balance'] += ($pre_vouch - $pre_adv - $pre_exp);
@@ -6215,7 +6591,6 @@ class Admin extends BaseController
         $adjustments_by_staff = [];
         $payments_by_staff = [];
         $diesel_by_vehicle = [];
-        $despatch_by_vehicle = [];
 
         if (!empty($staff_ids)) {
             $all_advances = $this->db->table('staff_advance')
@@ -6251,20 +6626,10 @@ class Admin extends BaseController
                 ->whereIn('vehicle_id', $vehicle_ids)
                 ->where('diesel_date >=', $first_datesam)
                 ->where('diesel_date <=', $last_datesam)
+                ->where('diselentry.deleted_by IS NULL', null, false)
                 ->get()->getResult();
             foreach ($all_diesel as $row) {
                 $diesel_by_vehicle[$row->vehicle_id][] = $row;
-            }
-
-            $all_despatch = $this->db->table('despatch')
-                ->select('despatch.*, do_registration.diesel_type as diesel_for_trip')
-                ->join('do_registration', 'do_registration.do_registration_id = despatch.do_no', 'left')
-                ->whereIn('despatch.vehicle_no', $vehicle_ids)
-                ->where('despatch.des_date >=', $first_datesam)
-                ->where('despatch.des_date <=', $last_datesam)
-                ->get()->getResult();
-            foreach ($all_despatch as $row) {
-                $despatch_by_vehicle[$row->vehicle_no][] = $row;
             }
         }
         // --- END OPTIMIZATION ---
@@ -6325,15 +6690,13 @@ class Admin extends BaseController
                         $closing_hsd = (float) ($staf->closing_hsd ?? 0);
                         $used_hsd = $opening_hsd + $sum_diesel_qty - $closing_hsd;
 
-                        // Despatch/Diesel Request stats from pre-fetched data
-                        $total_d_req = 0;
-                        if (isset($despatch_by_vehicle[$staf->assignment_vehicle_no])) {
-                            foreach ($despatch_by_vehicle[$staf->assignment_vehicle_no] as $entry) {
-                                if ($entry->des_date >= $staf->from_date && $entry->des_date <= $staf->to_date) {
-                                    $total_d_req += (float) $entry->diesel_for_trip;
-                                }
-                            }
-                        }
+                        // Trip diesel allowance for this driver assignment only
+                        $total_d_req = $this->calculateDriverTripDieselLitres(
+                            $staf->assignment_vehicle_no,
+                            $staf->id,
+                            $staf->from_date ?? '',
+                            $staf->to_date ?? ''
+                        );
 
                         $HSD_LTR = $total_d_req - $used_hsd;
                         if ($HSD_LTR > 0)
@@ -6501,7 +6864,6 @@ class Admin extends BaseController
         $adjustments_by_staff = [];
         $payments_by_staff = [];
         $diesel_by_vehicle = [];
-        $despatch_by_vehicle = [];
 
         if (!empty($staff_ids)) {
             $all_advances = $this->db->table('staff_advance')
@@ -6537,20 +6899,10 @@ class Admin extends BaseController
                 ->whereIn('vehicle_id', $vehicle_ids)
                 ->where('diesel_date >=', $first_datesam)
                 ->where('diesel_date <=', $last_datesam)
+                ->where('diselentry.deleted_by IS NULL', null, false)
                 ->get()->getResult();
             foreach ($all_diesel as $rowDie) {
                 $diesel_by_vehicle[$rowDie->vehicle_id][] = $rowDie;
-            }
-
-            $all_despatch = $this->db->table('despatch')
-                ->select('despatch.*, do_registration.diesel_type as diesel_for_trip')
-                ->join('do_registration', 'do_registration.do_registration_id = despatch.do_no', 'left')
-                ->whereIn('despatch.vehicle_no', $vehicle_ids)
-                ->where('despatch.des_date >=', $first_datesam)
-                ->where('despatch.des_date <=', $last_datesam)
-                ->get()->getResult();
-            foreach ($all_despatch as $rowDes) {
-                $despatch_by_vehicle[$rowDes->vehicle_no][] = $rowDes;
             }
         }
         // --- END OPTIMIZATION ---
@@ -6591,15 +6943,13 @@ class Admin extends BaseController
             $closing_hsd = (float) ($staf->closing_hsd ?? 0);
             $used_hsd = $opening_hsd + $sum_diesel_qty - $closing_hsd;
 
-            // Diesel for trip request from pre-fetched data
-            $total_d_req = 0;
-            if (isset($despatch_by_vehicle[$staf->assignment_vehicle_no])) {
-                foreach ($despatch_by_vehicle[$staf->assignment_vehicle_no] as $entry) {
-                    if ($entry->des_date >= $staf->from_date && $entry->des_date <= $staf->to_date) {
-                        $total_d_req += (float) $entry->diesel_for_trip;
-                    }
-                }
-            }
+            // Trip diesel allowance for this driver assignment only
+            $total_d_req = $this->calculateDriverTripDieselLitres(
+                $staf->assignment_vehicle_no,
+                $staf->id,
+                $staf->from_date ?? '',
+                $staf->to_date ?? ''
+            );
 
             $HSD_LTR = $total_d_req - $used_hsd;
             if ($HSD_LTR > 0)
@@ -7725,11 +8075,12 @@ class Admin extends BaseController
                         <th>Name</th>
                         <th>Location</th>
                         <th>Contact No.</th>
-                        <th>Date of Join</th>
+                        <th style="padding-right: 10px;">Date of Join</th>
                         <th>Salary</th>
                         <th>Opening Balance</th>
                         <th>Advance</th>
                         <th style="width:150px">No. of Days</th>
+                        <th style="width:120px">Bonus Days</th>
                         <th style="width:150px">Incentive/Penalty</th>
                         <th style="width:150px">Salary</th>
                         <th style="width:150px">Net Salary</th>
@@ -7739,6 +8090,10 @@ class Admin extends BaseController
                     <?php
                     $i = 1;
                     foreach ($allstaf as $staf) {
+                        $displayWorkingDay = $this->AdminModel->resolveStaffSalaryWorkingDay(
+                            $staf->working_day ?? null,
+                            $staf->present_days ?? 0
+                        );
                         ?>
                         <tr>
                             <td><?= $i++; ?></td>
@@ -7752,14 +8107,17 @@ class Admin extends BaseController
                             <td><?= $staf->opening_balance ?></td>
                             <td><?= $staf->total_advance ?></td>
                             <td>
-                                <input type="text" class="form-control working_day" value="<?php if ($staf->working_day == '') {
-                                    echo "0";
-                                } else {
-                                    echo $staf->working_day;
-                                } ?>" name="t_working_day" data-staffid="<?= $staf->id ?>" data-year="<?= $year ?>"
+                                <input type="text" class="form-control working_day" value="<?= esc($displayWorkingDay) ?>"
+                                    name="t_working_day" data-staffid="<?= $staf->id ?>" data-year="<?= $year ?>"
                                     data-month="<?= $month ?>" data-salary="<?= $staf->salary ?>"
                                     data-opening-balance="<?= $staf->opening_balance ?>"
-                                    data-total-advance="<?= $staf->total_advance ?>" data-type="<?= $staf->user_type ?>">
+                                    data-total-advance="<?= $staf->total_advance ?>" data-type="<?= $staf->user_type ?>"
+                                    data-present-days="<?= (int) ($staf->present_days ?? 0) ?>"
+                                    title="Attendance (Present + Holiday): <?= (int) ($staf->present_days ?? 0) ?>">
+                            </td>
+                            <td>
+                                <input type="number" class="form-control bonus_days" name="bonus_days[]" min="0" step="1"
+                                    value="<?= esc($staf->bonus_days ?? 0) ?>">
                             </td>
                             <td>
                                 <input type="number" class="form-control insentive" name="insentive[]" value="<?php if ($staf->insentive == '') {
@@ -7788,6 +8146,7 @@ class Admin extends BaseController
                         <th>Opening Balance</th>
                         <th>Advance</th>
                         <th>No. of Days</th>
+                        <th>Bonus Days</th>
                         <th>Incentive/Penalty</th>
                         <th>Salary</th>
                         <th style="width:150px">Net Salary</th>
@@ -7800,42 +8159,30 @@ class Admin extends BaseController
         <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
         <script>
             $(document).ready(function () {
-                $('.working_day, .insentive').on('input', function () {
-                    var row = $(this).closest('tr');
+                function calculateStaffSalaryRow(row) {
                     var staff_id = parseFloat(row.find('.working_day').data('staffid'));
                     var year = parseFloat(row.find('.working_day').data('year'));
                     var month = parseFloat(row.find('.working_day').data('month'));
-
-
                     var salary = parseFloat(row.find('.working_day').data('salary'));
                     var opening_balance = parseFloat(row.find('.working_day').data('opening-balance'));
-                    var total_advance = row.find('.working_day').data('total-advance').toString().replace(/,/g, ''); // Remove commas
-                    total_advance = parseFloat(total_advance); // Parse as float
-                    var working_day = parseFloat(row.find('.working_day').val());
-                    var insentive = parseFloat(row.find('.insentive').val());
+                    var total_advance = row.find('.working_day').data('total-advance').toString().replace(/,/g, '');
+                    total_advance = parseFloat(total_advance);
+                    var working_day = parseFloat(row.find('.working_day').val()) || 0;
+                    var bonus_days = parseFloat(row.find('.bonus_days').val()) || 0;
+                    var insentive = parseFloat(row.find('.insentive').val()) || 0;
+                    var monthDays = parseFloat(<?= $curent_monthday ?>);
+                    var perDaySalary = salary / monthDays;
+                    var total_salary = perDaySalary * working_day;
+                    var bonus_amount = perDaySalary * bonus_days;
 
-                    var staff_type = row.find('.working_day').data('type');
+                    var net_salary = total_salary + bonus_amount + opening_balance - total_advance + insentive;
 
-                    // Calculate the total salary based on working days
-                    var total_salary = 0;
-                    if (staff_type === 'MECHANIC' || staff_type === 'STAFF') {
-                        // Month + 2 days calculation
-                        total_salary = (salary / (parseFloat(<?= $curent_monthday ?>) + 2)) * working_day;
-                    } else {
-                        total_salary = (salary / parseFloat(<?= $curent_monthday ?>)) * working_day;
-                    }
+                    row.find('.tsalary').val(total_salary.toFixed(2));
+                    row.find('.netsalary').val(net_salary.toFixed(2));
 
-                    // Calculate the net salary considering opening balance, total advance, and incentive
-                    var net_salary = total_salary + opening_balance - total_advance + insentive;
-
-                    // Set the calculated values to the respective input fields
-                    row.find('.tsalary').val(total_salary.toFixed(2)); // Set the total salary with two decimal places
-                    row.find('.netsalary').val(net_salary.toFixed(2)); // Set the net salary with two decimal places
-
-                    // Prepare the data to be sent via AJAX
-                    var dataToSend = {
-
+                    return {
                         working_day: working_day,
+                        bonus_days: bonus_days,
                         insentive: insentive,
                         staff_id: staff_id,
                         year: year,
@@ -7843,9 +8190,12 @@ class Admin extends BaseController
                         tsalary: total_salary,
                         netsalary: net_salary,
                     };
+                }
 
+                $('.working_day, .bonus_days, .insentive').on('input', function () {
+                    var row = $(this).closest('tr');
+                    var dataToSend = calculateStaffSalaryRow(row);
 
-                    // Make the AJAX call
                     $.ajax({
                         url: '<?php echo base_url(); ?>/admin/insert_workingday', // Replace with the URL of your server-side script
                         type: 'POST',
@@ -7859,6 +8209,10 @@ class Admin extends BaseController
                             console.error('AJAX error:', status, error);
                         }
                     });
+                });
+
+                $('#row_create tbody tr').each(function () {
+                    $(this).find('.working_day').trigger('input');
                 });
             });
         </script>
@@ -7899,29 +8253,29 @@ class Admin extends BaseController
         $sheet->setCellValue('G1', 'Opening Balance');
         $sheet->setCellValue('H1', 'Advance');
         $sheet->setCellValue('I1', 'No. of Days');
-        $sheet->setCellValue('J1', 'Incentive/Penalty');
-        $sheet->setCellValue('K1', 'Salary');
-        $sheet->setCellValue('L1', 'Net Salary');
+        $sheet->setCellValue('J1', 'Bonus Days');
+        $sheet->setCellValue('K1', 'Incentive/Penalty');
+        $sheet->setCellValue('L1', 'Salary');
+        $sheet->setCellValue('M1', 'Net Salary');
 
         // Populate the sheet with staff data
         $row = 2;
         $sl_no = 1;
         foreach ($allstaf as $staf) {
-            // Ensure variables are numeric
             $salary = isset($staf->salary) ? (float) $staf->salary : 0;
             $opening_balance = isset($staf->opening_balance) ? (float) $staf->opening_balance : 0;
-            $total_advance = isset($staf->total_advance) ? (float) $staf->total_advance : 0;
-            $working_day = isset($staf->working_day) ? (float) $staf->working_day : 0;
-            $insentive = isset($staf->insentive) ? (float) $staf->insentive : 0;
+            $total_advance = isset($staf->total_advance) ? (float) str_replace(',', '', (string) $staf->total_advance) : 0;
+            $working_day = (float) $this->AdminModel->resolveStaffSalaryWorkingDay(
+                $staf->working_day ?? null,
+                $staf->present_days ?? 0
+            );
+            $insentive = isset($staf->insentive) && $staf->insentive !== '' ? (float) $staf->insentive : 0;
+            $bonus_days = isset($staf->bonus_days) && $staf->bonus_days !== '' ? (float) $staf->bonus_days : 0;
 
-            // Calculate total salary and net salary
-            $total_salary = 0;
-            if ($staf->user_type === 'MECHANIC' || $staf->user_type === 'STAFF') {
-                $total_salary = ($salary / ($curent_monthday + 2)) * $working_day;
-            } else {
-                $total_salary = ($salary / $curent_monthday) * $working_day;
-            }
-            $net_salary = $total_salary + $opening_balance - $total_advance + $insentive;
+            $perDaySalary = $curent_monthday > 0 ? ($salary / $curent_monthday) : 0;
+            $total_salary = $perDaySalary * $working_day;
+            $bonus_amount = $perDaySalary * $bonus_days;
+            $net_salary = $total_salary + $bonus_amount + $opening_balance - $total_advance + $insentive;
 
             $sheet->setCellValue('A' . $row, $sl_no++);
             $sheet->setCellValue('B' . $row, $staf->name);
@@ -7932,9 +8286,10 @@ class Admin extends BaseController
             $sheet->setCellValue('G' . $row, $opening_balance);
             $sheet->setCellValue('H' . $row, $total_advance);
             $sheet->setCellValue('I' . $row, $working_day);
-            $sheet->setCellValue('J' . $row, $insentive);
-            $sheet->setCellValue('K' . $row, $total_salary);
-            $sheet->setCellValue('L' . $row, $net_salary);
+            $sheet->setCellValue('J' . $row, $bonus_days);
+            $sheet->setCellValue('K' . $row, $insentive);
+            $sheet->setCellValue('L' . $row, $total_salary);
+            $sheet->setCellValue('M' . $row, $net_salary);
             $row++;
         }
 
@@ -7954,6 +8309,7 @@ class Admin extends BaseController
     function insert_workingday()
     {
         $working_day = $this->request->getVar('working_day');
+        $bonus_days = $this->request->getVar('bonus_days');
         $insentive = $this->request->getVar('insentive');
         $staff_id = $this->request->getVar('staff_id');
         $year = $this->request->getVar('year');
@@ -7964,6 +8320,7 @@ class Admin extends BaseController
         $data = [
 
             'working_day' => $working_day,
+            'bonus_days' => $bonus_days ?? 0,
             'insentive' => $insentive,
             'user_id' => $staff_id,
             'year' => $year,
@@ -11365,33 +11722,57 @@ class Admin extends BaseController
 
         $user_id = $this->session->get('user_id');
 
-        $this->db->transStart();
+        try {
+            $this->db->transStart();
 
-        // 🔹 Insert voucher
-        $this->db->table('voucher')->insert([
-            'group_code' => $group_code,
-            'challan_ids' => json_encode($ids),
-            'created_at' => date('Y-m-d H:i:s'),
-            'created_by' => $user_id,
-            'status' => 1
-        ]);
+            // 🔹 Insert voucher
+            $inserted = $this->db->table('voucher')->insert([
+                'group_code'   => $group_code,
+                'challan_ids'  => json_encode($ids),
+                'created_at'   => date('Y-m-d H:i:s'),
+                'created_by'   => $user_id,
+                'status'       => 1,
+            ]);
 
-        $group_id = $this->db->insertID();
+            if ($inserted === false) {
+                throw new \RuntimeException($this->formatDbErrorMessage('Failed to insert voucher'));
+            }
 
-        // 🔹 Update despatch records
-        $this->db->table('despatch')
-            ->whereIn('despatch_id', $ids)
-            ->update(['voucher_id' => $group_id]);
+            $group_id = (int) $this->db->insertID();
+            if ($group_id <= 0) {
+                throw new \RuntimeException($this->formatDbErrorMessage('Voucher insert did not return an ID'));
+            }
 
-        $this->db->transComplete();
+            // 🔹 Update despatch records
+            $updated = $this->db->table('despatch')
+                ->whereIn('despatch_id', $ids)
+                ->update(['voucher_id' => $group_id]);
 
-        if ($this->db->transStatus() === false) {
-            return $this->response->setJSON(['status' => 'error', 'message' => 'Transaction failed']);
+            if ($updated === false) {
+                throw new \RuntimeException($this->formatDbErrorMessage('Failed to update despatch records'));
+            }
+
+            $this->db->transComplete();
+
+            if ($this->db->transStatus() === false) {
+                throw new \RuntimeException($this->formatDbErrorMessage('Database transaction failed'));
+            }
+        } catch (\Throwable $e) {
+            if ($this->db->transStatus()) {
+                $this->db->transRollback();
+            }
+
+            log_message('error', 'create_collection_group: ' . $e->getMessage());
+
+            return $this->response->setJSON([
+                'status'  => 'error',
+                'message' => $e->getMessage(),
+            ]);
         }
 
         return $this->response->setJSON([
-            'status' => 'success',
-            'group_code' => $group_code
+            'status'     => 'success',
+            'group_code' => $group_code,
         ]);
     }
 
@@ -11614,8 +11995,15 @@ class Admin extends BaseController
             return redirect()->to('Admin/');
         }
 
-        $from_date = $this->request->getVar('from_date');
-        $to_date = $this->request->getVar('to_date');
+        $from_date = $this->request->getGet('from_date') ?? $this->request->getPost('from_date');
+        $to_date = $this->request->getGet('to_date') ?? $this->request->getPost('to_date');
+
+        if (empty($from_date)) {
+            $from_date = date('Y-m-01');
+        }
+        if (empty($to_date)) {
+            $to_date = date('Y-m-d');
+        }
 
 
         $user_id = $this->session->get('user_id');
@@ -11962,8 +12350,8 @@ class Admin extends BaseController
 
     public function download_despatch_excel()
     {
-        $from_date = $this->request->getVar('from_date');
-        $to_date = $this->request->getVar('to_date');
+        $from_date = $this->request->getGet('from_date') ?? $this->request->getPost('from_date');
+        $to_date = $this->request->getGet('to_date') ?? $this->request->getPost('to_date');
 
         if (!$from_date || !$to_date) {
             return redirect()->back()->with('error', 'Invalid date range');
@@ -12369,6 +12757,27 @@ class Admin extends BaseController
         } else {
             return redirect()->to('admin/');
         }
+    }
+
+    /**
+     * Human-readable DB error for JSON responses (Collection voucher, etc.).
+     */
+    private function formatDbErrorMessage(string $context = ''): string
+    {
+        $error = $this->db->error();
+        $dbMsg = trim((string) ($error['message'] ?? ''));
+        $code  = $error['code'] ?? '';
+
+        if ($dbMsg !== '') {
+            $msg = $dbMsg;
+            if ($code !== '' && $code !== 0) {
+                $msg = "[{$code}] {$msg}";
+            }
+
+            return $context !== '' ? "{$context}: {$msg}" : $msg;
+        }
+
+        return $context !== '' ? $context : 'Unknown database error';
     }
 
     // Helper function to log activity
@@ -12917,9 +13326,16 @@ class Admin extends BaseController
                     $used_hsd = $hsd_details[0]->used_hsd ?? 0;
                     $diesel_rate = $hsd_details[0]->diesel_rate ?? 0;
 
-                    $disel_entry = $this->AdminModel->vehicle_disel_details($staf[0]->assignment_vehicle_no, $staf[0]->from_date, $staf[0]->to_date);
-                    $total_d_req = array_sum(array_column($disel_entry, 'diesel_for_trip'));
+                    $total_d_req = $this->calculateDriverTripDieselLitres(
+                        $staf[0]->assignment_vehicle_no,
+                        $staf[0]->id,
+                        $staf[0]->from_date,
+                        $staf[0]->to_date
+                    );
                     $HSD_LTR = $total_d_req - $used_hsd;
+                    if ($HSD_LTR > 0) {
+                        $HSD_LTR = 0;
+                    }
                     $hsd_amount = $HSD_LTR * $diesel_rate;
 
                     $trip_expense = $this->AdminModel->tripexpence($staf[0]->assignment_vehicle_no, $year, $month);
@@ -13292,26 +13708,79 @@ class Admin extends BaseController
         $selling_date = $this->request->getPost('selling_date');
         $remark = $this->request->getPost('remark');
 
+        if (empty($id)) {
+            return redirect()->back()->with('error', 'No tyre selected.');
+        }
+
+        if (is_array($id)) {
+            $ids = $id;
+        } elseif (is_string($id) && strpos($id, ',') !== false) {
+            $ids = explode(',', $id);
+        } else {
+            $ids = [$id];
+        }
+
         $this->db->transStart();
 
-        $this->db->table('tyer_management')->where('id', $id)->update([
-            'status' => 7, // Sold
-            'vendor_id' => $vendor_id,
-            'selling_date' => $selling_date,
-            'remark' => "SOLD: $remark"
-        ]);
+        foreach ($ids as $tyre_id) {
+            $tyre_id = trim($tyre_id);
+            if (empty($tyre_id)) continue;
 
-        $this->db->table('tyer_management_history')->insert([
-            'tyre_id' => $id,
-            'event_type' => 7, // Sold
-            'event_date' => $selling_date,
-            'remarks' => "TYRE SOLD to Buyer ID $vendor_id. $remark",
-            'created_at' => date('Y-m-d H:i:s')
-        ]);
+            $this->db->table('tyer_management')->where('id', $tyre_id)->update([
+                'status' => 7, // Sold
+                'vendor_id' => $vendor_id,
+                'selling_date' => $selling_date,
+                'remark' => "SOLD: $remark"
+            ]);
+
+            $this->db->table('tyer_management_history')->insert([
+                'tyre_id' => $tyre_id,
+                'event_type' => 7, // Sold
+                'event_date' => $selling_date,
+                'remarks' => "TYRE SOLD to Buyer ID $vendor_id. $remark",
+                'created_at' => date('Y-m-d H:i:s')
+            ]);
+        }
 
         $this->db->transComplete();
 
-        return redirect()->to(base_url('Admin/soldTyer_management'))->with('status', 'Tyre sold successfully');
+        return redirect()->to(base_url('Admin/soldTyer_management'))->with('status', 'Tyres sold successfully');
+    }
+
+    public function bulkScrapTyreBackToStock()
+    {
+        if ($this->session->get('user_id') == '') {
+            return $this->response->setJSON(['status' => 'error', 'message' => 'Unauthorized']);
+        }
+
+        $ids = $this->request->getPost('tyer_ids');
+        if (empty($ids) || !is_array($ids)) {
+            return $this->response->setJSON(['status' => 'error', 'message' => 'No tyres selected.']);
+        }
+
+        $this->db->transStart();
+        foreach ($ids as $id) {
+            $this->db->table('tyer_management')
+                ->where('id', $id)
+                ->update([
+                    'status' => 1,
+                    'remark' => 'Back from scrap yard to stock'
+                ]);
+            $this->db->table('tyer_management_history')
+                ->insert([
+                    'tyre_id' => $id,
+                    'event_type' => 1,
+                    'event_date' => date('Y-m-d'),
+                    'remarks' => 'Tyre restored from scrap yard to stock',
+                ]);
+        }
+        $this->db->transComplete();
+
+        if ($this->db->transStatus() === FALSE) {
+            return $this->response->setJSON(['status' => 'error', 'message' => 'Database error.']);
+        }
+
+        return $this->response->setJSON(['status' => 'success', 'message' => 'Selected tyres restored to stock successfully.']);
     }
 
     public function soldTyreBackToStock($id = null)
@@ -13320,25 +13789,36 @@ class Admin extends BaseController
             return redirect()->to(base_url('login'));
         }
 
+        $destination = $this->request->getGet('destination'); // 'stock' or 'scrap'
+        if (empty($destination)) {
+            $destination = 'stock'; // Default fallback
+        }
+
+        $status = ($destination == 'scrap') ? 3 : 1;
+        $remarkText = ($destination == 'scrap') ? 'Sale cancelled, restored to scrap yard' : 'Sale cancelled, restored to stock';
+        $eventRemarks = ($destination == 'scrap') ? 'Sale cancelled, tyre restored to scrap yard' : 'Sale cancelled, tyre restored to stock';
+        $eventType = ($destination == 'scrap') ? 9 : 6; // 6 = Back to Stock, 9 = Moved to Scrap
+
         $this->db->transStart();
 
         $this->db->table('tyer_management')->where('id', $id)->update([
-            'status' => 1, // Back to Stock
+            'status' => $status,
             'selling_date' => null,
-            'remark' => 'Sale cancelled, restored to stock'
+            'remark' => $remarkText
         ]);
 
         $this->db->table('tyer_management_history')->insert([
             'tyre_id' => $id,
-            'event_type' => 1, // Back to Stock
+            'event_type' => $eventType,
             'event_date' => date('Y-m-d'),
-            'remarks' => 'Sale cancelled, tyre restored to stock',
+            'remarks' => $eventRemarks,
             'created_at' => date('Y-m-d H:i:s')
         ]);
 
         $this->db->transComplete();
 
-        return redirect()->to(base_url('Admin/soldTyer_management'))->with('status', 'Tyre restored to stock');
+        $redirectMsg = ($destination == 'scrap') ? 'Tyre restored to scrap yard successfully' : 'Tyre restored to stock successfully';
+        return redirect()->to(base_url('Admin/soldTyer_management'))->with('status', $redirectMsg);
     }
 
     public function tyre_exchange_report()
@@ -13522,12 +14002,15 @@ class Admin extends BaseController
     public function update_tyer_details()
     {
         $to_location = $this->request->getPost('to_location');
+        $from_location = $this->request->getPost('from_location');
         $date = $this->request->getPost('date');
         $tyer_sl_no = $this->request->getPost('tyer_sl_no'); // array
 
         if (!empty($tyer_sl_no) && !empty($to_location) && !empty($date)) {
-            foreach ($tyer_sl_no as $sl_no) {
-                if (!empty($sl_no)) {
+            $valid_sl_nos = array_filter($tyer_sl_no, function($v) { return !empty($v); });
+
+            if (!empty($valid_sl_nos)) {
+                foreach ($valid_sl_nos as $sl_no) {
                     $updateData = [
                         'location_id' => $to_location,
                         'transfer_date' => $date
@@ -13537,27 +14020,28 @@ class Admin extends BaseController
                         ->where('tyer_sl_no', $sl_no)
                         ->update($updateData);
                 }
+
+                $tyres = $this->db->table('tyer_management')
+                    ->whereIn('tyer_sl_no', $valid_sl_nos)
+                    ->get()
+                    ->getResult();
+
+                foreach ($tyres as $tyre) {
+                    $data1 = [
+                        'tyre_id' => $tyre->id,
+                        'event_type' => 2,
+                        'location_id' => $to_location,
+                        'event_date' => $date,
+                        'transfer_from' => $from_location,
+                        'transfer_to' => $to_location,
+                    ];
+                    $this->db->table('tyer_management_history')->insert($data1);
+                }
             }
 
             $this->session->setFlashdata('success', 'Tyres transferred successfully.');
         } else {
             $this->session->setFlashdata('error', 'Please fill all required fields.');
-        }
-        $tyres = $this->db->table('tyer_management')
-            ->where('DATE(transfer_date)', $date)
-            ->get()
-            ->getResult();
-
-        foreach ($tyres as $tyre) {
-            $data1 = [
-                'tyre_id' => $tyre->id,
-                'event_type' => 2,
-                'location_id' => $to_location,
-                'event_date' => $date,
-                'transfer_from' => $from_location,
-                'transfer_to' => $to_location,
-            ];
-            $this->db->table('tyer_management_history')->insert($data1);
         }
 
         return redirect()->to('Admin/tyreTransfer');
@@ -14332,6 +14816,68 @@ class Admin extends BaseController
         return redirect()->to('admin/Asign_Tyer')->with('msg1', 'No tyre found at this position.');
     }
 
+    public function rotate_tyre_data()
+    {
+        $vehicle_id = $this->request->getVar('vehicle_id');
+        $target_position = $this->request->getVar('tyer_position');
+        $source_tyre_id = $this->request->getVar('source_tyre_id');
+        $replacement_date = $this->request->getVar('replacement_date') ?: date('Y-m-d');
+
+        // 1. Get the tyre currently at the target position
+        $target_tyre = $this->db->table('tyer_management')
+            ->where('vehicle_id', $vehicle_id)
+            ->where('tyer_position', $target_position)
+            ->get()->getRow();
+
+        // 2. Get the source tyre
+        $source_tyre = $this->db->table('tyer_management')
+            ->where('id', $source_tyre_id)
+            ->get()->getRow();
+
+        if ($target_tyre && $source_tyre) {
+            $source_position = $source_tyre->tyer_position;
+
+            // 3. Swap positions
+            // Update target tyre to source position
+            $this->db->table('tyer_management')->update([
+                'tyer_position' => $source_position,
+                'asign_date' => $replacement_date
+            ], ['id' => $target_tyre->id]);
+
+            // Update source tyre to target position
+            $this->db->table('tyer_management')->update([
+                'tyer_position' => $target_position,
+                'asign_date' => $replacement_date
+            ], ['id' => $source_tyre->id]);
+
+            // 4. Log history for both
+            $this->db->table('tyer_management_history')->insert([
+                'tyre_id' => $target_tyre->id,
+                'event_type' => 8, // 8 = Rotation
+                'event_date' => $replacement_date,
+                'vehicle_id' => $vehicle_id,
+                'tyre_position' => $source_position,
+                'remarks' => "Rotated from $target_position to $source_position",
+                'created_at' => date('Y-m-d H:i:s')
+            ]);
+
+            $this->db->table('tyer_management_history')->insert([
+                'tyre_id' => $source_tyre_id,
+                'event_type' => 8, // 8 = Rotation
+                'event_date' => $replacement_date,
+                'vehicle_id' => $vehicle_id,
+                'tyre_position' => $target_position,
+                'remarks' => "Rotated from $source_position to $target_position",
+                'created_at' => date('Y-m-d H:i:s')
+            ]);
+
+            return redirect()->to('admin/Asign_Tyer')->with('msg', 'Tyres rotated successfully.');
+        }
+
+        return redirect()->to('admin/Asign_Tyer')->with('msg1', 'Rotation failed: Required tyres not found.');
+    }
+
+
 
     public function tyer_report()
     {
@@ -14536,7 +15082,16 @@ class Admin extends BaseController
         if ($status == 1) {
             $data1 = [
                 'tyre_id' => $tyer_id,
-                'event_type' => 7,
+                'event_type' => 6, // Back to Stock
+                'event_date' => date('Y-m-d'),
+                'vendor_id' => $this->request->getPost('vendor_id'),
+                'remarks' => $this->request->getPost('remark'),
+            ];
+            $this->db->table('tyer_management_history')->insert($data1);
+        } else if ($status == 3) {
+            $data1 = [
+                'tyre_id' => $tyer_id,
+                'event_type' => 9, // Moved to Scrap
                 'event_date' => date('Y-m-d'),
                 'vendor_id' => $this->request->getPost('vendor_id'),
                 'remarks' => $this->request->getPost('remark'),
@@ -14545,7 +15100,16 @@ class Admin extends BaseController
         } else if ($status == 4) {
             $data1 = [
                 'tyre_id' => $tyer_id,
-                'event_type' => 5,
+                'event_type' => 5, // Sent for Repair
+                'event_date' => date('Y-m-d'),
+                'vendor_id' => $this->request->getPost('vendor_id'),
+                'remarks' => $this->request->getPost('remark'),
+            ];
+            $this->db->table('tyer_management_history')->insert($data1);
+        } else if ($status == 7) {
+            $data1 = [
+                'tyre_id' => $tyer_id,
+                'event_type' => 7, // Sold
                 'event_date' => date('Y-m-d'),
                 'vendor_id' => $this->request->getPost('vendor_id'),
                 'remarks' => $this->request->getPost('remark'),
@@ -14554,7 +15118,7 @@ class Admin extends BaseController
         } else {
             $data1 = [
                 'tyre_id' => $tyer_id,
-                'event_type' => 8,
+                'event_type' => 8, // Rotation / Default fallback
                 'event_date' => date('Y-m-d'),
                 'vendor_id' => $this->request->getPost('vendor_id'),
                 'remarks' => $this->request->getPost('remark'),

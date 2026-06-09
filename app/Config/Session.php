@@ -4,10 +4,32 @@ namespace Config;
 
 use CodeIgniter\Config\BaseConfig;
 use CodeIgniter\Session\Handlers\BaseHandler;
+use CodeIgniter\Session\Handlers\DatabaseHandler;
 use CodeIgniter\Session\Handlers\FileHandler;
+use CodeIgniter\Session\Handlers\MemcachedHandler;
+use CodeIgniter\Session\Handlers\RedisHandler;
 
 class Session extends BaseConfig
 {
+    public function __construct()
+    {
+        parent::__construct();
+
+        // CI 4.5+ needs full handler class names; .env may still use legacy aliases like "file".
+        $aliases = [
+            'file'      => FileHandler::class,
+            'files'     => FileHandler::class,
+            'database'  => DatabaseHandler::class,
+            'redis'     => RedisHandler::class,
+            'memcached' => MemcachedHandler::class,
+        ];
+
+        $driver = strtolower(trim($this->driver));
+        if (isset($aliases[$driver])) {
+            $this->driver = $aliases[$driver];
+        }
+    }
+
     /**
      * --------------------------------------------------------------------------
      * Session Driver

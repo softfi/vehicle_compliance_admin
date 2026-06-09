@@ -134,6 +134,11 @@
                                             value="<?= set_value('doj'); ?>">
                                     </div>
                                     <div class="col-sm-6">
+                                        <label>Resign Date</label>
+                                        <input type="date" class="form-control" name="resign_date"
+                                            value="<?= set_value('resign_date'); ?>">
+                                    </div>
+                                    <div class="col-sm-6">
                                         <label>Salary</label>
                                         <input type="text" class="form-control" name="salary" placeholder="Enter Salary"
                                             value="<?= set_value('salary'); ?>">
@@ -281,6 +286,7 @@
                                 <th>User Type</th>
                                 <th>Name</th>
                                 <th>DOJ</th>
+                                <th>Resign Date</th>
                                 <th>Staff Code</th>
                                 <th>Bank Name</th>
                                 <th>A/c No</th>
@@ -293,7 +299,9 @@
                                 <th>PAN No</th>
                                 <th>Aadhaar Front</th>
                                 <th>Aadhaar Back</th>
-                                <th>Salary</th>
+                                <?php if ($singledata->user_type == 1) { ?>
+                                    <th>Salary</th>
+                                <?php } ?>
                                 <th>Contact</th>
                                 <th>Spouse</th>
                                 <th>DOB</th>
@@ -313,6 +321,7 @@
                                     <td><?= $staf->user_type ?></td>
                                     <td><?= $staf->name ?></td>
                                     <td><?= !empty($staf->doj) ? date('d/m/Y', strtotime($staf->doj)) : '' ?></td>
+                                    <td><?= !empty($staf->resign_date) ? date('d/m/Y', strtotime($staf->resign_date)) : '' ?></td>
                                     <td><?= $staf->staff_code ?></td>
                                     <td><?= $staf->name_bank ?></td>
                                     <td><?= $staf->ac_no ?></td>
@@ -358,7 +367,9 @@
                                         <?php endif; ?>
                                     </td>
 
-                                    <td><?= $staf->salary ?></td>
+                                    <?php if ($singledata->user_type == 1) { ?>
+                                        <td><?= $staf->salary ?></td>
+                                    <?php } ?>
                                     <td><?= $staf->tel ?></td>
                                     <td><?= $staf->spouse_name ?></td>
                                     <td><?= !empty($staf->dob) ? date('d/m/Y', strtotime($staf->dob)) : '' ?></td>

@@ -50,7 +50,7 @@ class AditionalAdminPart extends BaseController
             'User Type (DRIVER/STAFF/MECHANIC)*',
             'Name*',
             'DOJ (DD/MM/YYYY)*',
-            'Salary*',
+            ($this->session->get('user_type') == 1) ? 'Salary*' : '',
             'Bank Account Name*',
             'A/c No*',
             'IFSC Code*',
@@ -66,7 +66,9 @@ class AditionalAdminPart extends BaseController
             'Blood Group',
             'Opening Balance',
             'Location Name*',
-            'Address*'
+            'Address*',
+            'Photo',
+            'Resign Date'
         ];
         $sheet->fromArray($headers, NULL, 'A1');
 
@@ -77,7 +79,7 @@ class AditionalAdminPart extends BaseController
             $sheet->setCellValue('B' . $row, $record->user_type);
             $sheet->setCellValue('C' . $row, $record->name);
             $sheet->setCellValue('D' . $row, !empty($record->doj) ? date('d/m/Y', strtotime($record->doj)) : '');
-            $sheet->setCellValue('E' . $row, $record->salary);
+            $sheet->setCellValue('E' . $row, ($this->session->get('user_type') == 1) ? $record->salary : '');
             $sheet->setCellValue('F' . $row, $record->name_bank);
             $sheet->setCellValue('G' . $row, $record->ac_no);
             $sheet->setCellValue('H' . $row, $record->ifsc);
@@ -94,6 +96,8 @@ class AditionalAdminPart extends BaseController
             $sheet->setCellValue('S' . $row, $record->opening_balance);
             $sheet->setCellValue('T' . $row, $record->location_name);
             $sheet->setCellValue('U' . $row, $record->address);
+            $sheet->setCellValue('V' . $row, $record->img);
+            $sheet->setCellValue('W' . $row, !empty($record->resign_date) ? date('d/m/Y', strtotime($record->resign_date)) : '');
             $row++;
         }
 

@@ -880,11 +880,26 @@ if ($records_per_page === 'all') {
                     alert('Error: ' + r.message);
                 }
             },
-            error: function (xhr, status, error) {
+            error: function (xhr) {
                 btn.disabled = false;
                 btn.innerHTML = originalText;
-                console.error('AJAX Error:', error);
-                alert('Error creating voucher. Check console for details.');
+                let msg = 'Error creating voucher.';
+                if (xhr.responseJSON && xhr.responseJSON.message) {
+                    msg = xhr.responseJSON.message;
+                } else if (xhr.responseText) {
+                    try {
+                        const parsed = JSON.parse(xhr.responseText);
+                        if (parsed.message) {
+                            msg = parsed.message;
+                        }
+                    } catch (e) {
+                        if (xhr.responseText.length < 500) {
+                            msg = xhr.responseText;
+                        }
+                    }
+                }
+                console.error('create_collection_group failed:', xhr.status, msg, xhr.responseText);
+                alert('Error: ' + msg);
             }
         });
     }

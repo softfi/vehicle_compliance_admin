@@ -51,7 +51,9 @@
                                     <th>Total Amount</th>
                                     <th>Location</th>
                                     <th>View</th>
-                                    <th>Edit</th>
+                                    <?php if (in_array(1.4, $jobAssign)): ?>
+                                        <th>Edit</th>
+                                    <?php endif; ?>
                                     <th>Delete</th>
                                 </tr>
                             </thead>
@@ -135,13 +137,15 @@
 
                                             </div>
                                         </td>
-                                        <td>
-                                            <?php if (strpos($stock->invoice_number, 'stock-trans') === 0): ?>
-                                                <button class="btn btn-sm btn-secondary" disabled>Edit</button>
-                                            <?php else: ?>
-                                                <a class="btn btn-success" href="<?php echo base_url(); ?>/Admin/edit_stock/<?php echo $stock->stock_code; ?>">Edit</a>
-                                            <?php endif; ?>
-                                        </td>
+                                        <?php if (in_array(1.4, $jobAssign)): ?>
+                                            <td>
+                                                <?php if (strpos($stock->invoice_number, 'stock-trans') === 0): ?>
+                                                    <button class="btn btn-sm btn-secondary" disabled>Edit</button>
+                                                <?php else: ?>
+                                                    <a class="btn btn-success" href="<?php echo base_url(); ?>/Admin/edit_stock/<?php echo $stock->stock_code; ?>">Edit</a>
+                                                <?php endif; ?>
+                                            </td>
+                                        <?php endif; ?>
                                         <td>
                                             <?php if (in_array(1.3, $jobAssign)): ?>
                                                 <a href="javascript:void(0);" onClick="deleteRecord('<?= $stock->stock_code; ?>');" class="btn btn-sm btn-danger">Delete</a>

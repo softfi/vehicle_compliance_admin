@@ -1,6 +1,4 @@
 <?php include("header.php"); ?>
-<link rel='stylesheet' href='https://maxcdn.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css'>
-<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
 <!-- Page Body Start-->
 <div class="page-body-wrapper" style="background:#f9f9f9;">
     <?php include("mainsidebar.php"); ?>
@@ -79,9 +77,6 @@
     <!-- Footer start-->
     <?php include("footer.php"); ?>
 
-<script src='https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js'></script>
-<script src='https://maxcdn.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js'></script>
-
 <script>
 $(document).ready(function () {
     var i = 1;
@@ -114,7 +109,7 @@ $(document).ready(function () {
             $('#dynamic_field').append(newRow);
 
             // Clear first row
-            firstRow.find('.tyer_sl_no').val('');
+            firstRow.find('.tyer_sl_no').val('').trigger('change');
             firstRow.find('input[name="tyer_brand[]"]').val('');
             firstRow.find('input[name="tyer_model[]"]').val('');
 
@@ -152,11 +147,13 @@ function locationChanged(locationId) {
                     $.each(data, function (key, tyre) {
                         dropdown.append('<option value="' + tyre.tyer_sl_no + '">' + tyre.tyer_sl_no + '</option>');
                     });
+                    // Refresh select2 UI
+                    dropdown.trigger('change');
                 });
             }
         });
     } else {
-        $('.tyer_sl_no').html('<option value="">Select Tyer Sl No</option>');
+        $('.tyer_sl_no').html('<option value="">Select Tyer Sl No</option>').trigger('change');
     }
 }
 

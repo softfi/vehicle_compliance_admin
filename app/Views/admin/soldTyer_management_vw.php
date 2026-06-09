@@ -82,23 +82,35 @@ $(document).ready(function () {
         "scrollCollapse": true
     });
 
-    // SweetAlert Confirmation for Restore to Stock
+    // SweetAlert Confirmation for Restore with choice
     $('.restore-link').click(function(e) {
         e.preventDefault();
         const url = $(this).data('href');
         
         Swal.fire({
-            title: 'Cancel Sale & Restore?',
-            text: "Are you sure you want to cancel this sale and move the tyre back to active stock?",
-            icon: 'warning',
+            title: 'Cancel Sale & Restore Tyre',
+            html: 'Choose where you want to restore this tyre:<br><br>',
+            icon: 'question',
+            input: 'radio',
+            inputOptions: {
+                'stock': 'Back to Active Stock',
+                'scrap': 'Back to Scrap Yard'
+            },
+            inputValue: 'stock',
             showCancelButton: true,
-            confirmButtonColor: '#28a745',
+            confirmButtonColor: '#4b49ac',
             cancelButtonColor: '#6c757d',
-            confirmButtonText: 'Yes, Restore it!',
-            cancelButtonText: 'Cancel'
+            confirmButtonText: 'Restore Tyre',
+            cancelButtonText: 'Cancel',
+            inputValidator: (value) => {
+                if (!value) {
+                    return 'Please select a destination!'
+                }
+            }
         }).then((result) => {
             if (result.isConfirmed) {
-                window.location.href = url;
+                const destination = result.value;
+                window.location.href = url + '?destination=' + destination;
             }
         });
     });

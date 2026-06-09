@@ -194,6 +194,7 @@
                     <input type="checkbox" name="role[]" class="uk-checkbox" value="1.1" <?php if(in_array(1.1,$jobAssign)){ echo "checked";}?>/>Enter Stock 
                     <input type="checkbox" name="role[]" class="uk-checkbox" value="1.2" <?php if(in_array(1.2,$jobAssign)){ echo "checked";}?>/>View
                     <input type="checkbox" name="role[]" class="uk-checkbox" value="1.3" <?php if(in_array(1.3,$jobAssign)){ echo "checked";}?>/> Delete
+                    <input type="checkbox" name="role[]" class="uk-checkbox" value="1.4" <?php if(in_array(1.4,$jobAssign)){ echo "checked";}?>/> Edit
                 </li>
             
                 <li>

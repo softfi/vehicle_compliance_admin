@@ -56,7 +56,7 @@
                                                         <select id="staffFilter" name="staff_id" class="uk-input"  required>
                                                             <option value="">Select </option>
                                                             <?php foreach ($allstaf as $staff) { ?>
-                                                <option data-user-type="<?= htmlspecialchars($staff->user_type) ?>" data-location-id="<?= htmlspecialchars($staff->location_id) ?>" value="<?= htmlspecialchars($staff->id) ?>">
+                                                <option data-user-type="<?= htmlspecialchars($staff->user_type) ?>" data-location-id="<?= htmlspecialchars($staff->location_id) ?>" data-doj="<?= $staff->doj ?>" data-resign-date="<?= $staff->resign_date ?>" value="<?= htmlspecialchars($staff->id) ?>">
                                                     <?= htmlspecialchars($staff->name) ?> (<?= htmlspecialchars($staff->staff_code) ?>)
                                                 </option>
 
@@ -246,7 +246,7 @@
                                                                     <select id="modalStaffFilter" name="staff_id" class="uk-input" required>
                                                                         <option value="">Select </option>
                                                                         <?php foreach ($allstaf as $staff) { ?>
-                                                                            <option data-user-type="<?= htmlspecialchars($staff->user_type) ?>" value="<?= htmlspecialchars($staff->id) ?>">
+                                                                            <option data-user-type="<?= htmlspecialchars($staff->user_type) ?>" data-doj="<?= $staff->doj ?>" data-resign-date="<?= $staff->resign_date ?>" value="<?= htmlspecialchars($staff->id) ?>">
                                                                                 <?= htmlspecialchars($staff->name) ?> (<?= htmlspecialchars($staff->staff_code) ?>)
                                                                             </option>
                                                                         <?php } ?>
@@ -496,6 +496,64 @@
         });
     });
     </script>
+<script>
+$(document).ready(function() {
+    function filterStaffByDate(dateInputId, staffSelectId) {
+        var selectedDate = $('#' + dateInputId).val();
+        if (!selectedDate) return;
+
+        var $staffSelect = $('#' + staffSelectId);
+        var currentSelected = $staffSelect.val();
+        
+        $staffSelect.find('option').each(function() {
+            var doj = $(this).data('doj');
+            var resignDate = $(this).data('resign-date');
+            var value = $(this).val();
+
+            if (value === "") return; // Skip "Select" option
+
+            var show = true;
+            if (doj && doj !== '0000-00-00' && doj !== '0000-00-00 00:00:00' && selectedDate < doj) {
+                show = false;
+            }
+            if (resignDate && resignDate !== '0000-00-00' && resignDate !== '0000-00-00 00:00:00' && selectedDate > resignDate) {
+                show = false;
+            }
+
+            if (show) {
+                $(this).prop('disabled', false).show();
+            } else {
+                $(this).prop('disabled', true).hide();
+                if (currentSelected === value) {
+                    $staffSelect.val('').trigger('change');
+                }
+            }
+        });
+        
+        // Refresh Select2 if it exists
+        if ($staffSelect.data('select2')) {
+            var placeholder = $staffSelect.attr('id') === 'staffFilter' ? "Select Employee" : "Select";
+            $staffSelect.select2({
+                placeholder: placeholder,
+                allowClear: true,
+                width: '100%',
+                dropdownParent: $staffSelect.closest('.uk-modal').length ? $('#modal-center') : null
+            });
+        }
+    }
+
+    $('#date').on('change', function() {
+        filterStaffByDate('date', 'staffFilter');
+    });
+
+    $('#modal-date').on('change', function() {
+        filterStaffByDate('modal-date', 'modalStaffFilter');
+    });
+
+    // Run once on load
+    filterStaffByDate('date', 'staffFilter');
+});
+</script>
 <script>
     document.getElementById('download_excel').addEventListener('click', function() {
         const fromDate = document.getElementById('from_date').value;

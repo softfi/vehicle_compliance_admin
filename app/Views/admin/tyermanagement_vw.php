@@ -178,12 +178,12 @@
     </div>
     <!-- Off-Canvas Panel End-->
 
-<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/uikit@3.6.18/dist/js/uikit.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/uikit@3.6.18/dist/js/uikit-icons.min.js"></script>
-
 <script>
     $(document).ready(function () {
+        if ($.fn.DataTable.isDataTable('#purchaseTable')) {
+            $('#purchaseTable').DataTable().destroy();
+        }
+        
         $('#purchaseTable').DataTable({
             "language": {
                 "search": "_INPUT_",
@@ -192,36 +192,38 @@
         });
 
         $('.view-details').on('click', function () {
-
             var billNo = $(this).data('bill-no');
-            var location = $(this).data('location');  // ✅ get location from button
+            var location = $(this).data('location');
 
-            console.log("Bill NO:", billNo);
-            console.log("Location:", location);
+            // Show loading state
+            $('#tyre-details').html('<tr><td colspan="2" class="text-center"><i class="fas fa-spinner fa-spin me-2"></i>Loading...</td></tr>');
+            
+            // Open the offcanvas early to show loading
+            if (window.UIkit) {
+                UIkit.offcanvas('#offcanvas').show();
+            }
 
             $.ajax({
                 url: '<?php echo base_url("admin/getTyerDetailsByBillNo"); ?>',
                 type: 'POST',
                 data: { 
                     bill_no: billNo,
-                    location: location   // ✅ send location to server
+                    location: location
                 },
-                success: function (data) {
-
-                    var details = JSON.parse(data);
+                dataType: 'json',
+                success: function (details) {
                     var detailsHtml = '';
-
-                    $.each(details, function (index, detail) {
-                        detailsHtml += '<tr><td>' + detail.tyer_sl_no + '</td><td>' + detail.tyer_type + '</td></tr>';
-                    });
-
+                    if (details && details.length > 0) {
+                        $.each(details, function (index, detail) {
+                            detailsHtml += '<tr><td>' + (detail.tyer_sl_no || 'N/A') + '</td><td>' + (detail.tyer_type || 'N/A') + '</td></tr>';
+                        });
+                    } else {
+                        detailsHtml = '<tr><td colspan="2" class="text-center text-muted">No serials found for this bill.</td></tr>';
+                    }
                     $('#tyre-details').html(detailsHtml);
-
-                    // Open the offcanvas
-                    UIkit.offcanvas('#offcanvas').show();
                 },
                 error: function () {
-                    alert('Failed to fetch details. Please try again.');
+                    $('#tyre-details').html('<tr><td colspan="2" class="text-center text-danger">Failed to fetch details.</td></tr>');
                 }
             });
         });

@@ -61,8 +61,11 @@ class Attendance extends BaseController
             return $this->checkAuth();
         }
 
-        $from_date = $this->request->getGet('from_date') ?? date('Y-m-01');
-        $to_date = $this->request->getGet('to_date') ?? date('Y-m-d');
+        $month = $this->request->getGet('month') ?? date('m');
+        $year = $this->request->getGet('year') ?? date('Y');
+        $from_date = "$year-$month-01";
+        $to_date = date('Y-m-t', strtotime($from_date));
+
         $staff_id = $this->request->getGet('staff_id');
         $status = $this->request->getGet('status');
         $location_id = $this->request->getGet('location_id');
@@ -76,16 +79,77 @@ class Attendance extends BaseController
         if ($location_id)
             $filters['location_id'] = $location_id;
 
-        $result = $this->attendanceModel->searchAttendance($from_date, $to_date, $filters, $page);
+        // Get all staff for the grid rows (filtered if needed)
+        $staffQuery = $this->db->table('staff')
+            ->select('staff.*, location.location_name')
+            ->join('location', 'location.location_id = staff.location_id', 'left')
+            ->where('staff.user_type', 'STAFF');
+        
+        // Filter active staff (not resigned)
+        $staffQuery->groupStart()
+            ->where('staff.resign_date IS NULL')
+            ->orWhere('staff.resign_date', '0000-00-00')
+            ->orWhere('staff.resign_date >=', $from_date)
+            ->groupEnd();
+        
+        if ($location_id) {
+            $staffQuery->where('staff.location_id', $location_id);
+        }
+        if ($staff_id) {
+            $staffQuery->where('staff.id', $staff_id);
+        }
+
+        $totalStaff = $staffQuery->countAllResults(false);
+        $perPage = 20;
+        $staffList = $staffQuery->limit($perPage, ($page - 1) * $perPage)->get()->getResult();
+
+        // Get attendance for these staff members in the date range
+        $staffIds = array_column($staffList, 'id');
+        $attendance = [];
+        if (!empty($staffIds)) {
+            $attendanceRecords = $this->db->table('staff_attendance')
+                ->whereIn('staff_id', $staffIds)
+                ->where('attendance_date >=', $from_date)
+                ->where('attendance_date <=', $to_date)
+                ->get()->getResult();
+
+            foreach ($attendanceRecords as $record) {
+                $attendance[$record->staff_id][$record->attendance_date] = $record;
+            }
+        }
+
+        // Prepare dates array
+        $dates = [];
+        $current = new \DateTime($from_date);
+        $end = new \DateTime($to_date);
+        $end->modify('+1 day');
+        $interval = new \DateInterval('P1D');
+        $period = new \DatePeriod($current, $interval, $end);
+
+        foreach ($period as $date) {
+            $dates[] = [
+                'full' => $date->format('Y-m-d'),
+                'day' => $date->format('d'),
+                'short_day' => $date->format('D')
+            ];
+        }
 
         $data = $this->getCommonData();
-        $data['attendance'] = $result['data'];
-        $data['pagination'] = $result;
-        $data['staff'] = $this->attendanceModel->getAllStaff();
-        $data['locations'] = $this->attendanceModel->getAllLocations();
+        $data['staffList'] = $staffList;
+        $data['attendanceMatrix'] = $attendance;
+        $data['dates'] = $dates;
         $data['from_date'] = $from_date;
         $data['to_date'] = $to_date;
+        $data['month'] = $month;
+        $data['year'] = $year;
         $data['filters'] = $filters;
+        $data['locations'] = $this->attendanceModel->getAllLocations();
+        $data['staff'] = $this->attendanceModel->getAllStaff();
+        $data['pagination'] = [
+            'page' => $page,
+            'totalPages' => ceil($totalStaff / $perPage),
+            'total' => $totalStaff
+        ];
 
         return view('admin/attendance_vw', $data);
     }
@@ -118,7 +182,7 @@ class Attendance extends BaseController
         $rules = [
             'staff_id' => 'required|numeric|is_not_unique[staff.id]',
             'attendance_date' => 'required|valid_date[Y-m-d]',
-            'status' => 'required|in_list[Present,Absent,Leave,Half-day,Sick-leave]',
+            'status' => 'required|in_list[Present,Absent,Leave,Half-day,Sick-leave,Holiday]',
             'check_in_time' => 'permit_empty|valid_date[H:i]',
             'check_out_time' => 'permit_empty|valid_date[H:i]',
             'notes' => 'permit_empty|max_length[500]'
@@ -138,9 +202,23 @@ class Attendance extends BaseController
             return redirect()->back()->with('error', 'Attendance record for this staff on this date already exists.');
         }
 
+        // Date validation for join/resign
+        $staff_id = $this->request->getPost('staff_id');
+        $attendance_date = $this->request->getPost('attendance_date');
+        $staff = $this->db->table('staff')->where('id', $staff_id)->get()->getRow();
+
+        if ($staff) {
+            if ($staff->doj != '0000-00-00' && !empty($staff->doj) && $attendance_date < $staff->doj) {
+                return redirect()->back()->withInput()->with('error', 'Staff joined on ' . date('d-m-Y', strtotime($staff->doj)) . '. Attendance cannot be recorded before this date.');
+            }
+            if ($staff->resign_date != '0000-00-00' && !empty($staff->resign_date) && $attendance_date > $staff->resign_date) {
+                return redirect()->back()->withInput()->with('error', 'Staff resigned on ' . date('d-m-Y', strtotime($staff->resign_date)) . '. Attendance cannot be recorded after this date.');
+            }
+        }
+
         $data = [
-            'staff_id' => $this->request->getPost('staff_id'),
-            'attendance_date' => $this->request->getPost('attendance_date'),
+            'staff_id' => $staff_id,
+            'attendance_date' => $attendance_date,
             'status' => $this->request->getPost('status'),
             'check_in_time' => $this->request->getPost('check_in_time') ?: null,
             'check_out_time' => $this->request->getPost('check_out_time') ?: null,
@@ -211,7 +289,7 @@ class Attendance extends BaseController
         $rules = [
             'staff_id' => 'required|numeric|is_not_unique[staff.id]',
             'attendance_date' => 'required|valid_date[Y-m-d]',
-            'status' => 'required|in_list[Present,Absent,Leave,Half-day,Sick-leave]',
+            'status' => 'required|in_list[Present,Absent,Leave,Half-day,Sick-leave,Holiday]',
             'check_in_time' => 'permit_empty|valid_date[H:i]',
             'check_out_time' => 'permit_empty|valid_date[H:i]',
             'notes' => 'permit_empty|max_length[500]'
@@ -221,9 +299,23 @@ class Attendance extends BaseController
             return redirect()->back()->withInput()->with('validation', $this->validator);
         }
 
+        // Date validation for join/resign
+        $staff_id = $this->request->getPost('staff_id');
+        $attendance_date = $this->request->getPost('attendance_date');
+        $staff = $this->db->table('staff')->where('id', $staff_id)->get()->getRow();
+
+        if ($staff) {
+            if ($staff->doj != '0000-00-00' && !empty($staff->doj) && $attendance_date < $staff->doj) {
+                return redirect()->back()->withInput()->with('error', 'Staff joined on ' . date('d-m-Y', strtotime($staff->doj)) . '. Attendance cannot be recorded before this date.');
+            }
+            if ($staff->resign_date != '0000-00-00' && !empty($staff->resign_date) && $attendance_date > $staff->resign_date) {
+                return redirect()->back()->withInput()->with('error', 'Staff resigned on ' . date('d-m-Y', strtotime($staff->resign_date)) . '. Attendance cannot be recorded after this date.');
+            }
+        }
+
         $data = [
-            'staff_id' => $this->request->getPost('staff_id'),
-            'attendance_date' => $this->request->getPost('attendance_date'),
+            'staff_id' => $staff_id,
+            'attendance_date' => $attendance_date,
             'status' => $this->request->getPost('status'),
             'check_in_time' => $this->request->getPost('check_in_time') ?: null,
             'check_out_time' => $this->request->getPost('check_out_time') ?: null,
@@ -375,12 +467,25 @@ class Attendance extends BaseController
 
                 $date = $formattedDate;
 
+                // Date validation for join/resign
+                $staffInfo = $this->db->table('staff')->where('id', $staffId)->get()->getRow();
+                if ($staffInfo) {
+                    if ($staffInfo->doj != '0000-00-00' && !empty($staffInfo->doj) && $date < $staffInfo->doj) {
+                        $errors[] = "Row " . ($key + 1) . ": Attendance date (" . $date . ") is before join date (" . $staffInfo->doj . ").";
+                        continue;
+                    }
+                    if ($staffInfo->resign_date != '0000-00-00' && !empty($staffInfo->resign_date) && $date > $staffInfo->resign_date) {
+                        $errors[] = "Row " . ($key + 1) . ": Attendance date (" . $date . ") is after resignation date (" . $staffInfo->resign_date . ").";
+                        continue;
+                    }
+                }
+
                 $status = $row[2];
                 $checkIn = $row[3] ?? null;
                 $checkOut = $row[4] ?? null;
 
                 // Validate status
-                $validStatuses = ['Present', 'Absent', 'Leave', 'Half-day', 'Sick-leave'];
+                $validStatuses = ['Present', 'Absent', 'Leave', 'Half-day', 'Sick-leave', 'Holiday'];
                 if (!in_array($status, $validStatuses)) {
                     $errors[] = "Row " . ($key + 1) . ": Invalid status '$status'.";
                     continue;
@@ -485,68 +590,118 @@ class Attendance extends BaseController
             return $this->checkAuth();
         }
 
-        $from_date = $this->request->getGet('from_date') ?? date('Y-m-01');
-        $to_date = $this->request->getGet('to_date') ?? date('Y-m-d');
+        $month = $this->request->getGet('month') ?? date('m');
+        $year = $this->request->getGet('year') ?? date('Y');
+        $from_date = "$year-$month-01";
+        $to_date = date('Y-m-t', strtotime($from_date));
         $staff_id = $this->request->getGet('staff_id');
-        $status = $this->request->getGet('status');
         $location_id = $this->request->getGet('location_id');
 
-        $filters = [];
-        if ($staff_id)
-            $filters['staff_id'] = $staff_id;
-        if ($status)
-            $filters['status'] = $status;
-        if ($location_id)
-            $filters['location_id'] = $location_id;
+        // 1. Get filtered staff
+        $staffQuery = $this->db->table('staff')
+            ->select('staff.*, location.location_name')
+            ->join('location', 'location.location_id = staff.location_id', 'left')
+            ->where('staff.user_type', 'STAFF');
+        
+        if ($location_id) $staffQuery->where('staff.location_id', $location_id);
+        if ($staff_id) $staffQuery->where('staff.id', $staff_id);
 
-        $attendance = $this->attendanceModel->getAttendanceReport($from_date, $to_date, $filters);
+        $staffList = $staffQuery->get()->getResult();
 
+        // 2. Get attendance records for matrix
+        $attendance = [];
+        if (!empty($staffList)) {
+            $staffIds = array_column($staffList, 'id');
+            $records = $this->db->table('staff_attendance')
+                ->whereIn('staff_id', $staffIds)
+                ->where('attendance_date >=', $from_date)
+                ->where('attendance_date <=', $to_date)
+                ->get()->getResult();
+
+            foreach ($records as $r) {
+                $attendance[$r->staff_id][$r->attendance_date] = $r->status;
+            }
+        }
+
+        // 3. Prepare dates array
+        $dates = [];
+        $current = new \DateTime($from_date);
+        $end = new \DateTime($to_date);
+        $end->modify('+1 day');
+        $period = new \DatePeriod($current, new \DateInterval('P1D'), $end);
+        foreach ($period as $date) {
+            $dates[] = $date->format('Y-m-d');
+        }
+
+        // 4. Create Excel
         $spreadsheet = new Spreadsheet();
         $sheet = $spreadsheet->getActiveSheet();
-        $sheet->setTitle('Attendance');
+        $sheet->setTitle('Attendance Matrix');
 
-        // Add headers
-        $headers = ['ID', 'Staff Name', 'Staff Code', 'Date', 'Status', 'Check-in', 'Check-out', 'Location', 'Notes'];
-        $col = 1;
-        foreach ($headers as $header) {
-            $column = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($col);
-            $sheet->setCellValue($column . '1', $header);
+        // Headers
+        $sheet->setCellValue('A1', 'Employee Name');
+        $sheet->setCellValue('B1', 'Location');
+        $col = 3;
+        foreach ($dates as $date) {
+            $colLetter = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($col);
+            $sheet->setCellValue($colLetter . '1', date('d M', strtotime($date))); // Show date and month (e.g., 01 Jan)
             $col++;
         }
 
         // Style header
-        $sheet->getStyle('A1:I1')->getFont()->setBold(true);
-        $sheet->getStyle('A1:I1')->getFill()->setFillType(\PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID);
-        $sheet->getStyle('A1:I1')->getFill()->getStartColor()->setARGB('FFCCCCCC');
+        $lastCol = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($col - 1);
+        $sheet->getStyle('A1:' . $lastCol . '1')->getFont()->setBold(true);
+        $sheet->getStyle('A1:' . $lastCol . '1')->getAlignment()->setHorizontal(\PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER);
+        $sheet->getStyle('A1:' . $lastCol . '1')->getFill()->setFillType(\PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID)->getStartColor()->setARGB('FFE9ECEF');
 
-        // Add data
-        $row = 2;
-        foreach ($attendance as $record) {
-            $sheet->setCellValue('A' . $row, $record->id);
-            $sheet->setCellValue('B' . $row, $record->staff_name);
-            $sheet->setCellValue('C' . $row, $record->staff_code);
-            $sheet->setCellValue('D' . $row, $record->attendance_date);
-            $sheet->setCellValue('E' . $row, $record->status);
-            $sheet->setCellValue('F' . $row, $record->check_in_time);
-            $sheet->setCellValue('G' . $row, $record->check_out_time);
-            $sheet->setCellValue('H' . $row, $record->location_name);
-            $sheet->setCellValue('I' . $row, $record->notes);
-            $row++;
+        // Data Rows
+        $rowIdx = 2;
+        foreach ($staffList as $staff) {
+            $sheet->setCellValue('A' . $rowIdx, $staff->name);
+            $sheet->setCellValue('B' . $rowIdx, $staff->location_name ?? '-');
+
+            $colIdx = 3;
+            foreach ($dates as $date) {
+                $colLetter = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($colIdx);
+                
+                // Tenure Check
+                $isJoined = (empty($staff->doj) || $staff->doj == '0000-00-00' || $date >= $staff->doj);
+                $isResigned = (!empty($staff->resign_date) && $staff->resign_date != '0000-00-00' && $date > $staff->resign_date);
+                
+                if ($isJoined && !$isResigned) {
+                    $status = $attendance[$staff->id][$date] ?? null;
+                    
+                    if ($status == 'Present') {
+                        $sheet->setCellValue($colLetter . $rowIdx, '✓');
+                        $sheet->getStyle($colLetter . $rowIdx)->getFont()->getColor()->setARGB('FF28A745');
+                    } elseif ($status == 'Absent') {
+                        $sheet->setCellValue($colLetter . $rowIdx, '✘');
+                        $sheet->getStyle($colLetter . $rowIdx)->getFont()->getColor()->setARGB('FFDC3545');
+                    } elseif ($status == 'Leave' || $status == 'Sick-leave') {
+                        $sheet->setCellValue($colLetter . $rowIdx, '✈');
+                        $sheet->getStyle($colLetter . $rowIdx)->getFont()->getColor()->setARGB('FFFFC107');
+                    } elseif ($status == 'Holiday') {
+                        $sheet->setCellValue($colLetter . $rowIdx, '★');
+                        $sheet->getStyle($colLetter . $rowIdx)->getFont()->getColor()->setARGB('FFFFC107');
+                    } else {
+                        $sheet->setCellValue($colLetter . $rowIdx, '-');
+                        $sheet->getStyle($colLetter . $rowIdx)->getFont()->getColor()->setARGB('FFADB5BD');
+                    }
+                    
+                    $sheet->getStyle($colLetter . $rowIdx)->getAlignment()->setHorizontal(\PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER);
+                }
+                $colIdx++;
+            }
+            $rowIdx++;
         }
 
-        // Set column widths
-        $sheet->getColumnDimension('A')->setWidth(8);
-        $sheet->getColumnDimension('B')->setWidth(20);
-        $sheet->getColumnDimension('C')->setWidth(12);
-        $sheet->getColumnDimension('D')->setWidth(12);
-        $sheet->getColumnDimension('E')->setWidth(12);
-        $sheet->getColumnDimension('F')->setWidth(12);
-        $sheet->getColumnDimension('G')->setWidth(12);
-        $sheet->getColumnDimension('H')->setWidth(15);
-        $sheet->getColumnDimension('I')->setWidth(20);
+        // Auto-size columns
+        foreach (range('A', $lastCol) as $columnID) {
+            $sheet->getColumnDimension($columnID)->setAutoSize(true);
+        }
 
         $writer = new Xlsx($spreadsheet);
-        $filename = 'attendance_' . $from_date . '_to_' . $to_date . '.xlsx';
+        $filename = 'Attendance_Matrix_' . $from_date . '_to_' . $to_date . '.xlsx';
 
         header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
         header('Content-Disposition: attachment;filename="' . $filename . '"');
@@ -565,8 +720,10 @@ class Attendance extends BaseController
             return $this->checkAuth();
         }
 
-        $from_date = $this->request->getGet('from_date') ?? date('Y-m-01');
-        $to_date = $this->request->getGet('to_date') ?? date('Y-m-d');
+        $month = $this->request->getGet('month') ?? date('m');
+        $year = $this->request->getGet('year') ?? date('Y');
+        $from_date = "$year-$month-01";
+        $to_date = date('Y-m-t', strtotime($from_date));
         $staff_id = $this->request->getGet('staff_id');
         $location_id = $this->request->getGet('location_id');
 
@@ -582,6 +739,8 @@ class Attendance extends BaseController
         $data = $this->getCommonData();
         $data['attendance'] = $attendance;
         $data['stats'] = $stats;
+        $data['month'] = $month;
+        $data['year'] = $year;
         $data['from_date'] = $from_date;
         $data['to_date'] = $to_date;
         $data['staff'] = $this->attendanceModel->getAllStaff();
@@ -692,12 +851,178 @@ class Attendance extends BaseController
         $staff = $this->db->table('staff')
             ->select('id, name, staff_code')
             ->where('user_type', 'STAFF')
-            ->where('status !=', 'Inactive')
+            ->groupStart()
+                ->where('resign_date IS NULL')
+                ->orWhere('resign_date', '0000-00-00')
+                ->orWhere('resign_date >=', date('Y-m-d'))
+            ->groupEnd()
             ->like('name', $search)
             ->orderBy('name', 'ASC')
             ->limit(10)
             ->get()->getResult();
 
         return $this->response->setJSON($staff);
+    }
+
+    /**
+     * Get staff list filtered by location for bulk attendance modal.
+     * Also includes existing attendance status for the given date so UI can disable already-marked rows.
+     */
+    public function getStaffByLocation()
+    {
+        if (!$this->checkAuth()) {
+            return $this->response->setJSON(['status' => 'error', 'message' => 'Unauthorized']);
+        }
+
+        $location_id = $this->request->getGet('location_id');
+        $attendance_date = $this->request->getGet('attendance_date') ?: date('Y-m-d');
+
+        $builder = $this->db->table('staff')
+            ->select('staff.id, staff.name, staff.staff_code, staff.location_id, staff.doj, staff.resign_date, location.location_name')
+            ->join('location', 'location.location_id = staff.location_id', 'left')
+            ->where('staff.user_type', 'STAFF');
+
+        // Only show staff who were active on the selected date
+        $builder->groupStart()
+            ->where('staff.doj IS NULL')
+            ->orWhere('staff.doj', '0000-00-00')
+            ->orWhere('staff.doj <=', $attendance_date)
+        ->groupEnd();
+
+        $builder->groupStart()
+            ->where('staff.resign_date IS NULL')
+            ->orWhere('staff.resign_date', '0000-00-00')
+            ->orWhere('staff.resign_date >=', $attendance_date)
+        ->groupEnd();
+
+        if (!empty($location_id)) {
+            $builder->where('staff.location_id', $location_id);
+        }
+
+        $staffList = $builder->orderBy('staff.name', 'ASC')->get()->getResult();
+
+        // Get existing attendance for these staff on the selected date
+        $existing = [];
+        if (!empty($staffList)) {
+            $staffIds = array_column($staffList, 'id');
+            $records = $this->db->table('staff_attendance')
+                ->select('staff_id, status')
+                ->whereIn('staff_id', $staffIds)
+                ->where('attendance_date', $attendance_date)
+                ->get()->getResult();
+            foreach ($records as $r) {
+                $existing[$r->staff_id] = $r->status;
+            }
+        }
+
+        $result = [];
+        foreach ($staffList as $s) {
+            $result[] = [
+                'id' => $s->id,
+                'name' => $s->name,
+                'staff_code' => $s->staff_code,
+                'location_id' => $s->location_id,
+                'location_name' => $s->location_name,
+                'already_marked' => isset($existing[$s->id]),
+                'existing_status' => $existing[$s->id] ?? null,
+            ];
+        }
+
+        return $this->response->setJSON(['status' => 'success', 'data' => $result]);
+    }
+
+    /**
+     * Bulk store attendance for multiple staff on a single date with common status.
+     */
+    public function quickBulkStore()
+    {
+        if (!$this->checkAuth()) {
+            return $this->checkAuth();
+        }
+
+        $staff_ids = $this->request->getPost('staff_ids');
+        $attendance_date = $this->request->getPost('attendance_date');
+        $status = $this->request->getPost('status');
+        $check_in_time = $this->request->getPost('check_in_time') ?: null;
+        $check_out_time = $this->request->getPost('check_out_time') ?: null;
+        $leave_type = $this->request->getPost('leave_type') ?: null;
+        $notes = $this->request->getPost('notes');
+
+        // Basic validation
+        if (empty($staff_ids) || !is_array($staff_ids)) {
+            return redirect()->back()->with('error', 'Please select at least one staff member.');
+        }
+        if (empty($attendance_date)) {
+            return redirect()->back()->with('error', 'Please select an attendance date.');
+        }
+        $validStatuses = ['Present', 'Absent', 'Leave', 'Half-day', 'Sick-leave', 'Holiday'];
+        if (!in_array($status, $validStatuses)) {
+            return redirect()->back()->with('error', 'Invalid attendance status.');
+        }
+
+        $userId = $this->session->get('user_id');
+        $now = date('Y-m-d H:i:s');
+
+        $records = [];
+        $skipped = [];
+
+        foreach ($staff_ids as $staff_id) {
+            $staff_id = (int) $staff_id;
+            if ($staff_id <= 0) continue;
+
+            $staff = $this->db->table('staff')->where('id', $staff_id)->get()->getRow();
+            if (!$staff) {
+                $skipped[] = "Staff ID $staff_id not found";
+                continue;
+            }
+
+            // Tenure validation
+            if (!empty($staff->doj) && $staff->doj != '0000-00-00' && $attendance_date < $staff->doj) {
+                $skipped[] = $staff->name . ' (joined ' . date('d-m-Y', strtotime($staff->doj)) . ')';
+                continue;
+            }
+            if (!empty($staff->resign_date) && $staff->resign_date != '0000-00-00' && $attendance_date > $staff->resign_date) {
+                $skipped[] = $staff->name . ' (resigned ' . date('d-m-Y', strtotime($staff->resign_date)) . ')';
+                continue;
+            }
+
+            // Duplicate check
+            $duplicate = $this->attendanceModel->getDuplicateCheck($staff_id, $attendance_date);
+            if ($duplicate) {
+                $skipped[] = $staff->name . ' (already marked)';
+                continue;
+            }
+
+            $records[] = [
+                'staff_id' => $staff_id,
+                'attendance_date' => $attendance_date,
+                'status' => $status,
+                'check_in_time' => $check_in_time,
+                'check_out_time' => $check_out_time,
+                'notes' => $notes,
+                'leave_type' => $leave_type,
+                'created_by' => $userId,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ];
+        }
+
+        if (empty($records)) {
+            $msg = 'No new attendance records to add.';
+            if (!empty($skipped)) {
+                $msg .= ' Skipped: ' . implode(', ', $skipped);
+            }
+            return redirect()->back()->with('error', $msg);
+        }
+
+        if ($this->attendanceModel->bulkAddAttendance($records)) {
+            $message = count($records) . ' attendance record(s) added successfully.';
+            if (!empty($skipped)) {
+                $message .= ' Skipped ' . count($skipped) . ': ' . implode(', ', $skipped);
+            }
+            return redirect()->to('admin/attendance')->with('msg', $message);
+        }
+
+        return redirect()->back()->with('error', 'Failed to add attendance records.');
     }
 }

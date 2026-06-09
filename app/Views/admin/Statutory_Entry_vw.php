@@ -117,7 +117,7 @@
                                             $doc_link = '<a href="' . base_url('uploads/documents/' . $sat->fitness_doc) . '" target="_blank">View</a>';
                                         } elseif ($type == 'permit' && $sat->permit_doc) {
                                             $doc_link = '<a href="' . base_url('uploads/documents/' . $sat->permit_doc) . '" target="_blank">View</a>';
-                                        } elseif ($type == 'npermit' && $sat->national_permit_doc) {
+                                        } elseif ($type == 'national_permit' && $sat->national_permit_doc) {
                                             $doc_link = '<a href="' . base_url('uploads/documents/' . $sat->national_permit_doc) . '" target="_blank">View</a>';
                                         } elseif ($type == 'pucc' && $sat->PUCC_doc) {
                                             $doc_link = '<a href="' . base_url('uploads/documents/' . $sat->PUCC_doc) . '" target="_blank">View</a>';

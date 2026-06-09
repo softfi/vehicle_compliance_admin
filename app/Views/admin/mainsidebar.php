@@ -280,7 +280,7 @@
                 <?php if (in_array(24, $jobAssign)) { ?>
                   <li><a href="<?php echo base_url(); ?>admin/tyer_management">Purchase Tyre</a></li>
                 <?php } ?>
-                <?php if (in_array(34, $jobAssign)) { ?>
+                <?php if (in_array(24, $jobAssign)) { ?>
                   <li><a href="<?php echo base_url(); ?>admin/StockTyer_management">Stock Tyre</a></li>
                 <?php } ?>
                 <?php if (in_array(38, $jobAssign)) { ?>

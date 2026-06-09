@@ -131,7 +131,7 @@
 </script>
 
 <script>
-    $("#supplierSelect, #product").select2({ placeholder: "Select an option", allowClear: true });
+    $("#supplierSelect, #product, #location",).select2({ placeholder: "Select an option", allowClear: true });
 
     $('#addButton').on('click', function(e) {
         e.preventDefault();

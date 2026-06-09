@@ -63,6 +63,33 @@ class AdminModel extends Model
         $builder->join('location', 'location.location_id = staff.location_id', 'left');
         return $builder->get()->getResult();
     }
+
+    public function GetActiveStaff($date = null, $type = null)
+    {
+        $builder = $this->db->table('staff');
+        $builder->select('staff.*, location.location_name');
+        $builder->join('location', 'location.location_id = staff.location_id', 'left');
+
+        if (!empty($date)) {
+            $builder->groupStart()
+                ->where('staff.doj <=', $date)
+                ->orWhere('staff.doj', '0000-00-00')
+                ->orWhere('staff.doj', null)
+                ->groupEnd();
+
+            $builder->groupStart()
+                ->where('staff.resign_date IS NULL')
+                ->orWhere('staff.resign_date', '0000-00-00')
+                ->orWhere('staff.resign_date >=', $date)
+                ->groupEnd();
+        }
+
+        if (!empty($type)) {
+            $builder->where('staff.user_type', $type);
+        }
+
+        return $builder->orderBy('staff.name', 'ASC')->get()->getResult();
+    }
     public function driverasignment($from_date = null, $to_date = null)
     {
         $builder = $this->db->table('driver_assignment');
@@ -247,11 +274,13 @@ class AdminModel extends Model
     function purcartdetails($user_id)
     {
         $builder = $this->db->table('cart');
-        $builder->select('cart.cart_id,cart.invoicedate, cart.sup-cust_id as supplier_id ,items.id as product_id, location, items.item_name, cart.rate as rate, invoiceno, units.unit_name, cart.qty,   cart.user_id, ');
+        $builder->select('cart.cart_id,cart.invoicedate, cart.sup-cust_id as supplier_id ,items.id as product_id, cart.location, items.item_name, cart.rate as rate, invoiceno, units.unit_name, cart.qty,   cart.user_id, vendor.name as supplier_name, location.location_name');
         $builder->where('user_id', $user_id);
         $builder->where('cart_type', 1);
         $builder->join('items', 'items.id = cart.product_id');
         $builder->join('units', 'items.unit_id = units.unit_id');
+        $builder->join('vendor', 'vendor.id = cart.`sup-cust_id`', 'left');
+        $builder->join('location', 'location.location_id = cart.location', 'left');
         return $builder->get()->getResult();
     }
     function stockTransferdetails($user_id)
@@ -852,13 +881,16 @@ class AdminModel extends Model
 
         $builder = $this->db->table('despatch');
         $builder->select('despatch.*, vehicle.vehicle_no as vehicle_number, do_registration.do_no as doreg_no');
-        $builder->join('vehicle', 'vehicle.id=despatch.vehicle_no');
-        $builder->join('do_registration', 'do_registration.do_registration_id=despatch.do_no');
+        $builder->join('vehicle', 'vehicle.id = despatch.vehicle_no', 'left');
+        $builder->join('do_registration', 'do_registration.do_registration_id = despatch.do_no', 'left');
 
-        // Apply date filter on des_date
-        $builder->where('des_date >=', $from_date);
-        $builder->where('des_date <=', $to_date);
-        $builder->where('despatch.deleted_by', Null);
+        // Filter strictly by trip/despatch date (des_date), not created_at
+        $builder->where('despatch.des_date >=', $from_date);
+        $builder->where('despatch.des_date <=', $to_date);
+        $builder->where('despatch.deleted_by IS NULL', null, false);
+        $builder->where('despatch.deleted_at IS NULL', null, false);
+        $builder->orderBy('despatch.des_date', 'ASC');
+        $builder->orderBy('despatch.despatch_id', 'ASC');
 
         return $builder->get()->getResult();
     }
@@ -2214,43 +2246,71 @@ class AdminModel extends Model
 
     function staff_salary_details($year, $month, $location)
     {
+        $monthStart = sprintf('%04d-%02d-01', (int) $year, (int) $month);
+        $monthEnd = date('Y-m-t', strtotime($monthStart));
+
         $builder = $this->db->table('staff');
         $builder->select('staff.*, 
                       staff_salary_details.working_day, 
+                      staff_salary_details.bonus_days, 
                       staff_salary_details.insentive, 
                       staff_salary_details.total_salary, 
                       staff_salary_details.net_salary,  
                       location.location_name, 
-                      IFNULL(FORMAT(staff_advance.total_advance, 2), "0.00") as total_advance');
+                      IFNULL(FORMAT(staff_advance.total_advance, 2), "0.00") as total_advance,
+                      IFNULL(attendance_days.present_days, 0) as present_days');
         $builder->whereIn('staff.user_type', ['STAFF', 'MECHANIC']);
         if (!empty($location)) {
-            $builder->where('staff.address', $location);  // Corrected line
+            $builder->where('staff.location_id', $location);
         }
-        $builder->join('location', 'location.location_id = staff.address', 'left');
+        $builder->join('location', 'location.location_id = staff.location_id', 'left');
 
-        // Subquery to get the sum of staff_advance.amount for each staff member
         $subQueryAdvance = $this->db->table('staff_advance')
             ->select('staff_id, COALESCE(SUM(amount), 0) AS total_advance')
-            ->where("YEAR(created_at)", $year)
-            ->where("MONTH(created_at)", $month)
+            ->where('adv_date >=', $monthStart)
+            ->where('adv_date <=', $monthEnd)
             ->groupBy('staff_id')
             ->getCompiledSelect();
 
-        // Join the subquery results with the main query
         $builder->join("($subQueryAdvance) AS staff_advance", 'staff_advance.staff_id = staff.id', 'left');
 
-        // Subquery to get the staff salary details
+        $subQueryAttendance = $this->db->table('staff_attendance sa')
+            ->select('sa.staff_id, COUNT(DISTINCT sa.attendance_date) AS present_days')
+            ->join('staff s', 's.id = sa.staff_id', 'inner')
+            ->whereIn('sa.status', ['Present', 'Holiday'])
+            ->where('sa.attendance_date >=', $monthStart)
+            ->where('sa.attendance_date <=', $monthEnd)
+            ->groupStart()
+                ->where('s.doj IS NULL', null, false)
+                ->orWhere('s.doj', '0000-00-00')
+                ->orWhere('sa.attendance_date >= s.doj', null, false)
+            ->groupEnd()
+            ->groupStart()
+                ->where('s.resign_date IS NULL', null, false)
+                ->orWhere('s.resign_date', '0000-00-00')
+                ->orWhere('sa.attendance_date <= s.resign_date', null, false)
+            ->groupEnd()
+            ->groupBy('sa.staff_id')
+            ->getCompiledSelect();
+
+        $builder->join("($subQueryAttendance) AS attendance_days", 'attendance_days.staff_id = staff.id', 'left');
+
         $subQuerySalary = $this->db->table('staff_salary')
-            ->select('user_id, working_day, insentive, total_salary, net_salary')
-            ->where("year", $year)
-            ->where("month", $month)
+            ->select('user_id, working_day, bonus_days, insentive, total_salary, net_salary')
+            ->where('year', $year)
+            ->where('month', $month)
             ->groupBy('user_id')
             ->getCompiledSelect();
 
-        // Join the subquery results with the main query
         $builder->join("($subQuerySalary) AS staff_salary_details", 'staff_salary_details.user_id = staff.id', 'left');
 
         return $builder->get()->getResult();
+    }
+
+    function resolveStaffSalaryWorkingDay($savedWorkingDay, $presentDays)
+    {
+        // Always use fresh attendance count (Present + Holiday distinct dates).
+        return (int) ($presentDays ?? 0);
     }
 
 
@@ -2555,6 +2615,8 @@ class AdminModel extends Model
         $builder->where('despatch.vehicle_no', $vehicle_id);
         $builder->where('despatch.des_date >=', $from_date);
         $builder->where('despatch.des_date <=', $to_date);
+        $builder->where('despatch.deleted_at IS NULL', null, false);
+        $builder->where('despatch.deleted_by IS NULL', null, false);
 
         return $builder->get()->getResult();
     }
