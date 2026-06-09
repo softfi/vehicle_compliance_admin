@@ -66,10 +66,9 @@
         </div>
         
         <div class="form-group">
-            <label>.</label><br>
-            <button type="submit" class="btn btn-primary">Submit</button>
-             <button class="btn btn-primary" type="button" onclick="downloadExcel()">Download Excel</button>
-
+            <label>&nbsp;</label><br>
+            <button type="submit" class="btn btn-primary"><i class="fa fa-search"></i> Submit</button>
+            <button class="btn btn-success" type="button" onclick="downloadExcel()"><i class="fa fa-file-excel-o"></i> Export Excel</button>
         </div>
     </div>
 </form>
@@ -114,15 +113,18 @@
 </script>
 <script>
     function downloadExcel() {
-        // Get the selected values from the dropdowns
         var year = document.getElementById('year').value;
         var month = document.getElementById('month').value;
         var location = document.getElementById('location').value;
 
-        // Create a form element
+        if (!year || !month) {
+            alert('Please select year and month before exporting.');
+            return;
+        }
+
         var form = document.createElement('form');
         form.method = 'POST';
-        form.action = '<?= base_url(); ?>/admin/getstaff_salary_details_excel';
+        form.action = '<?= base_url('admin/getstaff_salary_details_excel'); ?>';
 
         // Create input elements for form data
         var inputYear = document.createElement('input');
@@ -155,9 +157,6 @@
         document.body.removeChild(form);
     }
 </script>
-
-<button class="btn btn-primary" type="button" onclick="downloadExcel()">Download Excel</button>
-
 
 <!-- footer start-->
 <?php include("footer.php"); ?>

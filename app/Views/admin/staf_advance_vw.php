@@ -114,7 +114,7 @@
                                         </form>
                                         <hr>
                                        <a href="<?php echo base_url();?>/admin/staf_advance/download_sample">click here</a> to download sample excel
-                                       <small class="text-muted d-block">Format: Staff Code | Staff Name | Date (dd/mm/yyyy) | Bank/Cash | Amount | Location</small>
+                                       <small class="text-muted d-block">Format: Staff Code | Staff Name | Date (dd/mm/yyyy or dd-mm-yyyy) | Bank/Cash | Amount | Location</small>
                              <form action="<?php echo base_url();?>/Admin/upload_staf_advance" method="post" enctype="multipart/form-data">
                                  <div class="uk-margin-bottom">
                                 

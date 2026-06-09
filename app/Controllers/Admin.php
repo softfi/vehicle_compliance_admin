@@ -46,6 +46,107 @@ class Admin extends BaseController
     }
 
     /**
+     * Parse upload dates as dd/mm/yyyy or dd-mm-yyyy (day first).
+     * Returns Y-m-d for DB, or null when the value cannot be parsed safely.
+     */
+    private function parseUploadDateDmY($dateStr): ?string
+    {
+        if ($dateStr === null || $dateStr === '') {
+            return null;
+        }
+
+        if (is_numeric($dateStr)) {
+            $serial = (float) $dateStr;
+            if ($serial > 10000 && $serial < 100000) {
+                try {
+                    return \PhpOffice\PhpSpreadsheet\Shared\Date::excelToDateTimeObject($serial)->format('Y-m-d');
+                } catch (\Exception $e) {
+                    return null;
+                }
+            }
+
+            return null;
+        }
+
+        $dateStr = trim((string) $dateStr);
+        if ($dateStr === '') {
+            return null;
+        }
+
+        if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $dateStr)) {
+            [$year, $month, $day] = array_map('intval', explode('-', $dateStr));
+
+            return checkdate($month, $day, $year)
+                ? sprintf('%04d-%02d-%02d', $year, $month, $day)
+                : null;
+        }
+
+        $normalized = str_replace(['/', '.'], '-', $dateStr);
+        $formats    = ['d-m-Y', 'd-m-y', 'j-n-Y', 'j-n-y'];
+
+        foreach ($formats as $format) {
+            $parsed = DateTime::createFromFormat('!' . $format, $normalized);
+            if (! $parsed) {
+                continue;
+            }
+
+            $errors = DateTime::getLastErrors();
+            if (($errors['warning_count'] ?? 0) > 0 || ($errors['error_count'] ?? 0) > 0) {
+                continue;
+            }
+
+            if ($parsed->format($format) !== $normalized) {
+                continue;
+            }
+
+            $day   = (int) $parsed->format('j');
+            $month = (int) $parsed->format('n');
+            $year  = (int) $parsed->format('Y');
+
+            if (! checkdate($month, $day, $year)) {
+                continue;
+            }
+
+            return $parsed->format('Y-m-d');
+        }
+
+        return null;
+    }
+
+    /**
+     * Read advance-upload date from Excel column C (supports native Excel date cells + text).
+     */
+    private function resolveAdvanceUploadDate($sheet, int $rowNumber): ?string
+    {
+        $cell = $sheet->getCell('C' . $rowNumber);
+        $value = $cell->getValue();
+
+        if ($value !== null && $value !== '') {
+            if (\PhpOffice\PhpSpreadsheet\Shared\Date::isDateTime($cell)) {
+                try {
+                    return \PhpOffice\PhpSpreadsheet\Shared\Date::excelToDateTimeObject((float) $value)->format('Y-m-d');
+                } catch (\Exception $e) {
+                    // Fall through to formatted/text parsing.
+                }
+            }
+        }
+
+        $formatted = trim((string) $cell->getFormattedValue());
+        if ($formatted !== '') {
+            $parsed = $this->parseUploadDateDmY($formatted);
+            if ($parsed !== null) {
+                return $parsed;
+            }
+        }
+
+        if ($value !== null && $value !== '') {
+            return $this->parseUploadDateDmY($value);
+        }
+
+        return null;
+    }
+
+    /**
      * Sum allowed trip diesel (litres) for one driver assignment only.
      */
     private function calculateDriverTripDieselLitres($vehicleId, $driverId, $fromDate, $toDate): float
@@ -2008,55 +2109,8 @@ class Admin extends BaseController
                     }
                 }
 
-                // ✅ IMPROVED DATE PARSER
                 $parseDate = function ($dateStr) {
-                    if (empty($dateStr))
-                        return "";
-
-                    // If it's an Excel numeric date (e.g. from XLSX with raw data)
-                    if (is_numeric($dateStr)) {
-                        try {
-                            // Only treat as Excel date if it's a reasonable number for a date
-                            if ($dateStr > 10000 && $dateStr < 100000) {
-                                return \PhpOffice\PhpSpreadsheet\Shared\Date::excelToDateTimeObject($dateStr)->format('Y-m-d');
-                            }
-                        } catch (\Exception $e) {
-                            // Fall through to string parsing
-                        }
-                    }
-
-                    $dateStr = trim($dateStr);
-                    if (empty($dateStr))
-                        return "";
-
-                    // Standardize separators
-                    $normalized = str_replace(['/', '.'], '-', $dateStr);
-
-                    // Try common formats strictly - prioritize Day-Month-Year as per user request
-                    $formats = ['d-m-Y', 'd-m-y', 'Y-m-d', 'm-d-Y'];
-                    foreach ($formats as $format) {
-                        $d = \DateTime::createFromFormat($format, $normalized);
-                        if ($d && $d->format($format) === $normalized) {
-                            return $d->format('Y-m-d');
-                        }
-                    }
-
-                    // Fallback for single digit days/months (e.g. 4-2-2026)
-                    $formatsFlexible = ['j-n-Y', 'j-n-y', 'Y-n-j', 'n-j-Y'];
-                    foreach ($formatsFlexible as $format) {
-                        $d = \DateTime::createFromFormat($format, $normalized);
-                        if ($d && $d->format($format) === $normalized) {
-                            return $d->format('Y-m-d');
-                        }
-                    }
-
-                    // Fallback to flexible parsing
-                    $time = strtotime($normalized);
-                    if ($time) {
-                        return date('Y-m-d', $time);
-                    }
-
-                    return "";
+                    return $this->parseUploadDateDmY($dateStr) ?? '';
                 };
 
                 // ✅ Aadhaar fix (handle both numeric raw value and formatted string)
@@ -4951,23 +5005,23 @@ class Admin extends BaseController
             try {
                 // Load the spreadsheet
                 $spreadsheet = $reader->load($filePath);
-                $sheetData = $spreadsheet->getActiveSheet()->toArray();
-
-                // echo"<pre>";
-                // print_r($sheetData);
-                // exit;    
+                $sheet       = $spreadsheet->getActiveSheet();
+                $sheetData   = $sheet->toArray();
 
                 $dataArr = [];
                 foreach ($sheetData as $index => $rowData) {
-                    if ($index == 0)
+                    if ($index == 0) {
                         continue; // Skip header row
+                    }
 
-                    if (empty($rowData[0]) && empty($rowData[4]))
+                    if (empty($rowData[0]) && empty($rowData[4])) {
                         continue; // Skip empty rows
+                    }
 
                     $staff_dtl = null;
-                    $loc_dtl = null;
-                    $is_valid = true;
+                    $loc_dtl   = null;
+                    $is_valid  = true;
+                    $excelRow  = $index + 1;
 
                     // Column mapping: 
                     // 0: Staff Code, 1: Staff Name, 2: Date, 3: Bank/Cash, 4: Amount, 5: Location
@@ -4983,20 +5037,14 @@ class Admin extends BaseController
                         $is_valid = false;
                     }
 
-                    $formattedDate = null;
-                    $des_date = $rowData[2] ?? '';
-                    if (!empty($des_date)) {
-                        if (is_numeric($des_date)) {
-                            $excelDateTime = \PhpOffice\PhpSpreadsheet\Shared\Date::excelToDateTimeObject($des_date);
-                            $formattedDate = $excelDateTime->format('Y-m-d');
-                        } else {
-                            $dateObject = DateTime::createFromFormat('d/m/Y', $des_date);
-                            if ($dateObject) {
-                                $formattedDate = $dateObject->format('Y-m-d');
-                            } else {
-                                $formattedDate = date('Y-m-d');
-                            }
-                        }
+                    $rawDateInput = trim((string) ($rowData[2] ?? ''));
+                    $parsedDate   = $this->resolveAdvanceUploadDate($sheet, $excelRow);
+
+                    if ($parsedDate !== null) {
+                        $formattedDate = $parsedDate;
+                    } elseif ($rawDateInput !== '') {
+                        $is_valid      = false;
+                        $formattedDate = date('Y-m-d');
                     } else {
                         $formattedDate = date('Y-m-d');
                     }
@@ -5186,6 +5234,7 @@ class Admin extends BaseController
         $data['selected_location'] = null;
 
         if ($location_id) {
+            $location_id = (int) $location_id;
             $loc = $this->db->table('location')->where('location_id', $location_id)->get()->getRow();
             $data['selected_location'] = $loc;
             $data['opening_balance'] = $loc->opening_balance ?? 0;
@@ -5195,7 +5244,7 @@ class Admin extends BaseController
                 SELECT DISTINCT av_sa.id
                 FROM account_vouchers av_sa
                 INNER JOIN account_voucher_entries ave_cash ON ave_cash.voucher_id = av_sa.id
-                    AND ave_cash.group_id = 2 AND ave_cash.entry_type = 2 AND ave_cash.ledger_id = ?
+                    AND ave_cash.group_id = 2 AND ave_cash.entry_type = 2 AND ave_cash.ledger_id = {$location_id}
                 INNER JOIN account_voucher_entries ave_party ON ave_party.voucher_id = av_sa.id
                     AND ave_party.group_id IN (4, 5) AND ave_party.entry_type = 1
                 WHERE av_sa.voucher_type = 'Payment'
@@ -5237,15 +5286,17 @@ class Admin extends BaseController
                         WHERE ave3.voucher_id = av.id AND (ave3.group_id != 2 OR ave3.ledger_id != ?)
                        ) as particulars, 
                        av.voucher_type as source,
-                       CASE WHEN ave.entry_type = 1 THEN ave.amount ELSE 0 END as debit,
-                       CASE WHEN ave.entry_type = 2 THEN ave.amount ELSE 0 END as credit
+                       SUM(CASE WHEN ave.entry_type = 1 THEN ave.amount ELSE 0 END) as debit,
+                       SUM(CASE WHEN ave.entry_type = 2 THEN ave.amount ELSE 0 END) as credit
                 FROM account_vouchers av
                 JOIN account_voucher_entries ave ON ave.voucher_id = av.id
                 WHERE ave.group_id = 2  -- Pull the Cash Book entry itself
                   AND ave.ledger_id = ? -- For THIS location
-                  AND av.voucher_date BETWEEN ? AND ?
+                  AND av.voucher_date >= ?
+                  AND av.voucher_date <= ?
                   AND av.id NOT IN ({$excludeStaffAdvanceVoucherSql})
-            ", [$location_id, $location_id, $location_id, $from_date, $to_date])->getResult();
+                GROUP BY av.id, av.voucher_date, av.voucher_type
+            ", [$location_id, $location_id, $from_date, $to_date])->getResult();
 
             $data['entries'] = array_merge($advances, $expenses, $vouchers);
 
@@ -5264,7 +5315,7 @@ class Admin extends BaseController
                 JOIN account_voucher_entries ave ON ave.voucher_id = av.id
                 WHERE ave.group_id = 2 AND ave.ledger_id = ? AND av.voucher_date < ?
                   AND av.id NOT IN ({$excludeStaffAdvanceVoucherSql})
-            ", [$location_id, $from_date, $location_id])->getRow()->net ?? 0;
+            ", [$location_id, $from_date])->getRow()->net ?? 0;
 
             // Equation: Opening + (Cr_Inflow - Dr_Outflow) - StaffAdv - OverallExp
             $data['opening_balance'] += ($pre_vouch - $pre_adv - $pre_exp);
@@ -8243,20 +8294,17 @@ class Admin extends BaseController
         $spreadsheet = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
         $sheet = $spreadsheet->getActiveSheet();
 
-        // Set the header row
-        $sheet->setCellValue('A1', 'Sl No');
-        $sheet->setCellValue('B1', 'Name');
-        $sheet->setCellValue('C1', 'Location');
-        $sheet->setCellValue('D1', 'Contact No.');
-        $sheet->setCellValue('E1', 'Date of Join');
-        $sheet->setCellValue('F1', 'Salary');
-        $sheet->setCellValue('G1', 'Opening Balance');
-        $sheet->setCellValue('H1', 'Advance');
-        $sheet->setCellValue('I1', 'No. of Days');
-        $sheet->setCellValue('J1', 'Bonus Days');
-        $sheet->setCellValue('K1', 'Incentive/Penalty');
-        $sheet->setCellValue('L1', 'Salary');
-        $sheet->setCellValue('M1', 'Net Salary');
+        $headers = [
+            'Sl No', 'Name', 'Location', 'Contact No.', 'Date of Join', 'Salary',
+            'Opening Balance', 'Advance', 'No. of Days', 'Bonus Days', 'Incentive/Penalty',
+            'Salary', 'Net Salary', 'Staff Code', 'Bank Name', 'Account No', 'IFSC Code',
+        ];
+        $col = 'A';
+        foreach ($headers as $header) {
+            $sheet->setCellValue($col . '1', $header);
+            $col++;
+        }
+        $sheet->getStyle('A1:Q1')->getFont()->setBold(true);
 
         // Populate the sheet with staff data
         $row = 2;
@@ -8290,18 +8338,30 @@ class Admin extends BaseController
             $sheet->setCellValue('K' . $row, $insentive);
             $sheet->setCellValue('L' . $row, $total_salary);
             $sheet->setCellValue('M' . $row, $net_salary);
+            $sheet->setCellValueExplicit('N' . $row, (string) ($staf->staff_code ?? ''), \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
+            $sheet->setCellValue('O' . $row, (string) ($staf->name_bank ?? ''));
+            $sheet->setCellValueExplicit('P' . $row, (string) ($staf->ac_no ?? ''), \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
+            $sheet->setCellValueExplicit('Q' . $row, (string) ($staf->ifsc ?? ''), \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
             $row++;
         }
 
-        // Set the filename and download the Excel file
-        $filename = "staff_salary_details_{$year}_{$month}.xlsx";
-        header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-        header('Content-Disposition: attachment;filename="' . $filename . '"');
-        header('Cache-Control: max-age=0');
+        foreach (range('A', 'Q') as $columnID) {
+            $sheet->getColumnDimension($columnID)->setAutoSize(true);
+        }
+
+        $locationSuffix = ! empty($location) ? "_loc{$location}" : '_all';
+        $filename = "staff_salary_details_{$year}_{$month}{$locationSuffix}.xlsx";
+        $response = service('response');
+        $response->setContentType('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        $response->setHeader('Content-Disposition', 'attachment; filename="' . $filename . '"');
+        $response->setHeader('Cache-Control', 'max-age=0');
 
         $writer = \PhpOffice\PhpSpreadsheet\IOFactory::createWriter($spreadsheet, 'Xlsx');
+        ob_start();
         $writer->save('php://output');
-        exit();
+        $excelOutput = ob_get_clean();
+
+        return $response->setBody($excelOutput);
     }
 
 
@@ -17694,7 +17754,7 @@ class Admin extends BaseController
         $sheet = $spreadsheet->getActiveSheet();
         $sheet->setCellValue('A1', 'Staff Code');
         $sheet->setCellValue('B1', 'Staff Name');
-        $sheet->setCellValue('C1', 'Date (dd/mm/yyyy)');
+        $sheet->setCellValue('C1', 'Date (dd/mm/yyyy or dd-mm-yyyy)');
         $sheet->setCellValue('D1', 'Bank/Cash');
         $sheet->setCellValue('E1', 'Amount');
         $sheet->setCellValue('F1', 'Location');
@@ -17706,6 +17766,12 @@ class Admin extends BaseController
         $sheet->setCellValue('D2', 'Cash');
         $sheet->setCellValue('E2', '1000');
         $sheet->setCellValue('F2', 'Main Branch');
+        $sheet->setCellValue('A3', 'S002');
+        $sheet->setCellValue('B3', 'Jane Doe');
+        $sheet->setCellValue('C3', date('d-m-Y'));
+        $sheet->setCellValue('D3', 'Bank');
+        $sheet->setCellValue('E3', '500');
+        $sheet->setCellValue('F3', 'Main Branch');
 
         $writer = new XlsxWriter($spreadsheet);
         header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
