@@ -190,6 +190,124 @@ class Admin extends BaseController
         return $total;
     }
 
+    private function driverSalaryTripExpenseKey($vehicleId, $driverId, $fromDate, $toDate): string
+    {
+        return (int) $vehicleId . '|' . (int) $driverId . '|' . (string) $fromDate . '|' . (string) $toDate;
+    }
+
+    private function driverSalaryDieselLitresKey($vehicleId, $driverId, $fromDate, $toDate): string
+    {
+        return (int) $vehicleId . '|' . (int) $driverId . '|' . (string) $fromDate . '|' . (string) $toDate;
+    }
+
+    /**
+     * @return array{trip_expense: array<string, float>, diesel_litres: array<string, float>}
+     */
+    private function buildDriverSalaryBatchCaches(array $alldriver, int $year, int $month, string $firstDate, string $lastDate): array
+    {
+        $pairs = [];
+        foreach ($alldriver as $staf) {
+            $vehicleId = (int) ($staf->assignment_vehicle_no ?? 0);
+            $driverId = (int) ($staf->id ?? 0);
+            $fromDate = (string) ($staf->from_date ?? '');
+            $toDate = (string) ($staf->to_date ?? '');
+            if ($vehicleId <= 0 || $driverId <= 0 || $fromDate === '' || $toDate === '') {
+                continue;
+            }
+            $pairs[$this->driverSalaryTripExpenseKey($vehicleId, $driverId, $fromDate, $toDate)] = [
+                'vehicle_id' => $vehicleId,
+                'driver_id' => $driverId,
+                'from_date' => $fromDate,
+                'to_date' => $toDate,
+            ];
+        }
+
+        return [
+            'trip_expense' => $this->AdminModel->tripexpence1BatchTotals(array_values($pairs), $year, $month),
+            'diesel_litres' => $this->batchDriverTripDieselLitres($alldriver, $firstDate, $lastDate),
+        ];
+    }
+
+    /**
+     * Same totals as calculateDriverTripDieselLitres(), keyed by vehicle|driver|from|to.
+     *
+     * @return array<string, float>
+     */
+    private function batchDriverTripDieselLitres(array $alldriver, string $firstDate, string $lastDate): array
+    {
+        $totals = [];
+        $vehicleIds = [];
+        $driverIds = [];
+
+        foreach ($alldriver as $staf) {
+            $vehicleId = (int) ($staf->assignment_vehicle_no ?? 0);
+            $driverId = (int) ($staf->id ?? 0);
+            $fromDate = (string) ($staf->from_date ?? '');
+            $toDate = (string) ($staf->to_date ?? '');
+
+            if ($vehicleId <= 0 || $driverId <= 0 || $fromDate === '' || $toDate === '') {
+                continue;
+            }
+
+            $key = $this->driverSalaryDieselLitresKey($vehicleId, $driverId, $fromDate, $toDate);
+            $totals[$key] = 0.0;
+            $vehicleIds[$vehicleId] = $vehicleId;
+            $driverIds[$driverId] = $driverId;
+        }
+
+        if ($totals === []) {
+            return $totals;
+        }
+
+        $rows = $this->db->table('despatch')
+            ->select('despatch.despatch_id, do_registration.diesel_type, despatch.vehicle_no, despatch.des_date,
+                driver_assignment.driver, driver_assignment.from_date, driver_assignment.to_date')
+            ->join('do_registration', 'do_registration.do_registration_id = despatch.do_no', 'left')
+            ->join(
+                'driver_assignment',
+                'driver_assignment.vehicle_no = despatch.vehicle_no',
+                'inner'
+            )
+            ->whereIn('despatch.vehicle_no', array_values($vehicleIds))
+            ->whereIn('driver_assignment.driver', array_values($driverIds))
+            ->where('despatch.des_date >=', $firstDate)
+            ->where('despatch.des_date <=', $lastDate)
+            ->where('despatch.deleted_at IS NULL', null, false)
+            ->where('despatch.deleted_by IS NULL', null, false)
+            ->get()
+            ->getResult();
+
+        $seenTripIds = [];
+        foreach ($rows as $row) {
+            $key = $this->driverSalaryDieselLitresKey(
+                $row->vehicle_no,
+                $row->driver,
+                $row->from_date,
+                $row->to_date
+            );
+
+            if (!isset($totals[$key])) {
+                continue;
+            }
+
+            if ($row->des_date < $row->from_date || $row->des_date > $row->to_date) {
+                continue;
+            }
+
+            $tripId = (int) ($row->despatch_id ?? 0);
+            if ($tripId > 0) {
+                if (isset($seenTripIds[$key][$tripId])) {
+                    continue;
+                }
+                $seenTripIds[$key][$tripId] = true;
+            }
+
+            $totals[$key] += $this->parseDieselForTrip($row->diesel_type ?? 0);
+        }
+
+        return $totals;
+    }
+
     public function index()
     {
         return view('admin/login');
@@ -2702,6 +2820,8 @@ class Admin extends BaseController
                 $short_name = $this->request->getPost('short_name');
                 $opening_balance = $this->request->getPost('opening_balance');
                 $radius = $this->request->getPost('radius');
+                $latitude = $this->request->getPost('latitude');
+                $longitude = $this->request->getPost('longitude');
                 $status = $this->request->getPost('status') ?: 'Active';
 
                 $data = [
@@ -2709,6 +2829,8 @@ class Admin extends BaseController
                     'location_shordname' => $short_name,
                     'opening_balance' => $opening_balance,
                     'radius' => $radius,
+                    'latitude' => $latitude !== '' && $latitude !== null ? $latitude : null,
+                    'longitude' => $longitude !== '' && $longitude !== null ? $longitude : null,
                     'status' => $status,
                 ];
                 $this->db->table('location')->insert($data);
@@ -2748,6 +2870,8 @@ class Admin extends BaseController
                 $location_shordname = $row[1];
                 $opening_balance = $row[2] ?? 0;
                 $radius = $row[3] ?? 0;
+                $latitude = $row[4] ?? null;
+                $longitude = $row[5] ?? null;
 
                 // Check if the location_name or location_shordname already exists
                 $existingLocation = $this->db->table('location')
@@ -2763,6 +2887,8 @@ class Admin extends BaseController
                         'location_shordname' => $location_shordname,
                         'opening_balance' => $opening_balance,
                         'radius' => $radius,
+                        'latitude' => $latitude !== '' && $latitude !== null ? $latitude : null,
+                        'longitude' => $longitude !== '' && $longitude !== null ? $longitude : null,
                     ];
 
                     $this->db->table('location')->insert($data);
@@ -2785,6 +2911,8 @@ class Admin extends BaseController
             $sname = $this->request->getVar('sname');
             $opening_balance = $this->request->getVar('opening_balance');
             $radius = $this->request->getVar('radius');
+            $latitude = $this->request->getVar('latitude');
+            $longitude = $this->request->getVar('longitude');
             $status = $this->request->getVar('status');
 
             $data = [
@@ -2792,6 +2920,8 @@ class Admin extends BaseController
                 'location_shordname' => $sname,
                 'opening_balance' => $opening_balance,
                 'radius' => $radius,
+                'latitude' => $latitude !== '' && $latitude !== null ? $latitude : null,
+                'longitude' => $longitude !== '' && $longitude !== null ? $longitude : null,
                 'status' => $status,
             ];
 
@@ -3414,6 +3544,14 @@ class Admin extends BaseController
                 'invoice_date' => $invoicedate,
                 'invoice_number' => $invoiceno
             ];
+
+            $file = $this->request->getFile('bill_photo');
+            if ($file && $file->isValid() && !$file->hasMoved()) {
+                $billPhotoName = $file->getRandomName();
+                $file->move('public/uploads/purchase_bills/', $billPhotoName);
+                $headerData['bill_photo'] = $billPhotoName;
+            }
+
             $this->db->table('stock')->where('stock_code', $stock_code)->update($headerData);
         }
 
@@ -3449,11 +3587,27 @@ class Admin extends BaseController
         if ($this->session->get('user_id')) {
 
             $user_id = $this->session->get('user_id');
-            $data['setting'] = $this->AdminModel->Settingdata();
+            $fromDate   = trim((string) ($this->request->getGet('from_date') ?? $this->request->getPost('from_date') ?? ''));
+            $toDate     = trim((string) ($this->request->getGet('to_date') ?? $this->request->getPost('to_date') ?? ''));
+            $locationId = (int) ($this->request->getGet('location_id') ?? $this->request->getPost('location_id') ?? 0);
+            $supplierId = (int) ($this->request->getGet('supplier_id') ?? $this->request->getPost('supplier_id') ?? 0);
+            $search     = trim((string) ($this->request->getGet('search') ?? $this->request->getPost('search') ?? ''));
+
+            $filters = [
+                'from_date'   => $fromDate,
+                'to_date'     => $toDate,
+                'location_id' => $locationId,
+                'supplier_id' => $supplierId,
+                'search'      => $search,
+            ];
+
+            $data['setting']    = $this->AdminModel->Settingdata();
             $data['singleuser'] = $this->AdminModel->userdata($user_id);
-            $data['stock_dtls'] = $this->AdminModel->stock_dtls();
-            $data['location'] = $this->db->query("SELECT * FROM location WHERE (status IS NULL OR status='Active')")->getResult();
-            $data['vendor'] = $this->db->query("SELECT * FROM vendor")->getResult();
+            $data['stock_dtls'] = $this->AdminModel->getPurchaseVoucherList($filters);
+            $data['location']   = $this->db->query("SELECT * FROM location WHERE (status IS NULL OR status='Active') ORDER BY location_name")->getResult();
+            $data['vendor']     = $this->db->query("SELECT * FROM vendor WHERE (type IS NULL OR type != 'Pump') ORDER BY name")->getResult();
+            $data['filters']    = $filters;
+
             return view('admin/Allstock_vw', $data);
         } else {
             return redirect()->to('Admin/');
@@ -3843,65 +3997,17 @@ class Admin extends BaseController
     }
     public function getItemsDetails()
     {
-        $location_id = $this->request->getPost('location_id');
+        $location_id = (int) $this->request->getPost('location_id');
+        $items = $this->AdminModel->getPurchaseItemsByLocation($location_id);
 
-        $builder = $this->db->table('items i');
-        $builder->select("
-            i.id,
-            i.item_id,
-            i.item_name,
-            i.amount,
-            (
-                COALESCE((
-                    SELECT SUM(s.quantity)
-                    FROM stock s
-                    WHERE s.sproduct_id = i.id
-                    AND s.location_id = {$location_id}
-                ),0)
-                -
-                COALESCE((
-                    SELECT SUM(im.qty)
-                    FROM inhouse_maintenance im
-                    WHERE im.item = i.id
-                    AND im.location = {$location_id}
-                ),0)
-            ) AS available_qty
-        ");
-
-        $items = $builder->get()->getResult();
         return $this->response->setJSON($items);
     }
+
     public function getItemsDetails1()
     {
-        $location_id = $this->request->getPost('location_id');
+        $location_id = (int) $this->request->getPost('location_id');
+        $items = $this->AdminModel->getPurchaseItemsByLocation($location_id, true);
 
-        $builder = $this->db->table('items i');
-        $builder->select("
-            i.id,
-            i.item_id,
-            i.item_name,
-            i.amount,
-            (
-                COALESCE((
-                    SELECT SUM(s.quantity)
-                    FROM stock s
-                    WHERE s.sproduct_id = i.id
-                    AND s.location_id = {$location_id}
-                ), 0)
-                -
-                COALESCE((
-                    SELECT SUM(im.qty)
-                    FROM inhouse_maintenance im
-                    WHERE im.item = i.id
-                    AND im.location = {$location_id}
-                ), 0)
-            ) AS available_qty
-        ");
-
-        // Filter out items where available_qty is 0
-        $builder->having('available_qty >', 0);
-
-        $items = $builder->get()->getResult();
         return $this->response->setJSON($items);
     }
     public function deletepurchasecart()
@@ -5351,7 +5457,7 @@ class Admin extends BaseController
             $data['setting'] = $this->AdminModel->Settingdata();
             $data['singleuser'] = $this->AdminModel->userdata($user_id);
             $data['vehicles'] = $this->AdminModel->Getvehicle();
-            $data['drivers'] = $this->AdminModel->Getallstaf();
+            $data['drivers'] = $this->AdminModel->GetallDrivers();
             $data['drivers_asignment'] = $this->AdminModel->driverasignment($from_date, $to_date);
             $data['date'] = [
                 'from_date' => $from_date,
@@ -5379,7 +5485,7 @@ class Admin extends BaseController
             $data['setting'] = $this->AdminModel->Settingdata();
             $data['singleuser'] = $this->AdminModel->userdata($user_id);
             $data['vehicles'] = $this->AdminModel->Getvehicle();
-            $data['drivers'] = $this->AdminModel->Getallstaf();
+            $data['drivers'] = $this->AdminModel->GetallDrivers();
             $data['drivers_asignment'] = $this->AdminModel->singledriverasignment($segment);
 
             // print_r($data['drivers_asignment']);exit;
@@ -5574,7 +5680,7 @@ class Admin extends BaseController
 
             $data['setting'] = $this->AdminModel->Settingdata();
             $data['singleuser'] = $this->AdminModel->userdata($user_id);
-            $data['drivers'] = $this->AdminModel->Getallstaf();
+            $data['drivers'] = $this->AdminModel->GetallDrivers();
             $data['issues'] = $this->AdminModel->get_all_material_issues($filter_driver);
             return view('admin/material_issue_vw', $data);
         } else {
@@ -5632,7 +5738,7 @@ class Admin extends BaseController
             $user_id = $this->session->get('user_id');
             $data['setting'] = $this->AdminModel->Settingdata();
             $data['singleuser'] = $this->AdminModel->userdata($user_id);
-            $data['drivers'] = $this->AdminModel->Getallstaf();
+            $data['drivers'] = $this->AdminModel->GetallDrivers();
             $data['reissues'] = $this->AdminModel->get_all_material_reissues();
             return view('admin/re_issue_vw', $data);
         } else {
@@ -6615,12 +6721,6 @@ class Admin extends BaseController
         $driver_id = $this->request->getVar('driver_id');
 
         $alldriver = $this->AdminModel->driver_salary_details($year, $month, $location, $driver_id);
-        //   echo'<pre>';
-        //   print_r($alldriver);
-        //   exit;
-        $data['allamount'] = $this->AdminModel->showadjust_salary();
-
-
 
         // Validate the inputs
         if (!is_numeric($year) || !is_numeric($month) || $month < 1 || $month > 12) {
@@ -6630,9 +6730,16 @@ class Admin extends BaseController
         // Create a DateTimeImmutable object for the first day of the given month and year
         $date = new DateTimeImmutable("$year-$month-01");
 
-
         // Get the number of days in the month
         $curent_monthday = $date->format('t');
+
+        $salaryBatchCaches = $this->buildDriverSalaryBatchCaches(
+            $alldriver,
+            (int) $year,
+            (int) $month,
+            $first_datesam,
+            $last_datesam
+        );
 
         // --- OPTIMIZATION: Batch Fetch Data to avoid N+1 Query Problem ---
         $staff_ids = array_column($alldriver, 'id');
@@ -6742,26 +6849,26 @@ class Admin extends BaseController
                         $used_hsd = $opening_hsd + $sum_diesel_qty - $closing_hsd;
 
                         // Trip diesel allowance for this driver assignment only
-                        $total_d_req = $this->calculateDriverTripDieselLitres(
+                        $dieselKey = $this->driverSalaryDieselLitresKey(
                             $staf->assignment_vehicle_no,
                             $staf->id,
                             $staf->from_date ?? '',
                             $staf->to_date ?? ''
                         );
+                        $total_d_req = $salaryBatchCaches['diesel_litres'][$dieselKey] ?? 0.0;
 
                         $HSD_LTR = $total_d_req - $used_hsd;
                         if ($HSD_LTR > 0)
                             $HSD_LTR = 0;
                         $hsd_amount = $HSD_LTR * $diesel_rate;
 
-                        // Trip Expense calculation (Still per driver due to complexity, but we've saved many other queries)
-                        $trip_expence = $this->AdminModel->tripexpence1($staf->assignment_vehicle_no, $staf->id, $year, $month);
-                        $total_month_expence = 0;
-                        if (!empty($trip_expence)) {
-                            foreach ($trip_expence as $trex) {
-                                $total_month_expence += (float) $trex->day_trip_expense;
-                            }
-                        }
+                        $tripKey = $this->driverSalaryTripExpenseKey(
+                            $staf->assignment_vehicle_no,
+                            $staf->id,
+                            $staf->from_date ?? '',
+                            $staf->to_date ?? ''
+                        );
+                        $total_month_expence = $salaryBatchCaches['trip_expense'][$tripKey] ?? 0.0;
 
                         // Advances, Adjustments and Bonus from pre-fetched data
                         $getSum = 0;
@@ -6907,6 +7014,14 @@ class Admin extends BaseController
         $alldriver = $this->AdminModel->driver_salary_details($year, $month, $location, $driver_id);
         $curent_monthday = date('t', strtotime("$year-$month-01"));
 
+        $salaryBatchCaches = $this->buildDriverSalaryBatchCaches(
+            $alldriver,
+            (int) $year,
+            (int) $month,
+            $first_datesam,
+            $last_datesam
+        );
+
         // --- OPTIMIZATION: Batch Fetch Data to avoid N+1 Query Problem ---
         $staff_ids = array_column($alldriver, 'id');
         $vehicle_ids = array_filter(array_column($alldriver, 'assignment_vehicle_no'));
@@ -6995,26 +7110,26 @@ class Admin extends BaseController
             $used_hsd = $opening_hsd + $sum_diesel_qty - $closing_hsd;
 
             // Trip diesel allowance for this driver assignment only
-            $total_d_req = $this->calculateDriverTripDieselLitres(
+            $dieselKey = $this->driverSalaryDieselLitresKey(
                 $staf->assignment_vehicle_no,
                 $staf->id,
                 $staf->from_date ?? '',
                 $staf->to_date ?? ''
             );
+            $total_d_req = $salaryBatchCaches['diesel_litres'][$dieselKey] ?? 0.0;
 
             $HSD_LTR = $total_d_req - $used_hsd;
             if ($HSD_LTR > 0)
                 $HSD_LTR = 0;
             $hsd_amount = $HSD_LTR * $diesel_rate;
 
-            // Trip Expenses Calculation
-            $trip_exp_res = $this->AdminModel->tripexpence1($staf->assignment_vehicle_no, $staf->id, $year, $month);
-            $trip_exp_sum = 0;
-            if (!empty($trip_exp_res)) {
-                foreach ($trip_exp_res as $trex) {
-                    $trip_exp_sum += (float) $trex->day_trip_expense;
-                }
-            }
+            $tripKey = $this->driverSalaryTripExpenseKey(
+                $staf->assignment_vehicle_no,
+                $staf->id,
+                $staf->from_date ?? '',
+                $staf->to_date ?? ''
+            );
+            $trip_exp_sum = $salaryBatchCaches['trip_expense'][$tripKey] ?? 0.0;
 
             // Advances, Adjustments from pre-fetched data
             $getSum = 0;
@@ -7622,6 +7737,7 @@ class Admin extends BaseController
         $assigned_vehicles = [];
         $assignment_last = null;
         $unique_working_dates = []; // ← unique date set to prevent double-counting
+        $trip_expense_seen = []; // vehicle|driver — avoid duplicate month totals on slip
 
         foreach ($assignments as $asgn) {
             $assignment_last = $asgn;
@@ -7649,12 +7765,16 @@ class Admin extends BaseController
                 $assigned_vehicles[] = $asgn->vehicle_no;
             }
 
-            // Trip expenses for this assignment
-            $trips_res = $this->AdminModel->tripexpence1($asgn->vehicle_no, $staff_id, $year, $month);
-            if (!empty($trips_res)) {
-                foreach ($trips_res as $trex) {
-                    $trip_expenses_sum += (float) $trex->day_trip_expense;
-                }
+            // Trip expenses once per vehicle+driver (full month, all assignment windows)
+            $tripKey = (int) $asgn->vehicle_no . '|' . (int) $staff_id;
+            if (!isset($trip_expense_seen[$tripKey])) {
+                $trip_expense_seen[$tripKey] = true;
+                $trip_expenses_sum += $this->AdminModel->tripexpence1Sum(
+                    $asgn->vehicle_no,
+                    $staff_id,
+                    $year,
+                    $month
+                );
             }
         }
 
@@ -7675,11 +7795,14 @@ class Admin extends BaseController
 
         $salary_advance = 0;
         $trip_advance = 0;
+        $isDriver = strtoupper(trim((string) ($driver->user_type ?? ''))) === 'DRIVER';
         foreach ($adv_res as $adv) {
-            if ($adv->despatch_id)
-                $trip_advance += (float) $adv->amount;
-            else
-                $salary_advance += (float) $adv->amount;
+            $amount = (float) $adv->amount;
+            if ($isDriver || !empty($adv->despatch_id)) {
+                $trip_advance += $amount;
+            } else {
+                $salary_advance += $amount;
+            }
         }
         $total_advance = $salary_advance + $trip_advance;
 
@@ -7705,6 +7828,8 @@ class Admin extends BaseController
             ->where('despatch.des_date <=', $eff_to)
             ->where('despatch.des_date >= driver_assignment.from_date', null, false)
             ->where('(despatch.des_date <= driver_assignment.to_date OR driver_assignment.to_date IS NULL OR driver_assignment.to_date = "0000-00-00" OR driver_assignment.to_date = "")', null, false)
+            ->where('despatch.deleted_by IS NULL', null, false)
+            ->where('despatch.deleted_at IS NULL', null, false)
             ->groupBy('despatch.despatch_id')
             ->orderBy('despatch.des_date', 'ASC');
 
@@ -7713,7 +7838,8 @@ class Admin extends BaseController
         $total_d_req = 0;
         $do_grouped = [];
         foreach ($trips as $trip) {
-            $total_d_req += (float) $trip->diesel_required;
+            $dieselLitres = $this->parseDieselForTrip($trip->diesel_required);
+            $total_d_req += $dieselLitres;
 
             $do_key = $trip->do_no;
             if (!isset($do_grouped[$do_key])) {
@@ -7724,7 +7850,7 @@ class Admin extends BaseController
                 $do_grouped[$do_key] = [
                     'do_reg_no' => $trip->do_reg_no,
                     'route' => $route_label,
-                    'diesel_per_trip' => (float) $trip->diesel_required,
+                    'diesel_per_trip' => $dieselLitres,
                     'trip_count' => 0,
                     'vehicles' => [],
                     'dates' => [],
@@ -7888,7 +8014,7 @@ class Admin extends BaseController
             $data['setting'] = $this->AdminModel->Settingdata();
             $data['singleuser'] = $this->AdminModel->userdata($user_id);
 
-            $data['drivers'] = $this->AdminModel->Getallstaf();
+            $data['drivers'] = $this->AdminModel->GetallDrivers();
             $data['vehicles'] = $this->AdminModel->Getallvehicle();
 
 
@@ -8019,7 +8145,7 @@ class Admin extends BaseController
         $data['setting'] = $this->AdminModel->Settingdata();
         $data['singleuser'] = $this->AdminModel->userdata($user_id);
         $data['location'] = $this->db->query("SELECT * FROM location WHERE (status IS NULL OR status='Active')")->getResult();
-        $data['drivers'] = $this->AdminModel->Getallstaf();
+        $data['drivers'] = $this->AdminModel->GetallDrivers();
 
         // Fetch the salary adjustment details using the ID
         $salary_id = $this->request->getUri()->getSegment(3);
@@ -8118,6 +8244,14 @@ class Admin extends BaseController
         // Get the number of days in the month
         $curent_monthday = $date->format('t');
         ?>
+        <style>
+            #row_create input.working_day:disabled {
+                background-color: #fff;
+                color: #212529;
+                opacity: 1;
+                cursor: not-allowed;
+            }
+        </style>
         <div class="table-responsive">
             <table class="display" id="row_create" style="width:100%">
                 <thead>
@@ -8164,7 +8298,8 @@ class Admin extends BaseController
                                     data-opening-balance="<?= $staf->opening_balance ?>"
                                     data-total-advance="<?= $staf->total_advance ?>" data-type="<?= $staf->user_type ?>"
                                     data-present-days="<?= (int) ($staf->present_days ?? 0) ?>"
-                                    title="Attendance (Present + Holiday): <?= (int) ($staf->present_days ?? 0) ?>">
+                                    title="Attendance (Present + Holiday): <?= (int) ($staf->present_days ?? 0) ?>"
+                                    readonly disabled>
                             </td>
                             <td>
                                 <input type="number" class="form-control bonus_days" name="bonus_days[]" min="0" step="1"
@@ -8218,7 +8353,9 @@ class Admin extends BaseController
                     var opening_balance = parseFloat(row.find('.working_day').data('opening-balance'));
                     var total_advance = row.find('.working_day').data('total-advance').toString().replace(/,/g, '');
                     total_advance = parseFloat(total_advance);
-                    var working_day = parseFloat(row.find('.working_day').val()) || 0;
+                    var working_day = parseFloat(row.find('.working_day').val())
+                        || parseFloat(row.find('.working_day').data('present-days'))
+                        || 0;
                     var bonus_days = parseFloat(row.find('.bonus_days').val()) || 0;
                     var insentive = parseFloat(row.find('.insentive').val()) || 0;
                     var monthDays = parseFloat(<?= $curent_monthday ?>);
@@ -8243,27 +8380,28 @@ class Admin extends BaseController
                     };
                 }
 
-                $('.working_day, .bonus_days, .insentive').on('input', function () {
-                    var row = $(this).closest('tr');
+                function saveStaffSalaryRow(row) {
                     var dataToSend = calculateStaffSalaryRow(row);
 
                     $.ajax({
-                        url: '<?php echo base_url(); ?>/admin/insert_workingday', // Replace with the URL of your server-side script
+                        url: '<?php echo base_url(); ?>/admin/insert_workingday',
                         type: 'POST',
                         data: dataToSend,
                         success: function (response) {
-                            // Handle the response from the server if needed
                             console.log('Server response:', response);
                         },
                         error: function (xhr, status, error) {
-                            // Handle any errors that occur during the AJAX request
                             console.error('AJAX error:', status, error);
                         }
                     });
+                }
+
+                $('.bonus_days, .insentive').on('input', function () {
+                    saveStaffSalaryRow($(this).closest('tr'));
                 });
 
                 $('#row_create tbody tr').each(function () {
-                    $(this).find('.working_day').trigger('input');
+                    saveStaffSalaryRow($(this));
                 });
             });
         </script>
@@ -8368,14 +8506,15 @@ class Admin extends BaseController
 
     function insert_workingday()
     {
-        $working_day = $this->request->getVar('working_day');
         $bonus_days = $this->request->getVar('bonus_days');
         $insentive = $this->request->getVar('insentive');
-        $staff_id = $this->request->getVar('staff_id');
-        $year = $this->request->getVar('year');
-        $month = $this->request->getVar('month');
+        $staff_id = (int) $this->request->getVar('staff_id');
+        $year = (int) $this->request->getVar('year');
+        $month = (int) $this->request->getVar('month');
         $tsalary = $this->request->getVar('tsalary');
         $netsalary = $this->request->getVar('netsalary');
+
+        $working_day = $this->AdminModel->getStaffSalaryPresentDays($staff_id, $year, $month);
 
         $data = [
 
@@ -10889,7 +11028,11 @@ class Admin extends BaseController
 
         $result = $this->AdminModel->createVoucherPayment($voucher_ids);
 
-        return $this->response->setJSON($result);
+        $statusCode = ($result['status'] ?? '') === 'success' ? 200 : 409;
+
+        return $this->response
+            ->setStatusCode($statusCode)
+            ->setJSON($result);
     }
 
 
@@ -13932,66 +14075,37 @@ class Admin extends BaseController
             return redirect()->to(base_url('login'));
         }
 
-        $old_id = $this->request->getPost('old_tyre_id');
-        $new_serial = $this->request->getPost('new_serial');
-        $brand_id = $this->request->getPost('brand_id');
-        $new_model = $this->request->getPost('new_model');
-        $exchange_date = $this->request->getPost('exchange_date');
-        $remark = $this->request->getPost('remark');
+        $old_id = (int) $this->request->getPost('old_tyre_id');
+        $new_serial = trim((string) $this->request->getPost('new_serial'));
+        $brand_id = trim((string) $this->request->getPost('brand_id'));
+        $new_model = trim((string) $this->request->getPost('new_model'));
+        $exchange_date = trim((string) $this->request->getPost('exchange_date'));
+        $remark = trim((string) $this->request->getPost('remark'));
 
-        $exists = $this->db->table('tyer_management')->where('tyer_sl_no', $new_serial)->countAllResults();
-        if ($exists > 0) {
-            return redirect()->back()->with('error', 'The replacement serial number already exists.');
+        if ($old_id <= 0 || $new_serial === '' || $brand_id === '') {
+            return redirect()->back()->with('error', 'Old tyre, new serial and brand are required.');
         }
 
-        $old_tyre = $this->db->table('tyer_management')->where('id', $old_id)->get()->getRow();
-        if (!$old_tyre) {
-            return redirect()->back()->with('error', 'Original tyre not found.');
+        $result = $this->AdminModel->storeVendorTyreExchange(
+            $old_id,
+            $new_serial,
+            $brand_id,
+            $new_model,
+            $exchange_date !== '' ? $exchange_date : date('Y-m-d'),
+            $remark
+        );
+
+        if ($result === null) {
+            $exists = $this->db->table('tyer_management')->where('tyer_sl_no', $new_serial)->countAllResults();
+            if ($exists > 0) {
+                return redirect()->back()->with('error', 'The replacement serial number already exists.');
+            }
+
+            return redirect()->back()->with('error', 'Failed to complete vendor exchange.');
         }
 
-        $this->db->transStart();
-
-        $new_status = ($old_tyre->vehicle_id != null) ? 2 : 1;
-
-        $newData = [
-            'brand_name' => $brand_id,
-            'model' => $new_model,
-            'tyer_sl_no' => $new_serial,
-            'tyer_type' => $old_tyre->tyer_type,
-            'vendor_id' => $old_tyre->vendor_id,
-            'date' => date('Y-m-d'),
-            'bill_no' => $old_tyre->bill_no,
-            'price' => $old_tyre->price,
-            'status' => $new_status,
-            'location_id' => $old_tyre->location_id,
-            'vehicle_id' => $old_tyre->vehicle_id,
-            'tyer_position' => $old_tyre->tyer_position,
-            'asign_date' => ($old_tyre->vehicle_id != null) ? $exchange_date : null,
-            'remark' => "Received as warranty replacement for $old_tyre->tyer_sl_no. $remark",
-            'replaced_from_id' => $old_id,
-            'created_at' => date('Y-m-d H:i:s')
-        ];
-        $this->db->table('tyer_management')->insert($newData);
-        $new_id = $this->db->insertID();
-
-        $this->db->table('tyer_management')->where('id', $old_id)->update([
-            'status' => 11, // Exchange Completed
-            'vehicle_id' => null,
-            'tyer_position' => null,
-            'replaced_to_id' => $new_id,
-            'remark' => "Exchange completed. Replaced by $new_serial. $remark"
-        ]);
-
-        $this->db->table('tyer_management_history')->insert([
-            'tyre_id' => $new_id,
-            'event_type' => 11, // Exchange Completed
-            'event_date' => $exchange_date,
-            'remarks' => "Exchange completed. Received from vendor as replacement for $old_tyre->tyer_sl_no. $remark",
-            'created_at' => date('Y-m-d H:i:s')
-        ]);
-
-        $this->db->transComplete();
-        return redirect()->to(base_url('/admin/tyre_details_vw/' . $new_id))->with('status', 'Exchange completed successfully');
+        return redirect()->to(base_url('/admin/tyre_details_vw/' . $result['new_tyre_id']))
+            ->with('status', 'Exchange completed successfully');
     }
 
     public function getTyerDetailsByBillNo()
@@ -14834,6 +14948,17 @@ class Admin extends BaseController
             'created_at' => date('Y-m-d H:i:s')
         ]);
 
+        if ($old_tyre) {
+            $this->AdminModel->recordTyreExchange(
+                (int) $vehicle_id,
+                (int) $old_tyre->id,
+                (int) $tyer_id,
+                (string) $tyer_position,
+                (string) $replacement_date,
+                'Tyre replaced on vehicle from stock'
+            );
+        }
+
         return redirect()->to('admin/Asign_Tyer')->with('msg', 'Tyre exchanged successfully.');
     }
 
@@ -14930,6 +15055,15 @@ class Admin extends BaseController
                 'remarks' => "Rotated from $source_position to $target_position",
                 'created_at' => date('Y-m-d H:i:s')
             ]);
+
+            $this->AdminModel->recordTyreExchange(
+                (int) $vehicle_id,
+                (int) $target_tyre->id,
+                (int) $source_tyre_id,
+                (string) $target_position,
+                (string) $replacement_date,
+                "Internal rotation: {$source_position} <-> {$target_position}"
+            );
 
             return redirect()->to('admin/Asign_Tyer')->with('msg', 'Tyres rotated successfully.');
         }
@@ -17161,10 +17295,13 @@ class Admin extends BaseController
         }
 
         $user_id = $this->session->get('user_id');
+        $assigned_to = $this->request->getPost('assigned_to'); // array
+        $cc = $this->request->getPost('cc');                  // array
 
         $data = [
             'task_description' => $this->request->getPost('task_description'),
-            'assigned_to' => $this->request->getPost('assigned_to'),
+            'assigned_to' => !empty($assigned_to) ? implode(',', $assigned_to) : null,
+            'cc' => !empty($cc) ? implode(',', $cc) : null,
             'assigned_by' => $user_id,
             'created_date' => date('Y-m-d'),
             'completion_date' => $this->request->getPost('completion_date'),

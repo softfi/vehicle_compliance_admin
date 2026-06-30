@@ -16,6 +16,9 @@ class AuthController extends BaseApiController
 
     /**
      * POST /api/subadmin/login
+     * POST /api/login (alias)
+     *
+     * Admin (user_type=1) aur Sub-admin (user_type=2) dono login kar sakte hain.
      * Body: username, password, device_id (optional)
      */
     public function login()
@@ -44,7 +47,7 @@ class AuthController extends BaseApiController
             FROM user u
             LEFT JOIN location l ON l.location_id = u.location_id
             WHERE u.user_name = ?
-              AND u.user_type = 2
+              AND u.user_type IN (1, 2)
               AND u.deleted_by IS NULL
             LIMIT 1
         ", [$username])->getRow();
@@ -55,7 +58,18 @@ class AuthController extends BaseApiController
                 'error'    => true,
                 'messages' => [
                     'responsecode' => '02',
-                    'message'      => 'Sub-admin not found.',
+                    'message'      => 'User not found.',
+                ],
+            ], 400);
+        }
+
+        if ((int) ($user->status ?? 0) !== 1) {
+            return $this->respond([
+                'status'   => 400,
+                'error'    => true,
+                'messages' => [
+                    'responsecode' => '08',
+                    'message'      => 'Your account is inactive. Contact administrator.',
                 ],
             ], 400);
         }
@@ -95,24 +109,44 @@ class AuthController extends BaseApiController
 
     /**
      * GET /api/subadmin/me
+     * GET /api/profile
+     *
+     * Logged-in sub-admin profile with profile image URL.
      * Header: Authorization: Bearer {token}
      */
     public function me()
     {
-        $user = $this->authUser();
+        return $this->profile();
+    }
 
-        return $this->respond([
-            'status'   => 200,
-            'error'    => false,
-            'messages' => [
-                'responsecode' => '00',
-                'message'      => 'Profile fetched.',
-                'data'         => array_merge(
-                    $this->formatUserPayload($user),
-                    ['isLoggedIn' => true]
-                ),
-            ],
-        ], 200);
+    /**
+     * GET /api/profile
+     */
+    public function profile()
+    {
+        $authUser = $this->authUser();
+        $userId = (int) ($authUser->id ?? 0);
+
+        $user = $this->db->query("
+            SELECT u.*, l.location_name, l.location_shordname
+            FROM user u
+            LEFT JOIN location l ON l.location_id = u.location_id
+            WHERE u.id = ?
+              AND u.user_type IN (1, 2)
+              AND u.deleted_by IS NULL
+            LIMIT 1
+        ", [$userId])->getRow();
+
+        if ($user === null) {
+            return $this->apiError('04', 'User profile not found.', 404);
+        }
+
+        return $this->apiSuccess('Profile loaded.', [
+            'profile' => array_merge(
+                $this->formatUserPayload($user),
+                ['is_logged_in' => true]
+            ),
+        ]);
     }
 
     /**

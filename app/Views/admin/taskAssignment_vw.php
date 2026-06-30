@@ -217,14 +217,15 @@
                                     $daysDiff = (int) floor((strtotime($task->completion_date) - strtotime($todayYmd)) / 86400);
                                     $dueText = $statusKey === 'complete' ? 'Done' : ($daysDiff < 0 ? (abs($daysDiff) . 'd overdue') : ($daysDiff === 0 ? 'Due today' : ($daysDiff . 'd left')));
 
-                                    $assignedTo = isset($task->assigned_to_name) ? $task->assigned_to_name : '';
-                                    $assignedBy = isset($task->assigned_by_name) ? $task->assigned_by_name : '';
-                                    $ccList     = isset($task->cc_name) ? $task->cc_name : '';
+                                    $assignedTo = isset($task->assigned_to_name) && $task->assigned_to_name !== '' ? $task->assigned_to_name : '—';
+                                    $assignedBy = isset($task->assigned_by_name) && $task->assigned_by_name !== '' ? $task->assigned_by_name : '—';
+                                    $ccList     = isset($task->cc_name)          && $task->cc_name !== ''          ? $task->cc_name          : '—';
 
-                                    // Build initials for avatar (assigned to)
+                                    // Build initials from first assigned name
                                     $initials = '';
-                                    $parts = preg_split('/\s+/', trim((string)$assignedTo));
-                                    foreach ($parts as $p) { if ($p !== '') { $initials .= strtoupper(substr($p, 0, 1)); } }
+                                    $firstName = explode(',', $assignedTo)[0];
+                                    $parts = preg_split('/\s+/', trim((string)$firstName));
+                                    foreach ($parts as $p) { if ($p !== '' && $p !== '—') { $initials .= strtoupper(substr($p, 0, 1)); } }
                                     $initials = substr($initials, 0, 2);
 
                                     // Fulltext for client-side search
@@ -478,7 +479,9 @@
                 });
             }
             function updateOptionStates(){
-                const selects = getSelects();
+                const form = container.closest('form');
+                if (!form) return;
+                const selects = Array.from(form.querySelectorAll('select[name="assigned_to[]"], select[name="cc[]"]'));
                 const chosen = new Set(selects.map(s => s.value).filter(Boolean));
                 selects.forEach(sel => {
                     Array.from(sel.options).forEach(opt => {
@@ -773,6 +776,10 @@
             btn.addEventListener('click', () => {
                 openEditModal({
                     id: btn.getAttribute('data-id'),
+                    desc: btn.getAttribute('data-desc'),
+                    remarks: btn.getAttribute('data-remarks'),
+                    assignees: btn.getAttribute('data-assignees'),
+                    cc: btn.getAttribute('data-cc'),
                     completion: btn.getAttribute('data-completion'),
                     statusLabel: btn.getAttribute('data-status-label')
                 });

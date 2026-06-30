@@ -45,7 +45,7 @@
                     <div class="uk-grid-small uk-child-width-expand@m uk-grid" uk-grid="">
                         <div>
                             <label>Select Vendor</label>
-                            <select name="vendor_id" id="single" class="form-control">
+                            <select name="vendor_id" id="vendor_id_select" class="form-control select2-vendor">
                                 <option value="">Select Vendor</option>
                                 <?php foreach ($vendor as $ven) { ?>
                                     <option value="<?= $ven->id; ?>" <?= set_select('vendor_id', $ven->id); ?>><?= $ven->name; ?></option>
@@ -131,9 +131,16 @@
 
 <script src='https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js'></script>
 <script src='https://maxcdn.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js'></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/select2/4.0.6-rc.0/js/select2.min.js"></script>
 
 <script>
     $(document).ready(function () {
+        $('#vendor_id_select').select2({
+            width: '100%',
+            placeholder: 'Select Vendor',
+            allowClear: true
+        });
+
         var i = 1;
         
         function addRow() {

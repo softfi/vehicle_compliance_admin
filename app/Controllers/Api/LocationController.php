@@ -15,7 +15,7 @@ class LocationController extends BaseApiController
         $status = trim($this->request->getGet('status') ?? '');
 
         $builder = $this->db->table('location');
-        $builder->select('location_id, location_name, location_shordname, opening_balance, radius, status');
+        $builder->select('location_id, location_name, location_shordname, opening_balance, radius, latitude, longitude, status');
 
         if ($status !== '') {
             $builder->where('status', $status);
@@ -50,6 +50,8 @@ class LocationController extends BaseApiController
             'location_shortname' => $row->location_shordname ?? null,
             'opening_balance'    => isset($row->opening_balance) ? (float) $row->opening_balance : 0.0,
             'radius'             => isset($row->radius) ? (float) $row->radius : 0.0,
+            'latitude'           => isset($row->latitude) ? (float) $row->latitude : null,
+            'longitude'          => isset($row->longitude) ? (float) $row->longitude : null,
             'status'             => $row->status ?? null,
         ];
     }

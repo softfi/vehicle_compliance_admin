@@ -442,6 +442,7 @@
 
 <?php include("footer.php"); ?>
 
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 <script>
 $(document).ready(function () {
 
@@ -467,23 +468,47 @@ $(document).ready(function () {
         calculateRow($(this).closest('tr'));
     });
 
-    $('.updateBtn').click(function(){
-        let row=$(this).closest('tr');
-        $.post("<?= base_url('Admin/updateVoucherPayment') ?>",{
-            id:row.data('id'),
-            received_date:row.find('.received_date').val(),
-            received_amount:row.find('.received_amount').val(),
-            adjustment_amount:row.find('.adjustment_amount').val(),
-            adjustment_remarks:row.find('.adjustment_remarks').val(),
-            "<?= csrf_token() ?>":"<?= csrf_hash() ?>"
-        },function(res){
-            if(res.status==='success'){
-                alert('Updated successfully');
+    $(document).on('click', '.updateBtn', function () {
+        let row = $(this).closest('tr');
+        let btn = $(this);
+        btn.prop('disabled', true);
+
+        $.post("<?= base_url('Admin/updateVoucherPayment') ?>", {
+            id: row.data('id'),
+            received_date: row.find('.received_date').val(),
+            received_amount: row.find('.received_amount').val(),
+            adjustment_amount: row.find('.adjustment_amount').val(),
+            adjustment_remarks: row.find('.adjustment_remarks').val(),
+            "<?= csrf_token() ?>": "<?= csrf_hash() ?>"
+        }, function (res) {
+            btn.prop('disabled', false);
+            if (res.status === 'success') {
                 calculateRow(row);
-            }else{
-                alert(res.message);
+                Swal.fire({
+                    icon: 'success',
+                    title: 'Success!',
+                    text: res.message || 'Payment updated successfully.',
+                    confirmButtonColor: '#3085d6',
+                    timer: 2500,
+                    timerProgressBar: true
+                });
+            } else {
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Failed',
+                    text: res.message || 'Failed to update payment.',
+                    confirmButtonColor: '#d33'
+                });
             }
-        },'json');
+        }, 'json').fail(function () {
+            btn.prop('disabled', false);
+            Swal.fire({
+                icon: 'error',
+                title: 'Error',
+                text: 'Something went wrong. Please try again.',
+                confirmButtonColor: '#d33'
+            });
+        });
     });
 
     $('#tableSearch').on('keyup',function(){

@@ -198,15 +198,13 @@
                                 <label for="driver_select">Driver <span class="text-danger">*</span></label>
                                 <select class="form-control select2" name="driver" id="driver_select" required>
                                     <option value="">Select Driver</option>
-                                    <?php foreach ($drivers ?? [] as $driver) { 
-                                        if ($driver->user_type == 'DRIVER') { ?>
+                                    <?php foreach ($drivers ?? [] as $driver) { ?>
                                             <option value="<?= htmlspecialchars($driver->id, ENT_QUOTES, 'UTF-8'); ?>" 
                                                     data-code="<?= htmlspecialchars($driver->staff_code, ENT_QUOTES, 'UTF-8'); ?>">
                                                 <?= htmlspecialchars($driver->name, ENT_QUOTES, 'UTF-8'); ?> 
                                                 (<?= htmlspecialchars($driver->staff_code, ENT_QUOTES, 'UTF-8'); ?>)
                                             </option>
-                                        <?php } 
-                                    } ?>
+                                    <?php } ?>
                                 </select>
                                 <small class="form-text text-muted">Select the driver for adjustment</small>
                             </div>

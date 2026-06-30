@@ -8,7 +8,14 @@ namespace App\Controllers\Api;
 class DieselRateController extends BaseApiController
 {
     /**
-     * GET /api/diesel-rate?from_date=&to_date=
+     * GET /api/diesel-rate
+     * GET /api/diesel-rates
+     * GET /api/diesel-rate/list
+     *
+     * Diesel rate master list — same as web admin/diesel_rate.
+     *
+     * Optional query:
+     * - from_date, to_date (YYYY-MM-DD) — overlap filter on rate period
      */
     public function index()
     {
@@ -20,6 +27,9 @@ class DieselRateController extends BaseApiController
         }
         if ($toDate !== '' && ! preg_match('/^\d{4}-\d{2}-\d{2}$/', $toDate)) {
             return $this->apiError('03', 'to_date must be YYYY-MM-DD', 400);
+        }
+        if ($fromDate !== '' && $toDate !== '' && strtotime($fromDate) > strtotime($toDate)) {
+            return $this->apiError('03', 'from_date cannot be after to_date', 400);
         }
 
         $builder = $this->db->table('diesel_rate_master');
@@ -41,6 +51,40 @@ class DieselRateController extends BaseApiController
             ],
             'total' => count($rows),
             'rates' => array_map(fn ($r) => $this->formatRate($r), $rows),
+        ]);
+    }
+
+    /**
+     * GET /api/diesel-rate/current?date=2026-06-18
+     *
+     * Returns the diesel rate applicable on a given date (from_date <= date <= to_date).
+     * Defaults to today when date is omitted.
+     */
+    public function current()
+    {
+        $date = trim((string) ($this->request->getGet('date') ?? ''));
+        if ($date === '') {
+            $date = date('Y-m-d');
+        }
+        if (! preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) {
+            return $this->apiError('03', 'date must be YYYY-MM-DD', 400);
+        }
+
+        $row = $this->db->table('diesel_rate_master')
+            ->where('from_date <=', $date)
+            ->where('to_date >=', $date)
+            ->orderBy('from_date', 'DESC')
+            ->orderBy('id', 'DESC')
+            ->get()
+            ->getRow();
+
+        if ($row === null) {
+            return $this->apiError('04', 'No diesel rate found for date ' . $date . '.', 404);
+        }
+
+        return $this->apiSuccess('Current diesel rate loaded.', [
+            'date' => $date,
+            'rate' => $this->formatRate($row),
         ]);
     }
 
@@ -190,10 +234,12 @@ class DieselRateController extends BaseApiController
         }
 
         return [
-            'id'        => (int) $row->id,
-            'from_date' => $row->from_date,
-            'to_date'   => $row->to_date,
-            'rate'      => (float) $row->rate,
+            'id'              => (int) $row->id,
+            'from_date'       => $row->from_date,
+            'to_date'         => $row->to_date,
+            'from_date_display' => $row->from_date ? date('d-m-Y', strtotime($row->from_date)) : null,
+            'to_date_display'   => $row->to_date ? date('d-m-Y', strtotime($row->to_date)) : null,
+            'rate'            => (float) $row->rate,
         ];
     }
 

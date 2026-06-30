@@ -41,9 +41,19 @@
                                 <?php if (isset($validation)) { ?><span class="text-danger"><?= $error = $validation->getError('opening_balance'); ?></span><?php } ?>
                             </div>
                             <div class="uk-margin-bottom">
-                                <lable>Radius</lable>
-                                <input type="number" step="0.01" name="radius" placeholder="enter radius" id="radius" class="uk-input" value="<?= set_value('radius', '0.00') ?>" />
+                                <lable>Radius (meters)</lable>
+                                <input type="number" step="0.01" name="radius" placeholder="e.g. 500" id="radius" class="uk-input" value="<?= set_value('radius', '0.00') ?>" />
                                 <?php if (isset($validation)) { ?><span class="text-danger"><?= $error = $validation->getError('radius'); ?></span><?php } ?>
+                            </div>
+
+                            <div class="uk-margin-bottom">
+                                <lable>Latitude</lable>
+                                <input type="number" step="any" name="latitude" placeholder="e.g. 28.6139" id="latitude" class="uk-input" value="<?= set_value('latitude') ?>" />
+                            </div>
+
+                            <div class="uk-margin-bottom">
+                                <lable>Longitude</lable>
+                                <input type="number" step="any" name="longitude" placeholder="e.g. 77.2090" id="longitude" class="uk-input" value="<?= set_value('longitude') ?>" />
                             </div>
 
                             <div class="uk-margin-bottom">
@@ -85,6 +95,8 @@
                                     <th>Location Short Name</th>
                                     <th>Opening Balance</th>
                                     <th>Radius</th>
+                                    <th>Latitude</th>
+                                    <th>Longitude</th>
                                     <th>Status</th>
                                     <th>Edit</th>
                                     <th>Delete</th>
@@ -104,6 +116,8 @@
 
                                         <td><?= $loc->opening_balance ?? '0.00' ?></td>
                                         <td><?= $loc->radius ?? '0.00' ?></td>
+                                        <td><?= $loc->latitude ?? '' ?></td>
+                                        <td><?= $loc->longitude ?? '' ?></td>
                                         <td>
                                             <div class="media-body text-end icon-state">
                                                 <label class="switch">
@@ -134,8 +148,16 @@
                                                                 <input type="number" step="0.01" name="opening_balance" value="<?= $loc->opening_balance ?? '0.00' ?>" id="" class="uk-input" />
                                                             </div>
                                                             <div class="uk-margin-bottom">
-                                                                <lable>Radius</lable>
+                                                                <lable>Radius (meters)</lable>
                                                                 <input type="number" step="0.01" name="radius" value="<?= $loc->radius ?? '0.00' ?>" id="" class="uk-input" />
+                                                            </div>
+                                                            <div class="uk-margin-bottom">
+                                                                <lable>Latitude</lable>
+                                                                <input type="number" step="any" name="latitude" value="<?= $loc->latitude ?? '' ?>" id="" class="uk-input" />
+                                                            </div>
+                                                            <div class="uk-margin-bottom">
+                                                                <lable>Longitude</lable>
+                                                                <input type="number" step="any" name="longitude" value="<?= $loc->longitude ?? '' ?>" id="" class="uk-input" />
                                                             </div>
                                                             <div class="uk-margin-bottom">
                                                                 <lable>Status</lable>
@@ -171,6 +193,8 @@
                                     <th>Location Short Name</th>
                                     <th>Opening Balance</th>
                                     <th>Radius</th>
+                                    <th>Latitude</th>
+                                    <th>Longitude</th>
                                     <th>Status</th>
                                     <th>Edit</th>
                                     <th>Delete</th>

@@ -64,6 +64,21 @@ class AdminModel extends Model
         return $builder->get()->getResult();
     }
 
+    /**
+     * Driver master dropdown/list — staff with user_type = DRIVER only.
+     *
+     * @return list<object>
+     */
+    function GetallDrivers()
+    {
+        $builder = $this->db->table('staff');
+        $builder->select('staff.*, location.location_name');
+        $builder->join('location', 'location.location_id = staff.location_id', 'left');
+        $builder->where('staff.user_type', 'DRIVER');
+
+        return $builder->orderBy('staff.id', 'ASC')->get()->getResult();
+    }
+
     public function GetActiveStaff($date = null, $type = null)
     {
         $builder = $this->db->table('staff');
@@ -181,6 +196,263 @@ class AdminModel extends Model
         return $builder->get()->getResult();
     }
 
+    /**
+     * Items with location-wise available qty (admin/Purchaseentry getItemsDetails).
+     *
+     * @return list<object>
+     */
+    public function getPurchaseItemsByLocation(int $locationId, bool $onlyAvailable = false): array
+    {
+        if ($locationId <= 0) {
+            return [];
+        }
+
+        $sql = "
+            SELECT
+                i.id,
+                i.item_id,
+                i.item_name,
+                i.amount,
+                i.unit_id,
+                u.unit_name,
+                (
+                    COALESCE((
+                        SELECT SUM(s.quantity)
+                        FROM stock s
+                        WHERE s.sproduct_id = i.id
+                        AND s.location_id = ?
+                    ), 0)
+                    -
+                    COALESCE((
+                        SELECT SUM(im.qty)
+                        FROM inhouse_maintenance im
+                        WHERE im.item = i.id
+                        AND im.location = ?
+                    ), 0)
+                ) AS available_qty
+            FROM items i
+            LEFT JOIN units u ON u.unit_id = i.unit_id
+        ";
+
+        if ($onlyAvailable) {
+            $sql .= ' HAVING available_qty > 0';
+        }
+
+        $sql .= ' ORDER BY i.item_name ASC';
+
+        return $this->db->query($sql, [$locationId, $locationId])->getResult();
+    }
+
+    public function getNextStockCode(): int
+    {
+        $row = $this->db->query(
+            'SELECT MAX(CAST(stock_code AS UNSIGNED)) AS max_code FROM stock'
+        )->getRow();
+        $max = (int) ($row->max_code ?? 0);
+
+        return $max > 0 ? $max + 1 : 1;
+    }
+
+    /**
+     * Insert purchase stock rows (admin/Inserpurchasetstock).
+     *
+     * @param array{supplier_id:int,location_id:int,invoice_date:string,invoice_no?:string,remarks?:string} $header
+     * @param list<array{product_id:int,qty:float,rate:float,item_name?:string}> $lineItems
+     *
+     * @return array{stock_code:int,total_amount:float,items: list<array<string,mixed>>}
+     */
+    public function storePurchaseStock(array $header, array $lineItems, ?string $billPhoto = null): array
+    {
+        $stockCode   = $this->getNextStockCode();
+        $totalAmount = 0.0;
+        $savedItems  = [];
+
+        foreach ($lineItems as $line) {
+            $lineTotal = (float) $line['qty'] * (float) $line['rate'];
+            $totalAmount += $lineTotal;
+
+            $data = [
+                'stock_code'     => $stockCode,
+                'sproduct_id'    => (int) $line['product_id'],
+                'date'           => $header['invoice_date'],
+                'supplier_id'    => (int) $header['supplier_id'],
+                'invoice_date'   => $header['invoice_date'],
+                'quantity'       => (float) $line['qty'],
+                'available_qty'  => (float) $line['qty'],
+                'rate'           => (float) $line['rate'],
+                'amount'         => $lineTotal,
+                'gst_amount'     => $totalAmount,
+                'invoice_number' => $header['invoice_no'] ?? '',
+                'location_id'    => (int) $header['location_id'],
+                'bill_photo'     => $billPhoto,
+                'remarks'        => $header['remarks'] ?? '',
+            ];
+
+            $this->db->table('stock')->insert($data);
+
+            $savedItems[] = [
+                'product_id' => (int) $line['product_id'],
+                'item_name'  => $line['item_name'] ?? null,
+                'qty'        => (float) $line['qty'],
+                'rate'       => (float) $line['rate'],
+                'amount'     => $lineTotal,
+            ];
+        }
+
+        return [
+            'stock_code'   => $stockCode,
+            'total_amount' => $totalAmount,
+            'items'        => $savedItems,
+        ];
+    }
+
+    /**
+     * Update an existing purchase batch (admin/edit_stock + finalize_edit_stock).
+     *
+     * @param list<array{stock_id?:int,product_id:int,qty:float,rate:float,item_name?:string}> $lineItems
+     *
+     * @return array{stock_code:int,total_amount:float,items:list<array<string,mixed>>}
+     *
+     * @throws \InvalidArgumentException
+     * @throws \RuntimeException
+     */
+    public function updatePurchaseStock(int $stockCode, array $header, array $lineItems, ?string $billPhoto = null): array
+    {
+        if ($stockCode <= 0) {
+            throw new \InvalidArgumentException('Valid stock_code is required.');
+        }
+
+        $existingRows = $this->db->table('stock')
+            ->where('stock_code', $stockCode)
+            ->get()
+            ->getResult();
+
+        if ($existingRows === []) {
+            throw new \RuntimeException('Purchase voucher not found.');
+        }
+
+        $invoiceNo = trim((string) ($existingRows[0]->invoice_number ?? ''));
+        if (str_starts_with($invoiceNo, 'stock-trans')) {
+            throw new \RuntimeException('Stock transfer batches cannot be edited.');
+        }
+
+        $existingById = [];
+        foreach ($existingRows as $row) {
+            $existingById[(int) $row->stock_id] = $row;
+        }
+
+        $keptStockIds = [];
+        $savedItems   = [];
+        $totalAmount  = 0.0;
+
+        foreach ($lineItems as $line) {
+            $productId = (int) ($line['product_id'] ?? 0);
+            $qty       = (float) ($line['qty'] ?? 0);
+            $rate      = (float) ($line['rate'] ?? 0);
+            $stockId   = (int) ($line['stock_id'] ?? 0);
+
+            if ($productId <= 0 || $qty <= 0 || $rate < 0) {
+                throw new \InvalidArgumentException('Each item must have product_id, qty > 0, and rate >= 0.');
+            }
+
+            $lineTotal = $qty * $rate;
+            $totalAmount += $lineTotal;
+
+            $rowData = [
+                'sproduct_id'    => $productId,
+                'date'           => $header['invoice_date'],
+                'supplier_id'    => (int) $header['supplier_id'],
+                'invoice_date'   => $header['invoice_date'],
+                'quantity'       => $qty,
+                'rate'           => $rate,
+                'amount'         => $lineTotal,
+                'invoice_number' => $header['invoice_no'] ?? '',
+                'location_id'    => (int) $header['location_id'],
+                'remarks'        => $header['remarks'] ?? '',
+            ];
+
+            if ($billPhoto !== null && $billPhoto !== '') {
+                $rowData['bill_photo'] = $billPhoto;
+            }
+
+            if ($stockId > 0 && isset($existingById[$stockId])) {
+                $existing = $existingById[$stockId];
+                $issued   = (float) $existing->quantity - (float) $existing->available_qty;
+                if ($qty + 0.00001 < $issued) {
+                    throw new \InvalidArgumentException(
+                        'Quantity cannot be less than already issued qty for stock_id ' . $stockId . '.'
+                    );
+                }
+
+                $rowData['available_qty'] = $qty - $issued;
+                $this->db->table('stock')->where('stock_id', $stockId)->update($rowData);
+                $keptStockIds[] = $stockId;
+
+                $savedItems[] = [
+                    'stock_id'   => $stockId,
+                    'product_id' => $productId,
+                    'item_name'  => $line['item_name'] ?? null,
+                    'qty'        => $qty,
+                    'rate'       => $rate,
+                    'amount'     => $lineTotal,
+                ];
+                continue;
+            }
+
+            if ($stockId > 0) {
+                throw new \InvalidArgumentException('Invalid stock_id for this purchase batch: ' . $stockId);
+            }
+
+            $rowData['stock_code']     = $stockCode;
+            $rowData['available_qty']  = $qty;
+            $rowData['gst_amount']     = 0;
+            if ($billPhoto === null || $billPhoto === '') {
+                $rowData['bill_photo'] = $existingRows[0]->bill_photo ?? null;
+            }
+
+            $this->db->table('stock')->insert($rowData);
+            $newStockId = (int) $this->db->insertID();
+            $keptStockIds[] = $newStockId;
+
+            $savedItems[] = [
+                'stock_id'   => $newStockId,
+                'product_id' => $productId,
+                'item_name'  => $line['item_name'] ?? null,
+                'qty'        => $qty,
+                'rate'       => $rate,
+                'amount'     => $lineTotal,
+            ];
+        }
+
+        foreach ($existingById as $stockId => $existing) {
+            if (in_array($stockId, $keptStockIds, true)) {
+                continue;
+            }
+
+            $issued = (float) $existing->quantity - (float) $existing->available_qty;
+            if ($issued > 0.00001) {
+                throw new \InvalidArgumentException(
+                    'Cannot remove item stock_id ' . $stockId . ' — quantity already issued from stock.'
+                );
+            }
+
+            $this->db->table('stock')->where('stock_id', $stockId)->delete();
+        }
+
+        $headerUpdate = ['gst_amount' => $totalAmount];
+        if ($billPhoto !== null && $billPhoto !== '') {
+            $headerUpdate['bill_photo'] = $billPhoto;
+        }
+        $this->db->table('stock')
+            ->where('stock_code', $stockCode)
+            ->update($headerUpdate);
+
+        return [
+            'stock_code'   => $stockCode,
+            'total_amount' => $totalAmount,
+            'items'        => $savedItems,
+        ];
+    }
 
 
     function dieseldata($from_date, $to_date)
@@ -512,15 +784,88 @@ class AdminModel extends Model
 
     public function stock_dtls()
     {
+        return $this->getPurchaseVoucherList();
+    }
+
+    /**
+     * Purchase voucher list grouped by stock_code (admin/Purchase_Voucher → Allstock_vw).
+     *
+     * @param array{
+     *     stock_code?: int,
+     *     location_id?: int,
+     *     supplier_id?: int,
+     *     from_date?: string,
+     *     to_date?: string,
+     *     search?: string
+     * } $filters
+     *
+     * @return list<object>
+     */
+    public function getPurchaseVoucherList(array $filters = []): array
+    {
         $builder = $this->db->table('stock');
-        $builder->select('stock.stock_id,stock.date,location.location_name, location.location_id, stock.invoice_number,vendor.id as supplier_id, vendor.name as supplier_name, stock.stock_code, SUM(stock.quantity) AS total_quantity, SUM(stock.gst_amount) AS total_gst_amount');
+        $builder->select(
+            'MAX(stock.stock_id) AS stock_id, MAX(stock.date) AS date,'
+            . ' MAX(location.location_name) AS location_name, MAX(location.location_id) AS location_id,'
+            . ' MAX(stock.invoice_number) AS invoice_number, MAX(vendor.id) AS supplier_id,'
+            . ' MAX(vendor.name) AS supplier_name, stock.stock_code,'
+            . ' SUM(stock.quantity) AS total_quantity,'
+            . ' SUM(stock.gst_amount) AS total_gst_amount,'
+            . ' MAX(stock.bill_photo) AS bill_photo, MAX(stock.remarks) AS remarks'
+        );
         $builder->join('items', 'items.id = stock.sproduct_id', 'left');
         $builder->join('units', 'units.unit_id = items.unit_id', 'left');
         $builder->join('location', 'location.location_id = stock.location_id', 'left');
         $builder->join('vendor', 'vendor.id = stock.supplier_id', 'left');
-        //$builder->where('stock.date >', '1770-06-02');
-        $builder->groupBy('stock_code');
-        $builder->orderBy('date', 'DESC');
+
+        $stockCode = (int) ($filters['stock_code'] ?? 0);
+        if ($stockCode > 0) {
+            $builder->where('stock.stock_code', $stockCode);
+        }
+
+        $locationId = (int) ($filters['location_id'] ?? 0);
+        if ($locationId > 0) {
+            $builder->where('stock.location_id', $locationId);
+        }
+
+        $supplierId = (int) ($filters['supplier_id'] ?? 0);
+        if ($supplierId > 0) {
+            $builder->where('stock.supplier_id', $supplierId);
+        }
+
+        $fromDate = trim((string) ($filters['from_date'] ?? ''));
+        if ($fromDate !== '') {
+            $builder->where('stock.date >=', $fromDate);
+        }
+
+        $toDate = trim((string) ($filters['to_date'] ?? ''));
+        if ($toDate !== '') {
+            $builder->where('stock.date <=', $toDate);
+        }
+
+        $search = trim((string) ($filters['search'] ?? ''));
+        if ($search !== '') {
+            $builder->groupStart()
+                ->like('stock.invoice_number', $search)
+                ->orLike('vendor.name', $search)
+                ->orLike('location.location_name', $search)
+                ->orLike('stock.stock_code', $search)
+            ->groupEnd();
+        }
+
+        // Regular purchases: group by stock_code + invoice + date.
+        // Stock transfers keep one row per stock_code (two invoice numbers per batch).
+        $builder->groupBy(
+            'stock.stock_code,'
+            . " CASE WHEN stock.invoice_number LIKE 'stock-trans%'"
+            . " THEN '' ELSE COALESCE(stock.invoice_number, '') END,"
+            . " CASE WHEN stock.invoice_number LIKE 'stock-trans%'"
+            . " THEN '1970-01-01' ELSE stock.date END",
+            false
+        );
+
+        $builder->orderBy('MAX(stock.date)', 'DESC', false);
+
         return $builder->get()->getResult();
     }
 
@@ -536,6 +881,20 @@ class AdminModel extends Model
         $builder->where('stock_code', $invoiceno);
         $builder->orderBy('date', 'DESC');
         return $builder->get()->getResult();
+    }
+
+    /**
+     * Delete all stock rows for a purchase batch (admin/delete_stock).
+     */
+    public function deletePurchaseByStockCode(int $stockCode): int
+    {
+        if ($stockCode <= 0) {
+            return 0;
+        }
+
+        $this->db->table('stock')->where('stock_code', $stockCode)->delete();
+
+        return $this->db->affectedRows();
     }
 
 
@@ -1579,6 +1938,9 @@ class AdminModel extends Model
             im.invoiceno,
             im.driver_name,
             im.check_by,
+            im.mechanic_name,
+            im.vehicle AS vehicle_id,
+            im.location AS location_id,
             vehicle.vehicle_no,
             location.location_name,
             items.item_name,
@@ -1604,6 +1966,243 @@ class AdminModel extends Model
         $builder->orderBy('im.id', 'ASC');
 
         return $builder->get()->getResult();
+    }
+
+    /**
+     * Mechanics for in-house maintenance form (admin/inhouse_maintenance).
+     *
+     * @return list<object>
+     */
+    public function getInhouseMechanics(): array
+    {
+        return $this->db->table('staff')
+            ->select('id, name, staff_code, user_type')
+            ->where('user_type', 'MECHANIC')
+            ->orderBy('name', 'ASC')
+            ->get()
+            ->getResult();
+    }
+
+    /**
+     * Active staff + mechanics for a location (drivers excluded).
+     *
+     * @return list<object>
+     */
+    public function getActiveNonDriverStaffByLocation(int $locationId, ?string $referenceDate = null): array
+    {
+        if ($locationId <= 0) {
+            return [];
+        }
+
+        $referenceDate = ($referenceDate !== null && preg_match('/^\d{4}-\d{2}-\d{2}$/', $referenceDate))
+            ? $referenceDate
+            : date('Y-m-d');
+
+        return $this->db->table('staff s')
+            ->select('s.*, l.location_name')
+            ->join('location l', 'l.location_id = s.location_id', 'left')
+            ->where('s.location_id', $locationId)
+            ->whereIn('s.user_type', ['STAFF', 'MECHANIC'])
+            ->groupStart()
+                ->where('s.doj IS NULL', null, false)
+                ->orWhere('s.doj', '0000-00-00')
+                ->orWhere('s.doj <=', $referenceDate)
+            ->groupEnd()
+            ->groupStart()
+                ->where('s.resign_date IS NULL', null, false)
+                ->orWhere('s.resign_date', '0000-00-00')
+                ->orWhere('s.resign_date >=', $referenceDate)
+            ->groupEnd()
+            ->orderBy('s.user_type', 'ASC')
+            ->orderBy('s.name', 'ASC')
+            ->get()
+            ->getResult();
+    }
+
+    /**
+     * Users for "Checked by" dropdown (admin/inhouse_maintenance).
+     *
+     * @return list<object>
+     */
+    public function getInhouseCheckByUsers(): array
+    {
+        return $this->db->table('user')
+            ->select('id, full_name, user_type')
+            ->orderBy('full_name', 'ASC')
+            ->get()
+            ->getResult();
+    }
+
+    /**
+     * Store in-house maintenance order (admin/insert_inhouse).
+     *
+     * @param array{
+     *     vehicle: int,
+     *     driver_name?: string,
+     *     date: string,
+     *     time: string,
+     *     invoiceno?: string,
+     *     location: int,
+     *     check_by: string
+     * } $header
+     * @param list<array{
+     *     item: int,
+     *     qty: float|string|int,
+     *     price: float|string|int,
+     *     itemUseAs: int|string,
+     *     mechanic_name?: string|null
+     * }> $lines
+     *
+     * @return array{order_id: string, inserted_ids: list<int>}|null
+     */
+    public function storeInhouseMaintenance(array $header, array $lines): ?array
+    {
+        if ($lines === []) {
+            return null;
+        }
+
+        $orderId   = 'ORD-' . strtoupper(uniqid());
+        $inserted  = [];
+
+        $this->db->transStart();
+
+        foreach ($lines as $line) {
+            $itemId = (int) ($line['item'] ?? 0);
+            $qty    = $line['qty'] ?? 0;
+            if ($itemId <= 0 || (float) $qty <= 0) {
+                $this->db->transRollback();
+
+                return null;
+            }
+
+            $this->db->table('inhouse_maintenance')->insert([
+                'order_id'      => $orderId,
+                'item'          => $itemId,
+                'qty'           => $qty,
+                'price'         => $line['price'] ?? 0,
+                'vehicle'       => (int) ($header['vehicle'] ?? 0),
+                'date'          => trim((string) ($header['date'] ?? '')),
+                'time'          => trim((string) ($header['time'] ?? '')),
+                'invoiceno'     => trim((string) ($header['invoiceno'] ?? '')),
+                'driver_name'   => trim((string) ($header['driver_name'] ?? '')),
+                'location'      => (int) ($header['location'] ?? 0),
+                'itemUseAs'     => (int) ($line['itemUseAs'] ?? 1),
+                'check_by'      => trim((string) ($header['check_by'] ?? '')),
+                'mechanic_name' => isset($line['mechanic_name']) ? trim((string) $line['mechanic_name']) : null,
+            ]);
+
+            $newId = (int) $this->db->insertID();
+            if ($newId <= 0) {
+                $this->db->transRollback();
+
+                return null;
+            }
+
+            $inserted[] = $newId;
+        }
+
+        $this->db->transComplete();
+
+        if ($this->db->transStatus() === false) {
+            return null;
+        }
+
+        return [
+            'order_id'     => $orderId,
+            'inserted_ids' => $inserted,
+        ];
+    }
+
+    /**
+     * Update in-house maintenance order (admin/update_inhouse).
+     * Web deletes old order_id rows and inserts with a new order_id.
+     *
+     * @return array{old_order_id: string, order_id: string, inserted_ids: list<int>}|null
+     */
+    public function updateInhouseMaintenance(string $oldOrderId, array $header, array $lines): ?array
+    {
+        $oldOrderId = trim($oldOrderId);
+        if ($oldOrderId === '' || $lines === []) {
+            return null;
+        }
+
+        $exists = $this->db->table('inhouse_maintenance')->where('order_id', $oldOrderId)->countAllResults();
+        if ($exists === 0) {
+            return null;
+        }
+
+        $newOrderId = 'ORD-' . strtoupper(uniqid());
+        $inserted   = [];
+
+        $this->db->transStart();
+        $this->db->table('inhouse_maintenance')->where('order_id', $oldOrderId)->delete();
+
+        foreach ($lines as $line) {
+            $itemId = (int) ($line['item'] ?? 0);
+            $qty    = $line['qty'] ?? 0;
+            if ($itemId <= 0 || (float) $qty <= 0) {
+                $this->db->transRollback();
+
+                return null;
+            }
+
+            $this->db->table('inhouse_maintenance')->insert([
+                'order_id'      => $newOrderId,
+                'item'          => $itemId,
+                'qty'           => $qty,
+                'price'         => $line['price'] ?? 0,
+                'vehicle'       => (int) ($header['vehicle'] ?? 0),
+                'date'          => trim((string) ($header['date'] ?? '')),
+                'time'          => trim((string) ($header['time'] ?? '')),
+                'invoiceno'     => trim((string) ($header['invoiceno'] ?? '')),
+                'driver_name'   => trim((string) ($header['driver_name'] ?? '')),
+                'location'      => (int) ($header['location'] ?? 0),
+                'itemUseAs'     => (int) ($line['itemUseAs'] ?? 1),
+                'check_by'      => trim((string) ($header['check_by'] ?? '')),
+                'mechanic_name' => isset($line['mechanic_name']) ? trim((string) $line['mechanic_name']) : null,
+            ]);
+
+            $newId = (int) $this->db->insertID();
+            if ($newId <= 0) {
+                $this->db->transRollback();
+
+                return null;
+            }
+
+            $inserted[] = $newId;
+        }
+
+        $this->db->transComplete();
+
+        if ($this->db->transStatus() === false) {
+            return null;
+        }
+
+        return [
+            'old_order_id' => $oldOrderId,
+            'order_id'     => $newOrderId,
+            'inserted_ids' => $inserted,
+        ];
+    }
+
+    /**
+     * Delete in-house maintenance order (admin/delete_inhouse).
+     */
+    public function deleteInhouseMaintenanceByOrderId(string $orderId): int
+    {
+        $orderId = trim($orderId);
+        if ($orderId === '') {
+            return 0;
+        }
+
+        $count = $this->db->table('inhouse_maintenance')->where('order_id', $orderId)->countAllResults();
+        if ($count === 0) {
+            return 0;
+        }
+
+        $this->db->table('inhouse_maintenance')->where('order_id', $orderId)->delete();
+
+        return $count;
     }
 
     public function getItemById($id)
@@ -1648,17 +2247,118 @@ class AdminModel extends Model
 
         $builder->groupBy('voucher.id');
         $builder->orderBy('voucher.id', 'DESC');
-        return $builder->get()->getResult();
+
+        $results = $builder->get()->getResult();
+        $paidIds = array_flip($this->getVoucherIdsAlreadyInPayment());
+
+        foreach ($results as $voucher) {
+            $voucher->in_payment = isset($paidIds[(int) $voucher->id]);
+        }
+
+        return $results;
+    }
+
+    /**
+     * Voucher IDs already linked to any voucher_payment record.
+     *
+     * @return list<int>
+     */
+    public function getVoucherIdsAlreadyInPayment(): array
+    {
+        $rows = $this->db->table('voucher_payment')
+            ->select('voucher_ids')
+            ->where('voucher_ids IS NOT NULL', null, false)
+            ->where('voucher_ids !=', '')
+            ->get()
+            ->getResult();
+
+        $ids = [];
+        foreach ($rows as $row) {
+            foreach (explode(',', (string) $row->voucher_ids) as $id) {
+                $id = (int) trim($id);
+                if ($id > 0) {
+                    $ids[$id] = $id;
+                }
+            }
+        }
+
+        return array_values($ids);
+    }
+
+    public function isVoucherInPayment(int $voucherId): bool
+    {
+        if ($voucherId <= 0) {
+            return false;
+        }
+
+        $row = $this->db->table('voucher_payment')
+            ->select('id')
+            ->where('FIND_IN_SET(' . (int) $voucherId . ', voucher_ids) >', 0, false)
+            ->limit(1)
+            ->get()
+            ->getRow();
+
+        return $row !== null;
+    }
+
+    /**
+     * @param list<int|string> $voucherIds
+     *
+     * @return list<int>
+     */
+    public function filterVoucherIdsAlreadyInPayment(array $voucherIds): array
+    {
+        $paidIds = array_flip($this->getVoucherIdsAlreadyInPayment());
+        $duplicates = [];
+
+        foreach ($voucherIds as $voucherId) {
+            $id = (int) $voucherId;
+            if ($id > 0 && isset($paidIds[$id])) {
+                $duplicates[$id] = $id;
+            }
+        }
+
+        return array_values($duplicates);
     }
 
     public function createVoucherPayment($voucher_ids)
     {
-        if (empty($voucher_ids)) {
+        if (empty($voucher_ids) || ! is_array($voucher_ids)) {
             return ['status' => 'error', 'message' => 'No vouchers selected'];
         }
 
+        $voucher_ids = array_values(array_unique(array_filter(array_map('intval', $voucher_ids), static fn ($id) => $id > 0)));
+        if ($voucher_ids === []) {
+            return ['status' => 'error', 'message' => 'No valid vouchers selected'];
+        }
+
+        $duplicateIds = $this->filterVoucherIdsAlreadyInPayment($voucher_ids);
+        if ($duplicateIds !== []) {
+            $labels = $this->db->table('voucher')
+                ->select('id, group_code')
+                ->whereIn('id', $duplicateIds)
+                ->get()
+                ->getResult();
+
+            $labelMap = [];
+            foreach ($labels as $label) {
+                $labelMap[(int) $label->id] = $label->group_code ?? ('ID ' . $label->id);
+            }
+
+            $duplicateLabels = array_map(
+                static fn ($id) => $labelMap[$id] ?? ('ID ' . $id),
+                $duplicateIds
+            );
+
+            return [
+                'status' => 'error',
+                'message' => 'These voucher(s) are already added to payment: ' . implode(', ', $duplicateLabels),
+                'duplicate_voucher_ids' => $duplicateIds,
+            ];
+        }
+
         $builder = $this->db->table('voucher');
-        $builder->select('voucher.id, despatch.do_no, despatch.net_amount');
+        $builder->select('voucher.id, voucher.group_code, despatch.do_no, despatch.net_amount');
         $builder->join('despatch', 'despatch.voucher_id = voucher.id', 'left');
         $builder->whereIn('voucher.id', $voucher_ids);
         $results = $builder->get()->getResult();
@@ -1672,15 +2372,20 @@ class AdminModel extends Model
         $processed_vouchers = [];
 
         foreach ($results as $row) {
-            $total_net_amount += $row->net_amount;
-            if (!empty($row->do_no)) {
+            $total_net_amount += (float) ($row->net_amount ?? 0);
+            if (! empty($row->do_no)) {
                 $do_numbers[] = $row->do_no;
             }
-            $processed_vouchers[] = $row->id;
+            $processed_vouchers[(int) $row->id] = (int) $row->id;
         }
 
-        $do_numbers = array_unique($do_numbers);
-        $processed_vouchers = array_unique($processed_vouchers);
+        $missingIds = array_diff($voucher_ids, array_keys($processed_vouchers));
+        if ($missingIds !== []) {
+            return ['status' => 'error', 'message' => 'Some selected vouchers were not found'];
+        }
+
+        $do_numbers = array_values(array_unique($do_numbers));
+        $processed_vouchers = array_values($processed_vouchers);
 
         $po_number = 'PO-' . date('YmdHis') . '-' . rand(100, 999);
 
@@ -1690,14 +2395,38 @@ class AdminModel extends Model
             'voucher_ids' => implode(',', $processed_vouchers),
             'total_net_amount' => $total_net_amount,
             'received_amount' => 0,
-            'difference_amount' => $total_net_amount, // Initially difference is full amount
+            'difference_amount' => $total_net_amount,
             'adjustment_amount' => 0,
             'adjustment_remarks' => '',
-            'created_at' => date('Y-m-d H:i:s')
+            'created_at' => date('Y-m-d H:i:s'),
         ];
 
+        $this->db->transStart();
+
+        // Re-check inside transaction to reduce duplicate race conditions.
+        $lateDuplicates = $this->filterVoucherIdsAlreadyInPayment($processed_vouchers);
+        if ($lateDuplicates !== []) {
+            $this->db->transRollback();
+
+            return [
+                'status' => 'error',
+                'message' => 'One or more vouchers were just added to payment by another user. Please refresh and try again.',
+                'duplicate_voucher_ids' => $lateDuplicates,
+            ];
+        }
+
         $this->db->table('voucher_payment')->insert($data);
-        return ['status' => 'success', 'message' => 'Payment record created successfully'];
+        $this->db->transComplete();
+
+        if ($this->db->transStatus() === false) {
+            return ['status' => 'error', 'message' => 'Failed to create payment record'];
+        }
+
+        return [
+            'status' => 'success',
+            'message' => 'Payment record created successfully',
+            'po_number' => $po_number,
+        ];
     }
 
     public function getVoucherPayments($from_date = null, $to_date = null, $party = null)
@@ -1900,7 +2629,7 @@ class AdminModel extends Model
         // echo($order_id);exit;
 
         $builder = $this->db->table('inhouse_maintenance');
-        $builder->select('inhouse_maintenance.*,vehicle.vehicle_no, location.location_name,items.item_name');
+        $builder->select('inhouse_maintenance.*,vehicle.vehicle_no, location.location_name,items.item_name, items.item_id');
         $builder->join('vehicle', 'vehicle.id = inhouse_maintenance.vehicle', 'left');
         $builder->join('location', 'location.location_id = inhouse_maintenance.location', 'left');
         $builder->join('items', 'items.id = inhouse_maintenance.item', 'left');
@@ -2313,6 +3042,34 @@ class AdminModel extends Model
         return (int) ($presentDays ?? 0);
     }
 
+    function getStaffSalaryPresentDays(int $staffId, int $year, int $month): int
+    {
+        $monthStart = sprintf('%04d-%02d-01', $year, $month);
+        $monthEnd = date('Y-m-t', strtotime($monthStart));
+
+        $row = $this->db->table('staff_attendance sa')
+            ->select('COUNT(DISTINCT sa.attendance_date) AS present_days', false)
+            ->join('staff s', 's.id = sa.staff_id', 'inner')
+            ->where('sa.staff_id', $staffId)
+            ->whereIn('sa.status', ['Present', 'Holiday'])
+            ->where('sa.attendance_date >=', $monthStart)
+            ->where('sa.attendance_date <=', $monthEnd)
+            ->groupStart()
+                ->where('s.doj IS NULL', null, false)
+                ->orWhere('s.doj', '0000-00-00')
+                ->orWhere('sa.attendance_date >= s.doj', null, false)
+            ->groupEnd()
+            ->groupStart()
+                ->where('s.resign_date IS NULL', null, false)
+                ->orWhere('s.resign_date', '0000-00-00')
+                ->orWhere('sa.attendance_date <= s.resign_date', null, false)
+            ->groupEnd()
+            ->get()
+            ->getRow();
+
+        return (int) ($row->present_days ?? 0);
+    }
+
 
 
 
@@ -2667,74 +3424,150 @@ class AdminModel extends Model
         return $result;
     }
 
-    function tripexpence1($vehicle_id, $driver_id, $year, $month)
+    function tripexpence1($vehicle_id, $driver_id, $year, $month, $from_date = null, $to_date = null)
     {
-        // Second Query to fetch despatch data and match with the driver 
         $builder = $this->db->table('despatch');
-        $builder->select(' do_registration.do_no, despatch.vehicle_no, do_registration.do_registration_id, 
+        $builder->select(' do_registration.do_no, despatch.vehicle_no, despatch.do_no as do_id, do_registration.do_registration_id, 
                             driver_assignment.driver, do_registration.trip_expenses1, do_registration.trip_expenses2,
                             do_registration.trip_expenses3, do_registration.trip_expenses4, do_registration.trip_expenses5,
                             do_registration.trip_expenses6, DATE(despatch.des_date) as despatch_date, doprice_change.trip1
                             as doprice_trip1, doprice_change.trip2 as doprice_trip2, doprice_change.trip3 as doprice_trip3,
                             doprice_change.trip4 as doprice_trip4, doprice_change.trip5 as doprice_trip5, doprice_change.trip6 as doprice_trip6,
-                            SUM(despatch.quantity) as total_weight, COUNT(despatch.despatch_id) as total_number_of_trip '
+                            SUM(despatch.quantity) as total_weight, COUNT(DISTINCT despatch.despatch_id) as total_number_of_trip '
         );
-        // Joining necessary tables 
         $builder->join('do_registration', 'do_registration.do_registration_id = despatch.do_no', 'left');
         $builder->join('doprice_change', 'do_registration.do_registration_id = doprice_change.dono AND despatch.des_date >= doprice_change.from_date', 'left');
-        $builder->join('driver_assignment', 'driver_assignment.vehicle_no = despatch.vehicle_no', 'left');
-        // Apply filters 
+        $builder->join('driver_assignment', 'driver_assignment.vehicle_no = despatch.vehicle_no', 'inner');
         $builder->where('despatch.vehicle_no', $vehicle_id);
-        // $builder->where('despatch.vehicle_no', 61);
-        $builder->where("YEAR(despatch.des_date)", $year);
-        $builder->where("MONTH(despatch.des_date)", $month);
-        // Match despatch with correct driver assignment (multiple driver handling)
         $builder->where('driver_assignment.driver', $driver_id);
-        // $builder->where('driver_assignment.driver', 1136);
+        $builder->where('YEAR(despatch.des_date)', $year);
+        $builder->where('MONTH(despatch.des_date)', $month);
+        $builder->where('despatch.deleted_at IS NULL', null, false);
+        $builder->where('despatch.deleted_by IS NULL', null, false);
+
+        if (!empty($from_date) && !empty($to_date)) {
+            $builder->where('driver_assignment.from_date', $from_date);
+            $builder->where('driver_assignment.to_date', $to_date);
+            $builder->where('despatch.des_date >=', $from_date);
+            $builder->where('despatch.des_date <=', $to_date);
+        } else {
+            $builder->where('despatch.des_date >=', 'driver_assignment.from_date', false);
+            $builder->where('despatch.des_date <=', 'driver_assignment.to_date', false);
+        }
+
+        // Per day, per DO trip count → apply that DO's slab rate
+        $builder->groupBy([
+            'despatch.vehicle_no',
+            'driver_assignment.driver',
+            'despatch.do_no',
+            'DATE(despatch.des_date)',
+        ]);
+
+        $result = $builder->get()->getResult();
+        foreach ($result as $row) {
+            $this->applyDayTripExpenseToRow($row);
+        }
+
+        return $result;
+    }
+
+    public function tripexpence1Sum($vehicle_id, $driver_id, $year, $month, $from_date = null, $to_date = null): float
+    {
+        $total = 0.0;
+        foreach ($this->tripexpence1($vehicle_id, $driver_id, $year, $month, $from_date, $to_date) as $row) {
+            $total += (float) ($row->day_trip_expense ?? 0);
+        }
+
+        return $total;
+    }
+
+    /**
+     * Batch totals for driver salary grid — same logic as tripexpence1(), keyed by "vehicleId|driverId|from|to".
+     *
+     * @param list<array{vehicle_id:int, driver_id:int, from_date:string, to_date:string}> $pairs
+     * @return array<string, float>
+     */
+    public function tripexpence1BatchTotals(array $pairs, $year, $month): array
+    {
+        $totals = [];
+        $vehicleIds = [];
+        $driverIds = [];
+
+        foreach ($pairs as $pair) {
+            $vehicleId = (int) ($pair['vehicle_id'] ?? 0);
+            $driverId = (int) ($pair['driver_id'] ?? 0);
+            $fromDate = (string) ($pair['from_date'] ?? '');
+            $toDate = (string) ($pair['to_date'] ?? '');
+            if ($vehicleId <= 0 || $driverId <= 0 || $fromDate === '' || $toDate === '') {
+                continue;
+            }
+            $vehicleIds[$vehicleId] = $vehicleId;
+            $driverIds[$driverId] = $driverId;
+            $totals[$vehicleId . '|' . $driverId . '|' . $fromDate . '|' . $toDate] = 0.0;
+        }
+
+        if ($vehicleIds === [] || $driverIds === []) {
+            return $totals;
+        }
+
+        $builder = $this->db->table('despatch');
+        $builder->select(' do_registration.do_no, despatch.vehicle_no, despatch.do_no as do_id, do_registration.do_registration_id, 
+                            driver_assignment.driver, driver_assignment.from_date, driver_assignment.to_date,
+                            do_registration.trip_expenses1, do_registration.trip_expenses2,
+                            do_registration.trip_expenses3, do_registration.trip_expenses4, do_registration.trip_expenses5,
+                            do_registration.trip_expenses6, DATE(despatch.des_date) as despatch_date, doprice_change.trip1
+                            as doprice_trip1, doprice_change.trip2 as doprice_trip2, doprice_change.trip3 as doprice_trip3,
+                            doprice_change.trip4 as doprice_trip4, doprice_change.trip5 as doprice_trip5, doprice_change.trip6 as doprice_trip6,
+                            SUM(despatch.quantity) as total_weight, COUNT(DISTINCT despatch.despatch_id) as total_number_of_trip '
+        );
+        $builder->join('do_registration', 'do_registration.do_registration_id = despatch.do_no', 'left');
+        $builder->join('doprice_change', 'do_registration.do_registration_id = doprice_change.dono AND despatch.des_date >= doprice_change.from_date', 'left');
+        $builder->join('driver_assignment', 'driver_assignment.vehicle_no = despatch.vehicle_no', 'inner');
+        $builder->whereIn('despatch.vehicle_no', array_values($vehicleIds));
+        $builder->whereIn('driver_assignment.driver', array_values($driverIds));
+        $builder->where('YEAR(despatch.des_date)', $year);
+        $builder->where('MONTH(despatch.des_date)', $month);
         $builder->where('despatch.des_date >=', 'driver_assignment.from_date', false);
         $builder->where('despatch.des_date <=', 'driver_assignment.to_date', false);
-        // Group by date and driver 
-        $builder->groupBy(['DATE(despatch.des_date)', 'driver_assignment.driver']);
-        // Fetch result
+        $builder->where('despatch.deleted_at IS NULL', null, false);
+        $builder->where('despatch.deleted_by IS NULL', null, false);
+        $builder->groupBy([
+            'despatch.vehicle_no',
+            'driver_assignment.driver',
+            'driver_assignment.from_date',
+            'driver_assignment.to_date',
+            'despatch.do_no',
+            'DATE(despatch.des_date)',
+        ]);
+
         $result = $builder->get()->getResult();
-        // echo"<pre>"; 
-        // print_r($result);exit; 
-        //Loop through results to calculate per-day and total trip expense 
         foreach ($result as $row) {
-            switch ($row->total_number_of_trip) {
-                case 1:
-                    $row->day_trip_expense = !empty($row->doprice_trip1) ? $this->getTripExpense($row->doprice_trip1, $row->total_number_of_trip) : $this->getTripExpense($row->trip_expenses1, $row->total_number_of_trip);
-                    break;
-                case 2:
-                    $row->day_trip_expense = !empty($row->doprice_trip2) ? $this->getTripExpense($row->doprice_trip2, $row->total_number_of_trip) : $this->getTripExpense($row->trip_expenses2, $row->total_number_of_trip);
-                    break;
-                case 3:
-                    $row->day_trip_expense = !empty($row->doprice_trip3) ? $this->getTripExpense($row->doprice_trip3, $row->total_number_of_trip) : $this->getTripExpense($row->trip_expenses3, $row->total_number_of_trip);
-                    break;
-                case 4:
-                    $row->day_trip_expense = !empty($row->doprice_trip4) ? $this->getTripExpense($row->doprice_trip4, $row->total_number_of_trip) : $this->getTripExpense($row->trip_expenses4, $row->total_number_of_trip);
-                    break;
-                case 5:
-                    $row->day_trip_expense = !empty($row->doprice_trip5) ? $this->getTripExpense($row->doprice_trip5, $row->total_number_of_trip) : $this->getTripExpense($row->trip_expenses5, $row->total_number_of_trip);
-                    break;
-                case 6:
-                    $row->day_trip_expense = !empty($row->doprice_trip6) ? $this->getTripExpense($row->doprice_trip6, $row->total_number_of_trip) : $this->getTripExpense($row->trip_expenses6, $row->total_number_of_trip);
-                    break;
-                default:
-                    $row->day_trip_expense = !empty($row->doprice_trip1) ? $this->getTripExpense($row->doprice_trip1, $row->total_number_of_trip) : $this->getTripExpense($row->trip_expenses1, $row->total_number_of_trip);
-                    break;
+            $this->applyDayTripExpenseToRow($row);
+            $key = (int) $row->vehicle_no . '|' . (int) $row->driver . '|' . (string) $row->from_date . '|' . (string) $row->to_date;
+            if (isset($totals[$key])) {
+                $totals[$key] += (float) $row->day_trip_expense;
             }
         }
-        // ✅ Calculate total trip expense for the driver 
-        $total_expense = 0;
-        foreach ($result as $row) {
-            $total_expense += (float) $row->day_trip_expense;
+
+        return $totals;
+    }
+
+    private function applyDayTripExpenseToRow(object $row): void
+    {
+        $tripCount = (int) ($row->total_number_of_trip ?? 0);
+        if ($tripCount <= 0) {
+            $row->day_trip_expense = 0;
+            return;
         }
-        // echo"<pre>";
-        // print_r($total_expense);
-        // exit; 
-        // Return result array (so getdriver_salary_details() can sum them) 
-        return $result;
+
+        $slab = min($tripCount, 6);
+        $dopriceField = 'doprice_trip' . $slab;
+        $tripField = 'trip_expenses' . $slab;
+        $dopriceVal = $row->{$dopriceField} ?? null;
+
+        $row->day_trip_expense = (float) (
+            !empty($dopriceVal) ? $dopriceVal : ($row->{$tripField} ?? 0)
+        );
     }
 
     // Helper function to determine trip expense based on total number of trips
@@ -3328,24 +4161,55 @@ class AdminModel extends Model
     }
     public function getAllTasks()
     {
-        return $this->db->table('tasks')
-            ->select('tasks.*, u1.full_name as assigned_to_name, u2.full_name as assigned_by_name')
-            ->join('user u1', 'u1.id = tasks.assigned_to')
-            ->join('user u2', 'u2.id = tasks.assigned_by')
-            ->orderBy('tasks.id', 'DESC')
-            ->get()
-            ->getResult();
+        $tasks = $this->db->table('tasks t')
+            ->select('t.*, u.full_name as assigned_by_name')
+            ->join('user u', 'u.id = t.assigned_by', 'left')
+            ->orderBy('t.id', 'DESC')
+            ->get()->getResult();
+        return $this->resolveTaskUserNames($tasks);
     }
     public function getTasksByUser($user_id)
     {
-        return $this->db->table('tasks')
-            ->select('tasks.*, u1.full_name as assigned_to_name, u2.full_name as assigned_by_name')
-            ->join('user u1', 'u1.id = tasks.assigned_to')
-            ->join('user u2', 'u2.id = tasks.assigned_by')
-            ->where('tasks.assigned_to', $user_id)
-            ->orderBy('tasks.id', 'DESC')
-            ->get()
-            ->getResult();
+        $uid = (int) $user_id;
+        $tasks = $this->db->table('tasks t')
+            ->select('t.*, u.full_name as assigned_by_name')
+            ->join('user u', 'u.id = t.assigned_by', 'left')
+            ->where("FIND_IN_SET({$uid}, t.assigned_to) > 0", null, false)
+            ->orderBy('t.id', 'DESC')
+            ->get()->getResult();
+        return $this->resolveTaskUserNames($tasks);
+    }
+    /**
+     * Given raw task rows (with CSV assigned_to / cc columns),
+     * resolve the user names and attach them as display-ready strings.
+     */
+    private function resolveTaskUserNames(array $tasks): array
+    {
+        if (empty($tasks)) return [];
+
+        // Collect all user IDs referenced across all tasks
+        $allIds = [];
+        foreach ($tasks as $t) {
+            foreach (array_filter(array_map('intval', explode(',', (string)($t->assigned_to ?? '')))) as $id) $allIds[$id] = true;
+            foreach (array_filter(array_map('intval', explode(',', (string)($t->cc         ?? '')))) as $id) $allIds[$id] = true;
+        }
+
+        // Fetch all needed users in one query
+        $userMap = [];
+        if (!empty($allIds)) {
+            $rows = $this->db->table('user')->select('id, full_name')->whereIn('id', array_keys($allIds))->get()->getResult();
+            foreach ($rows as $r) $userMap[(int)$r->id] = $r->full_name;
+        }
+
+        // Attach resolved names to each task
+        foreach ($tasks as $t) {
+            $atIds = array_filter(array_map('intval', explode(',', (string)($t->assigned_to ?? ''))));
+            $ccIds = array_filter(array_map('intval', explode(',', (string)($t->cc         ?? ''))));
+            $t->assigned_to_name = implode(', ', array_map(fn($id) => $userMap[$id] ?? '', $atIds));
+            $t->cc_name          = implode(', ', array_map(fn($id) => $userMap[$id] ?? '', $ccIds));
+        }
+
+        return $tasks;
     }
     public function getHistoryRecords($filters = [])
     {
@@ -3409,9 +4273,10 @@ class AdminModel extends Model
     public function getTyreById($id)
     {
         return $this->db->table('tyer_management tm')
-            ->select('tm.*, l.location_name, v.name as vendor_name, parent.tyer_sl_no as replaced_from_serial, child.tyer_sl_no as replaced_to_serial')
+            ->select('tm.*, l.location_name, ven.name as vendor_name, veh.vehicle_no, parent.tyer_sl_no as replaced_from_serial, child.tyer_sl_no as replaced_to_serial')
             ->join('location l', 'l.location_id = tm.location_id', 'left')
-            ->join('vendor v', 'v.id = tm.vendor_id', 'left')
+            ->join('vendor ven', 'ven.id = tm.vendor_id', 'left')
+            ->join('vehicle veh', 'veh.id = tm.vehicle_id', 'left')
             ->join('tyer_management parent', 'parent.id = tm.replaced_from_id', 'left')
             ->join('tyer_management child', 'child.id = tm.replaced_to_id', 'left')
             ->where('tm.id', $id)
@@ -3944,10 +4809,112 @@ class AdminModel extends Model
 
 
     /**
+     * Record tyre swap/replacement for admin/tyre_exchange_report.
+     *
+     * @return bool True when inserted or already exists
+     */
+    public function recordTyreExchange(
+        ?int $vehicleId,
+        int $fromTyreId,
+        int $toTyreId,
+        ?string $tyrePosition,
+        string $exchangeDate,
+        string $remarks = ''
+    ): bool {
+        $fromTyreId   = (int) $fromTyreId;
+        $toTyreId     = (int) $toTyreId;
+        $exchangeDate = trim($exchangeDate);
+        $remarks      = trim($remarks);
+
+        if ($fromTyreId <= 0 || $toTyreId <= 0 || $exchangeDate === '' || $fromTyreId === $toTyreId) {
+            return false;
+        }
+
+        $exists = $this->db->table('tyre_exchange_history')
+            ->where('from_tyre_id', $fromTyreId)
+            ->where('to_tyre_id', $toTyreId)
+            ->countAllResults();
+
+        if ($exists > 0) {
+            return true;
+        }
+
+        return (bool) $this->db->table('tyre_exchange_history')->insert([
+            'vehicle_id'    => $vehicleId !== null && $vehicleId > 0 ? $vehicleId : null,
+            'from_tyre_id'  => $fromTyreId,
+            'to_tyre_id'    => $toTyreId,
+            'tyre_position' => $tyrePosition !== null && trim($tyrePosition) !== '' ? trim($tyrePosition) : null,
+            'exchange_date' => $exchangeDate,
+            'remarks'       => $remarks !== '' ? $remarks : null,
+            'created_at'    => date('Y-m-d H:i:s'),
+        ]);
+    }
+
+    /**
+     * Backfill tyre_exchange_history from past assignment/vendor exchange data.
+     */
+    public function backfillTyreExchangeHistory(): void
+    {
+        $pairs = $this->db->query("
+            SELECT
+                rem.vehicle_id,
+                rem.tyre_id AS from_tyre_id,
+                ass.tyre_id AS to_tyre_id,
+                rem.tyre_position,
+                rem.event_date AS exchange_date
+            FROM tyer_management_history rem
+            INNER JOIN tyer_management_history ass
+                ON ass.vehicle_id = rem.vehicle_id
+                AND ass.tyre_position = rem.tyre_position
+                AND ass.event_date = rem.event_date
+                AND ass.event_type = 3
+            WHERE rem.event_type = 4
+              AND rem.tyre_id != ass.tyre_id
+            ORDER BY rem.event_date ASC, rem.tyre_history_id ASC
+        ")->getResult();
+
+        foreach ($pairs as $row) {
+            $this->recordTyreExchange(
+                $row->vehicle_id !== null ? (int) $row->vehicle_id : null,
+                (int) $row->from_tyre_id,
+                (int) $row->to_tyre_id,
+                $row->tyre_position ?? null,
+                (string) $row->exchange_date,
+                'Tyre replaced on vehicle from stock'
+            );
+        }
+
+        $vendorRows = $this->db->table('tyer_management tm')
+            ->select('tm.id AS to_tyre_id, tm.replaced_from_id AS from_tyre_id, tm.vehicle_id, tm.tyer_position, tm.asign_date, tm.date')
+            ->where('tm.replaced_from_id IS NOT NULL', null, false)
+            ->where('tm.replaced_from_id >', 0)
+            ->get()
+            ->getResult();
+
+        foreach ($vendorRows as $row) {
+            $exchangeDate = trim((string) ($row->asign_date ?? $row->date ?? ''));
+            if ($exchangeDate === '') {
+                $exchangeDate = date('Y-m-d');
+            }
+
+            $this->recordTyreExchange(
+                $row->vehicle_id !== null ? (int) $row->vehicle_id : null,
+                (int) $row->from_tyre_id,
+                (int) $row->to_tyre_id,
+                $row->tyer_position ?? null,
+                $exchangeDate,
+                'Vendor warranty exchange'
+            );
+        }
+    }
+
+    /**
      * Get detailed history of tyre exchanges between vehicles and stock
      */
     public function getExchangeHistory($filters = [])
     {
+        $this->backfillTyreExchangeHistory();
+
         $builder = $this->db->table('tyre_exchange_history eh')
             ->select([
                 'eh.*',
@@ -3967,6 +4934,7 @@ class AdminModel extends Model
                 ->like('v.vehicle_no', $s)
                 ->orLike('old_t.tyer_sl_no', $s)
                 ->orLike('new_t.tyer_sl_no', $s)
+                ->orLike('eh.remarks', $s)
                 ->groupEnd();
         }
 
@@ -3978,5 +4946,1509 @@ class AdminModel extends Model
             ->orderBy('eh.id', 'DESC')
             ->get()
             ->getResult();
+    }
+
+    /**
+     * Single exchange record for admin/tyre_exchange_report detail.
+     */
+    public function getExchangeHistoryById(int $exchangeId): ?object
+    {
+        $exchangeId = (int) $exchangeId;
+        if ($exchangeId <= 0) {
+            return null;
+        }
+
+        return $this->db->table('tyre_exchange_history eh')
+            ->select([
+                'eh.*',
+                'v.vehicle_no',
+                'old_t.tyer_sl_no AS old_serial',
+                'old_t.brand_name AS old_brand',
+                'new_t.tyer_sl_no AS new_serial',
+                'new_t.brand_name AS new_brand',
+            ])
+            ->join('vehicle v', 'v.id = eh.vehicle_id', 'left')
+            ->join('tyer_management old_t', 'old_t.id = eh.from_tyre_id', 'left')
+            ->join('tyer_management new_t', 'new_t.id = eh.to_tyre_id', 'left')
+            ->where('eh.id', $exchangeId)
+            ->get()
+            ->getRow();
+    }
+
+    /**
+     * Tyre purchase bills grouped list (admin/tyer_management).
+     *
+     * @param array{
+     *     location_id?: int,
+     *     vendor_id?: int,
+     *     bill_no?: string,
+     *     from_date?: string,
+     *     to_date?: string,
+     *     search?: string
+     * } $filters
+     *
+     * @return list<object>
+     */
+    public function getTyrePurchaseBillList(array $filters = []): array
+    {
+        $builder = $this->db->table('tyer_management tm')
+            ->select(
+                'MAX(tm.id) AS id, tm.bill_no, MAX(tm.date) AS date, tm.vendor_id, tm.location_id,'
+                . ' MAX(tm.brand_name) AS brand_name, MAX(tm.model) AS model, MAX(tm.price) AS price,'
+                . ' l.location_name, v.name AS vendor_name, COUNT(tm.id) AS qty',
+                false
+            )
+            ->join('location l', 'l.location_id = tm.location_id', 'left')
+            ->join('vendor v', 'v.id = tm.vendor_id', 'left');
+
+        $locationId = (int) ($filters['location_id'] ?? 0);
+        if ($locationId > 0) {
+            $builder->where('tm.location_id', $locationId);
+        }
+
+        $vendorId = (int) ($filters['vendor_id'] ?? 0);
+        if ($vendorId > 0) {
+            $builder->where('tm.vendor_id', $vendorId);
+        }
+
+        $billNo = trim((string) ($filters['bill_no'] ?? ''));
+        if ($billNo !== '') {
+            $builder->where('tm.bill_no', $billNo);
+        }
+
+        $fromDate = trim((string) ($filters['from_date'] ?? ''));
+        if ($fromDate !== '') {
+            $builder->where('tm.date >=', $fromDate);
+        }
+
+        $toDate = trim((string) ($filters['to_date'] ?? ''));
+        if ($toDate !== '') {
+            $builder->where('tm.date <=', $toDate);
+        }
+
+        $search = trim((string) ($filters['search'] ?? ''));
+        if ($search !== '') {
+            $builder->groupStart()
+                ->like('tm.bill_no', $search)
+                ->orLike('v.name', $search)
+                ->orLike('tm.brand_name', $search)
+                ->orLike('tm.model', $search)
+                ->orLike('l.location_name', $search)
+            ->groupEnd();
+        }
+
+        return $builder
+            ->groupBy('tm.bill_no, tm.location_id, tm.vendor_id, l.location_name, v.name')
+            ->orderBy('MAX(tm.id)', 'DESC', false)
+            ->get()
+            ->getResult();
+    }
+
+    /**
+     * Serial numbers for a purchase bill (admin/tyer_management → getTyerDetailsByBillNo).
+     *
+     * @return list<object>
+     */
+    public function getTyreSerialsByBillNo(string $billNo, int $locationId = 0): array
+    {
+        $billNo = trim($billNo);
+        if ($billNo === '') {
+            return [];
+        }
+
+        $builder = $this->db->table('tyer_management')
+            ->select('id, tyer_sl_no, tyer_type, brand_name, model, location_id, bill_no, date, price')
+            ->where('bill_no', $billNo);
+
+        if ($locationId > 0) {
+            $builder->where('location_id', $locationId);
+        }
+
+        return $builder->orderBy('id', 'ASC')->get()->getResult();
+    }
+
+    /**
+     * Full purchase bill detail (admin/tyer_management → edit_tyer / view bill).
+     *
+     * @return array{header: object, tyres: list<object>}|null
+     */
+    public function getTyrePurchaseBillDetail(int $tyreId = 0, string $billNo = '', int $locationId = 0): ?array
+    {
+        if ($tyreId > 0) {
+            $seed = $this->db->table('tyer_management')->where('id', $tyreId)->get()->getRow();
+            if ($seed === null) {
+                return null;
+            }
+
+            $billNo = trim((string) ($seed->bill_no ?? ''));
+        }
+
+        $billNo = trim($billNo);
+        if ($billNo === '') {
+            return null;
+        }
+
+        $builder = $this->db->table('tyer_management tm')
+            ->select('tm.*, l.location_name, v.name AS vendor_name')
+            ->join('location l', 'l.location_id = tm.location_id', 'left')
+            ->join('vendor v', 'v.id = tm.vendor_id', 'left')
+            ->where('tm.bill_no', $billNo);
+
+        // When opened via list row id, web edit_tyer loads all tyres for bill_no.
+        if ($tyreId <= 0 && $locationId > 0) {
+            $builder->where('tm.location_id', $locationId);
+        }
+
+        $tyres = $builder->orderBy('tm.id', 'ASC')->get()->getResult();
+        if ($tyres === []) {
+            return null;
+        }
+
+        return [
+            'header' => $tyres[0],
+            'tyres'  => $tyres,
+        ];
+    }
+
+    /**
+     * Store new tyre purchase bill (admin/insert_tyer → addtyerbill).
+     *
+     * @param array{
+     *     bill_no: string,
+     *     vendor_id: int,
+     *     date: string,
+     *     price: float|string|int,
+     *     location_id: int,
+     *     brand_name: string,
+     *     model: string
+     * } $header
+     * @param list<array{tyer_sl_no: string, tyer_type: string}> $tyreLines
+     *
+     * @return array{bill_no: string, inserted_ids: list<int>}|null
+     */
+    public function storeTyrePurchaseBill(array $header, array $tyreLines): ?array
+    {
+        if ($tyreLines === []) {
+            return null;
+        }
+
+        $billNo = trim((string) ($header['bill_no'] ?? ''));
+        if ($billNo === '') {
+            return null;
+        }
+
+        $locationId = (int) ($header['location_id'] ?? 0);
+        $vendorId   = (int) ($header['vendor_id'] ?? 0);
+        $date       = trim((string) ($header['date'] ?? ''));
+
+        $inserted = [];
+
+        $this->db->transStart();
+
+        foreach ($tyreLines as $line) {
+            $serial = trim((string) ($line['tyer_sl_no'] ?? ''));
+            $type   = trim((string) ($line['tyer_type'] ?? ''));
+            if ($serial === '' || $type === '') {
+                $this->db->transRollback();
+
+                return null;
+            }
+
+            $this->db->table('tyer_management')->insert([
+                'location_id' => $locationId,
+                'brand_name'  => trim((string) ($header['brand_name'] ?? '')),
+                'tyer_type'   => $type,
+                'model'       => trim((string) ($header['model'] ?? '')),
+                'tyer_sl_no'  => $serial,
+                'vendor_id'   => $vendorId,
+                'bill_no'     => $billNo,
+                'price'       => $header['price'] ?? 0,
+                'status'      => 1,
+                'date'        => $date,
+            ]);
+
+            $newId = (int) $this->db->insertID();
+            if ($newId <= 0) {
+                $this->db->transRollback();
+
+                return null;
+            }
+
+            $inserted[] = $newId;
+        }
+
+        $tyres = $this->db->table('tyer_management')
+            ->select('id')
+            ->where('bill_no', $billNo)
+            ->where('date', $date)
+            ->get()
+            ->getResult();
+
+        foreach ($tyres as $tyre) {
+            $tyreId = (int) ($tyre->id ?? 0);
+            if ($tyreId <= 0) {
+                continue;
+            }
+
+            $exists = $this->db->table('tyer_management_history')
+                ->where('tyre_id', $tyreId)
+                ->where('event_type', 1)
+                ->countAllResults();
+
+            if ($exists > 0) {
+                continue;
+            }
+
+            $this->db->table('tyer_management_history')->insert([
+                'tyre_id'     => $tyreId,
+                'event_type'  => 1,
+                'location_id' => $locationId,
+                'event_date'  => $date,
+                'vendor_id'   => $vendorId,
+            ]);
+        }
+
+        $this->db->transComplete();
+
+        if ($this->db->transStatus() === false) {
+            return null;
+        }
+
+        return [
+            'bill_no'      => $billNo,
+            'inserted_ids' => $inserted,
+        ];
+    }
+
+    /**
+     * Update purchase bill tyres (admin/update_tyer).
+     *
+     * @param array{
+     *     bill_no: string,
+     *     vendor_id: int,
+     *     date: string,
+     *     price: float|string|int,
+     *     location_id: int,
+     *     brand_name: string,
+     *     model: string
+     * } $header
+     * @param list<array{tyre_id?: int, tyer_sl_no: string, tyer_type: string}> $tyreLines
+     *
+     * @return array{inserted: list<int>, updated: list<int>, bill_no: string}|null
+     */
+    public function updateTyrePurchaseBill(array $header, array $tyreLines): ?array
+    {
+        if ($tyreLines === []) {
+            return null;
+        }
+
+        $billNo = trim((string) ($header['bill_no'] ?? ''));
+        if ($billNo === '') {
+            return null;
+        }
+
+        $inserted = [];
+        $updated  = [];
+
+        $this->db->transStart();
+
+        foreach ($tyreLines as $line) {
+            $tyreId = (int) ($line['tyre_id'] ?? 0);
+            $serial = trim((string) ($line['tyer_sl_no'] ?? ''));
+            $type   = trim((string) ($line['tyer_type'] ?? ''));
+
+            if ($serial === '' || $type === '') {
+                $this->db->transRollback();
+
+                return null;
+            }
+
+            $duplicate = $this->db->table('tyer_management')
+                ->where('tyer_sl_no', $serial);
+            if ($tyreId > 0) {
+                $duplicate->where('id !=', $tyreId);
+            }
+            if ($duplicate->countAllResults() > 0) {
+                $this->db->transRollback();
+
+                return null;
+            }
+
+            $data = [
+                'location_id' => (int) ($header['location_id'] ?? 0),
+                'brand_name'  => trim((string) ($header['brand_name'] ?? '')),
+                'tyer_type'   => $type,
+                'model'       => trim((string) ($header['model'] ?? '')),
+                'tyer_sl_no'  => $serial,
+                'vendor_id'   => (int) ($header['vendor_id'] ?? 0),
+                'bill_no'     => $billNo,
+                'price'       => $header['price'] ?? 0,
+                'status'      => 1,
+                'date'        => trim((string) ($header['date'] ?? '')),
+            ];
+
+            if ($tyreId <= 0) {
+                $this->db->table('tyer_management')->insert($data);
+                $newId = (int) $this->db->insertID();
+                if ($newId <= 0) {
+                    $this->db->transRollback();
+
+                    return null;
+                }
+
+                $inserted[] = $newId;
+            } else {
+                $exists = $this->db->table('tyer_management')->where('id', $tyreId)->countAllResults();
+                if ($exists === 0) {
+                    $this->db->transRollback();
+
+                    return null;
+                }
+
+                $this->db->table('tyer_management')->where('id', $tyreId)->update($data);
+                $updated[] = $tyreId;
+            }
+        }
+
+        $this->db->transComplete();
+
+        if ($this->db->transStatus() === false) {
+            return null;
+        }
+
+        return [
+            'bill_no'  => $billNo,
+            'inserted' => $inserted,
+            'updated'  => $updated,
+        ];
+    }
+
+    /**
+     * Delete entire purchase bill (all tyres with same bill_no).
+     * Same as web admin/delete_tyer/{id}:
+     * 1) resolve bill_no from list row tyre id
+     * 2) delete all rows where bill_no matches
+     *
+     * @return array{bill_no: string, deleted_count: int, deleted_ids: list<int>}|null
+     */
+    public function deleteTyrePurchaseBillByTyreId(int $tyreId): ?array
+    {
+        $seed = $this->db->table('tyer_management')->where('id', $tyreId)->get()->getRow();
+        if ($seed === null) {
+            return null;
+        }
+
+        $billNo = trim((string) ($seed->bill_no ?? ''));
+        if ($billNo === '') {
+            return null;
+        }
+
+        $rows = $this->db->table('tyer_management')
+            ->select('id')
+            ->where('bill_no', $billNo)
+            ->get()
+            ->getResult();
+
+        if ($rows === []) {
+            return null;
+        }
+
+        $deletedIds = [];
+        foreach ($rows as $row) {
+            $deletedIds[] = (int) ($row->id ?? 0);
+        }
+
+        $this->db->table('tyer_management')->where('bill_no', $billNo)->delete();
+
+        return [
+            'bill_no'       => $billNo,
+            'deleted_count' => count($deletedIds),
+            'deleted_ids'   => $deletedIds,
+        ];
+    }
+
+    /**
+     * Delete single tyre record.
+     * Same as web admin/delete_tyersingle/{id}.
+     */
+    public function deleteTyrePurchaseSingle(int $tyreId): bool
+    {
+        $exists = $this->db->table('tyer_management')->where('id', $tyreId)->countAllResults();
+        if ($exists === 0) {
+            return false;
+        }
+
+        $this->db->table('tyer_management')->where('id', $tyreId)->delete();
+
+        return true;
+    }
+
+    /**
+     * Tyres available at location for transfer (admin/tyreTransfer → get_tyers_by_location).
+     *
+     * @return list<object>
+     */
+    public function getTransferTyresByLocation(int $locationId): array
+    {
+        if ($locationId <= 0) {
+            return [];
+        }
+
+        return $this->db->table('tyer_management')
+            ->select('id, tyer_sl_no, brand_name, model, tyer_type, location_id, status')
+            ->where('location_id', $locationId)
+            ->where('status', 1)
+            ->orderBy('tyer_sl_no', 'ASC')
+            ->get()
+            ->getResult();
+    }
+
+    /**
+     * Tyre brand/model by serial (admin/tyreTransfer → get_tyer_details).
+     */
+    public function getTyreTransferDetailBySerial(string $serial): ?object
+    {
+        $serial = trim($serial);
+        if ($serial === '') {
+            return null;
+        }
+
+        return $this->db->table('tyer_management')
+            ->select('id, tyer_sl_no, brand_name, model, location_id, status')
+            ->where('tyer_sl_no', $serial)
+            ->get()
+            ->getRow();
+    }
+
+    /**
+     * Transfer tyres to another location (admin/update_tyer_details).
+     *
+     * @param list<string> $serials
+     *
+     * @return array{
+     *     from_location_id: int|null,
+     *     to_location_id: int,
+     *     transfer_date: string,
+     *     transferred_count: int,
+     *     tyre_serials: list<string>,
+     *     tyres: list<array{tyre_id: int, tyre_serial: string, brand_name: string|null, model: string|null}>
+     * }|null
+     */
+    public function transferTyresToLocation(int $fromLocationId, int $toLocationId, string $date, array $serials): ?array
+    {
+        $toLocationId = (int) $toLocationId;
+        $date         = trim($date);
+        if ($toLocationId <= 0 || $date === '') {
+            return null;
+        }
+
+        $uniqueSerials = [];
+        foreach ($serials as $serial) {
+            $serial = trim((string) $serial);
+            if ($serial === '') {
+                continue;
+            }
+
+            $uniqueSerials[$serial] = $serial;
+        }
+
+        if ($uniqueSerials === []) {
+            return null;
+        }
+
+        $this->db->transStart();
+
+        foreach ($uniqueSerials as $serial) {
+            $this->db->table('tyer_management')
+                ->where('tyer_sl_no', $serial)
+                ->update([
+                    'location_id'   => $toLocationId,
+                    'transfer_date' => $date,
+                ]);
+        }
+
+        $tyres = $this->db->table('tyer_management')
+            ->select('id, tyer_sl_no, brand_name, model')
+            ->whereIn('tyer_sl_no', array_values($uniqueSerials))
+            ->get()
+            ->getResult();
+
+        $transferred = [];
+        foreach ($tyres as $tyre) {
+            $history = [
+                'tyre_id'       => (int) ($tyre->id ?? 0),
+                'event_type'    => 2,
+                'location_id'   => $toLocationId,
+                'event_date'    => $date,
+                'transfer_from' => $fromLocationId > 0 ? $fromLocationId : null,
+                'transfer_to'   => $toLocationId,
+            ];
+
+            $this->db->table('tyer_management_history')->insert($history);
+
+            $transferred[] = [
+                'tyre_id'     => (int) ($tyre->id ?? 0),
+                'tyre_serial' => $tyre->tyer_sl_no ?? null,
+                'brand_name'  => $tyre->brand_name ?? null,
+                'model'       => $tyre->model ?? null,
+            ];
+        }
+
+        $this->db->transComplete();
+
+        if ($this->db->transStatus() === false) {
+            return null;
+        }
+
+        return [
+            'from_location_id'  => $fromLocationId > 0 ? $fromLocationId : null,
+            'to_location_id'    => $toLocationId,
+            'transfer_date'     => $date,
+            'transferred_count' => count($transferred),
+            'tyre_serials'      => array_values($uniqueSerials),
+            'tyres'             => $transferred,
+        ];
+    }
+
+    /**
+     * Active locations for dropdowns (admin/tyreTransfer).
+     *
+     * @return list<object>
+     */
+    public function getActiveLocationList(): array
+    {
+        return $this->db->table('location')
+            ->select('location_id, location_name, status')
+            ->groupStart()
+                ->where('status IS NULL', null, false)
+                ->orWhere('status', 'Active')
+            ->groupEnd()
+            ->orderBy('location_name', 'ASC')
+            ->get()
+            ->getResult();
+    }
+
+    /**
+     * Stock tyres not on any vehicle (admin/StockTyer_management).
+     *
+     * @param array{
+     *     location_id?: int,
+     *     from_date?: string,
+     *     to_date?: string,
+     *     search?: string,
+     *     tyre_condition?: string,
+     *     brand_name?: string,
+     *     tyer_type?: string
+     * } $filters
+     *
+     * @return list<object>
+     */
+    public function getStockTyreList(array $filters = []): array
+    {
+        $builder = $this->db->table('tyer_management tm')
+            ->select('tm.*, l.location_name')
+            ->select(
+                'CASE WHEN tm.asign_date IS NOT NULL THEN "Old" ELSE "New" END AS tyre_condition',
+                false
+            )
+            ->join('location l', 'l.location_id = tm.location_id', 'left')
+            ->where('tm.vehicle_id', null)
+            ->where('tm.status', 1)
+            ->groupBy('tm.id');
+
+        $locationId = (int) ($filters['location_id'] ?? 0);
+        if ($locationId > 0) {
+            $builder->where('tm.location_id', $locationId);
+        }
+
+        $fromDate = trim((string) ($filters['from_date'] ?? ''));
+        if ($fromDate !== '') {
+            $builder->where('tm.date >=', $fromDate);
+        }
+
+        $toDate = trim((string) ($filters['to_date'] ?? ''));
+        if ($toDate !== '') {
+            $builder->where('tm.date <=', $toDate);
+        }
+
+        $brandName = trim((string) ($filters['brand_name'] ?? ''));
+        if ($brandName !== '') {
+            $builder->where('tm.brand_name', $brandName);
+        }
+
+        $tyerType = trim((string) ($filters['tyer_type'] ?? ''));
+        if ($tyerType !== '') {
+            $builder->where('tm.tyer_type', $tyerType);
+        }
+
+        $condition = strtolower(trim((string) ($filters['tyre_condition'] ?? '')));
+        if ($condition === 'new') {
+            $builder->where('tm.asign_date', null);
+        } elseif ($condition === 'old') {
+            $builder->where('tm.asign_date IS NOT NULL', null, false);
+        }
+
+        $search = trim((string) ($filters['search'] ?? ''));
+        if ($search !== '') {
+            $builder->groupStart()
+                ->like('tm.tyer_sl_no', $search)
+                ->orLike('tm.brand_name', $search)
+                ->orLike('tm.model', $search)
+                ->orLike('tm.bill_no', $search)
+                ->orLike('l.location_name', $search)
+            ->groupEnd();
+        }
+
+        return $builder->orderBy('tm.date', 'DESC')
+            ->orderBy('tm.id', 'DESC')
+            ->get()
+            ->getResult();
+    }
+
+    /**
+     * Scrap yard tyres (admin/scrapTyer_management) — status = 3.
+     *
+     * @param array{
+     *     location_id?: int,
+     *     from_date?: string,
+     *     to_date?: string,
+     *     search?: string,
+     *     brand_name?: string,
+     *     tyer_type?: string
+     * } $filters
+     *
+     * @return list<object>
+     */
+    public function getScrapTyreList(array $filters = []): array
+    {
+        $builder = $this->db->table('tyer_management tm')
+            ->select('tm.*, l.location_name')
+            ->join('location l', 'l.location_id = tm.location_id', 'left')
+            ->where('tm.status', 3);
+
+        $locationId = (int) ($filters['location_id'] ?? 0);
+        if ($locationId > 0) {
+            $builder->where('tm.location_id', $locationId);
+        }
+
+        $fromDate = trim((string) ($filters['from_date'] ?? ''));
+        if ($fromDate !== '') {
+            $builder->where('tm.date >=', $fromDate);
+        }
+
+        $toDate = trim((string) ($filters['to_date'] ?? ''));
+        if ($toDate !== '') {
+            $builder->where('tm.date <=', $toDate);
+        }
+
+        $brandName = trim((string) ($filters['brand_name'] ?? ''));
+        if ($brandName !== '') {
+            $builder->where('tm.brand_name', $brandName);
+        }
+
+        $tyerType = trim((string) ($filters['tyer_type'] ?? ''));
+        if ($tyerType !== '') {
+            $builder->where('tm.tyer_type', $tyerType);
+        }
+
+        $search = trim((string) ($filters['search'] ?? ''));
+        if ($search !== '') {
+            $builder->groupStart()
+                ->like('tm.tyer_sl_no', $search)
+                ->orLike('tm.brand_name', $search)
+                ->orLike('tm.model', $search)
+                ->orLike('tm.bill_no', $search)
+                ->orLike('l.location_name', $search)
+            ->groupEnd();
+        }
+
+        return $builder->orderBy('tm.id', 'DESC')->get()->getResult();
+    }
+
+    /**
+     * Tyres sent to vendor / exchange requested (admin/sentToVendorTyer_management) — status = 10.
+     *
+     * @param array{
+     *     location_id?: int,
+     *     from_date?: string,
+     *     to_date?: string,
+     *     search?: string,
+     *     brand_name?: string,
+     *     tyer_type?: string
+     * } $filters
+     *
+     * @return list<object>
+     */
+    public function getSentToVendorTyreList(array $filters = []): array
+    {
+        $builder = $this->db->table('tyer_management tm')
+            ->select('tm.*, l.location_name, v.name as vendor_name')
+            ->join('location l', 'l.location_id = tm.location_id', 'left')
+            ->join('vendor v', 'v.id = tm.vendor_id', 'left')
+            ->where('tm.status', 10);
+
+        $locationId = (int) ($filters['location_id'] ?? 0);
+        if ($locationId > 0) {
+            $builder->where('tm.location_id', $locationId);
+        }
+
+        $fromDate = trim((string) ($filters['from_date'] ?? ''));
+        if ($fromDate !== '') {
+            $builder->where('tm.date >=', $fromDate);
+        }
+
+        $toDate = trim((string) ($filters['to_date'] ?? ''));
+        if ($toDate !== '') {
+            $builder->where('tm.date <=', $toDate);
+        }
+
+        $brandName = trim((string) ($filters['brand_name'] ?? ''));
+        if ($brandName !== '') {
+            $builder->where('tm.brand_name', $brandName);
+        }
+
+        $tyerType = trim((string) ($filters['tyer_type'] ?? ''));
+        if ($tyerType !== '') {
+            $builder->where('tm.tyer_type', $tyerType);
+        }
+
+        $search = trim((string) ($filters['search'] ?? ''));
+        if ($search !== '') {
+            $builder->groupStart()
+                ->like('tm.tyer_sl_no', $search)
+                ->orLike('tm.brand_name', $search)
+                ->orLike('tm.model', $search)
+                ->orLike('tm.bill_no', $search)
+                ->orLike('l.location_name', $search)
+                ->orLike('v.name', $search)
+            ->groupEnd();
+        }
+
+        return $builder->orderBy('tm.id', 'DESC')->get()->getResult();
+    }
+
+    /**
+     * Sold tyres (admin/soldTyer_management) — status = 7.
+     *
+     * @param array{
+     *     location_id?: int,
+     *     vendor_id?: int,
+     *     from_date?: string,
+     *     to_date?: string,
+     *     search?: string,
+     *     brand_name?: string,
+     *     tyer_type?: string
+     * } $filters
+     *
+     * @return list<object>
+     */
+    public function getSoldTyreList(array $filters = []): array
+    {
+        $builder = $this->db->table('tyer_management tm')
+            ->select('tm.*, l.location_name, v.name as vendor_name')
+            ->join('location l', 'l.location_id = tm.location_id', 'left')
+            ->join('vendor v', 'v.id = tm.vendor_id', 'left')
+            ->where('tm.status', 7);
+
+        $locationId = (int) ($filters['location_id'] ?? 0);
+        if ($locationId > 0) {
+            $builder->where('tm.location_id', $locationId);
+        }
+
+        $vendorId = (int) ($filters['vendor_id'] ?? 0);
+        if ($vendorId > 0) {
+            $builder->where('tm.vendor_id', $vendorId);
+        }
+
+        $fromDate = trim((string) ($filters['from_date'] ?? ''));
+        if ($fromDate !== '') {
+            $builder->where('tm.selling_date >=', $fromDate);
+        }
+
+        $toDate = trim((string) ($filters['to_date'] ?? ''));
+        if ($toDate !== '') {
+            $builder->where('tm.selling_date <=', $toDate);
+        }
+
+        $brandName = trim((string) ($filters['brand_name'] ?? ''));
+        if ($brandName !== '') {
+            $builder->where('tm.brand_name', $brandName);
+        }
+
+        $tyerType = trim((string) ($filters['tyer_type'] ?? ''));
+        if ($tyerType !== '') {
+            $builder->where('tm.tyer_type', $tyerType);
+        }
+
+        $search = trim((string) ($filters['search'] ?? ''));
+        if ($search !== '') {
+            $builder->groupStart()
+                ->like('tm.tyer_sl_no', $search)
+                ->orLike('tm.brand_name', $search)
+                ->orLike('tm.model', $search)
+                ->orLike('tm.bill_no', $search)
+                ->orLike('tm.remark', $search)
+                ->orLike('l.location_name', $search)
+                ->orLike('v.name', $search)
+            ->groupEnd();
+        }
+
+        return $builder->orderBy('tm.selling_date', 'DESC')
+            ->orderBy('tm.id', 'DESC')
+            ->get()
+            ->getResult();
+    }
+
+    /**
+     * Cancel sale and restore sold tyres (admin/soldTyreBackToStock).
+     *
+     * @param list<int>  $tyreIds
+     * @param 'stock'|'scrap' $destination
+     *
+     * @return list<int>
+     */
+    public function restoreSoldTyres(array $tyreIds, string $destination = 'stock'): array
+    {
+        $destination = strtolower(trim($destination));
+        if (! in_array($destination, ['stock', 'scrap'], true)) {
+            return [];
+        }
+
+        $status      = $destination === 'scrap' ? 3 : 1;
+        $remarkText  = $destination === 'scrap'
+            ? 'Sale cancelled, restored to scrap yard'
+            : 'Sale cancelled, restored to stock';
+        $eventType   = $destination === 'scrap' ? 9 : 6;
+        $eventRemarks = $destination === 'scrap'
+            ? 'Sale cancelled, tyre restored to scrap yard'
+            : 'Sale cancelled, tyre restored to stock';
+
+        $restored = [];
+
+        if ($tyreIds === []) {
+            return $restored;
+        }
+
+        $this->db->transStart();
+
+        foreach ($tyreIds as $tyreId) {
+            $tyreId = (int) $tyreId;
+            if ($tyreId <= 0) {
+                continue;
+            }
+
+            $tyre = $this->db->table('tyer_management')->where('id', $tyreId)->get()->getRow();
+            if ($tyre === null || (int) ($tyre->status ?? 0) !== 7) {
+                continue;
+            }
+
+            $this->db->table('tyer_management')->where('id', $tyreId)->update([
+                'status'       => $status,
+                'selling_date' => null,
+                'remark'       => $remarkText,
+            ]);
+
+            $this->db->table('tyer_management_history')->insert([
+                'tyre_id'    => $tyreId,
+                'event_type' => $eventType,
+                'event_date' => date('Y-m-d'),
+                'remarks'    => $eventRemarks,
+                'created_at' => date('Y-m-d H:i:s'),
+            ]);
+
+            $restored[] = $tyreId;
+        }
+
+        $this->db->transComplete();
+
+        return $this->db->transStatus() !== false ? $restored : [];
+    }
+
+    /**
+     * Tyre inventory report (admin/tyer_report) — excludes in-stock (status != 1).
+     *
+     * @param array{
+     *     location_id?: int,
+     *     status?: int|string|null,
+     *     search?: string,
+     *     brand_name?: string,
+     *     tyer_type?: string
+     * } $filters
+     *
+     * @return list<object>
+     */
+    public function getTyreReportList(array $filters = []): array
+    {
+        $builder = $this->db->table('tyer_management tm')
+            ->select('tm.*, l.location_name', false)
+            ->select(
+                'CASE WHEN th.tyre_id IS NULL THEN "New" ELSE "Old" END AS tyre_condition',
+                false
+            )
+            ->join('location l', 'l.location_id = tm.location_id', 'left')
+            ->join('tyer_management_history th', 'th.tyre_id = tm.id', 'left')
+            ->where('tm.status !=', 1)
+            ->groupBy('tm.id');
+
+        $locationId = (int) ($filters['location_id'] ?? 0);
+        if ($locationId > 0) {
+            $builder->where('tm.location_id', $locationId);
+        }
+
+        $status = $filters['status'] ?? null;
+        if ($status !== null && $status !== '' && $status !== 'all') {
+            $builder->where('tm.status', (int) $status);
+        }
+
+        $brandName = trim((string) ($filters['brand_name'] ?? ''));
+        if ($brandName !== '') {
+            $builder->where('tm.brand_name', $brandName);
+        }
+
+        $tyerType = trim((string) ($filters['tyer_type'] ?? ''));
+        if ($tyerType !== '') {
+            $builder->where('tm.tyer_type', $tyerType);
+        }
+
+        $search = trim((string) ($filters['search'] ?? ''));
+        if ($search !== '') {
+            $builder->groupStart()
+                ->like('tm.tyer_sl_no', $search)
+                ->orLike('tm.brand_name', $search)
+                ->orLike('tm.model', $search)
+                ->orLike('tm.bill_no', $search)
+                ->orLike('l.location_name', $search)
+            ->groupEnd();
+        }
+
+        return $builder->orderBy('tm.id', 'DESC')->get()->getResult();
+    }
+
+    /**
+     * Tyres under repair (admin/repaire_report) — status = 4.
+     *
+     * @param array{
+     *     location_id?: int,
+     *     search?: string,
+     *     brand_name?: string,
+     *     tyer_type?: string
+     * } $filters
+     *
+     * @return list<object>
+     */
+    public function getRepairReportList(array $filters = []): array
+    {
+        $builder = $this->db->table('tyer_management tm')
+            ->select('tm.*, l.location_name, v.name AS exchange_vendorname')
+            ->join('location l', 'l.location_id = tm.location_id', 'left')
+            ->join('vendor v', 'v.id = tm.ex_ven_id', 'left')
+            ->where('tm.status', 4);
+
+        $locationId = (int) ($filters['location_id'] ?? 0);
+        if ($locationId > 0) {
+            $builder->where('tm.location_id', $locationId);
+        }
+
+        $brandName = trim((string) ($filters['brand_name'] ?? ''));
+        if ($brandName !== '') {
+            $builder->where('tm.brand_name', $brandName);
+        }
+
+        $tyerType = trim((string) ($filters['tyer_type'] ?? ''));
+        if ($tyerType !== '') {
+            $builder->where('tm.tyer_type', $tyerType);
+        }
+
+        $search = trim((string) ($filters['search'] ?? ''));
+        if ($search !== '') {
+            $builder->groupStart()
+                ->like('tm.tyer_sl_no', $search)
+                ->orLike('tm.brand_name', $search)
+                ->orLike('tm.model', $search)
+                ->orLike('tm.bill_no', $search)
+                ->orLike('l.location_name', $search)
+                ->orLike('v.name', $search)
+                ->orLike('tm.remark', $search)
+            ->groupEnd();
+        }
+
+        return $builder->orderBy('tm.id', 'DESC')->get()->getResult();
+    }
+
+    /**
+     * Move repaired tyre back to stock (admin/repaire_report → update_tyer_repair).
+     *
+     * @return bool
+     */
+    public function completeRepairBackToStock(int $tyreId, int $vendorId, int $locationId, string $stockDate, string $remark = ''): bool
+    {
+        $tyreId     = (int) $tyreId;
+        $vendorId   = (int) $vendorId;
+        $locationId = (int) $locationId;
+        $stockDate  = trim($stockDate);
+        $remark     = trim($remark);
+
+        if ($tyreId <= 0 || $vendorId <= 0 || $locationId <= 0 || $stockDate === '') {
+            return false;
+        }
+
+        $tyre = $this->db->table('tyer_management')->where('id', $tyreId)->get()->getRow();
+        if ($tyre === null || (int) ($tyre->status ?? 0) !== 4) {
+            return false;
+        }
+
+        $historyRemark = $remark !== '' ? $remark : 'Tyre repaired and updated to stock';
+
+        $this->db->transStart();
+
+        $this->db->table('tyer_management')->where('id', $tyreId)->update([
+            'vendor_id'   => $vendorId,
+            'location_id' => $locationId,
+            'date'        => $stockDate,
+            'status'      => 1,
+            'remark'      => $historyRemark,
+        ]);
+
+        $this->db->table('tyer_management_history')->insert([
+            'tyre_id'     => $tyreId,
+            'event_type'  => 6,
+            'location_id' => $locationId,
+            'event_date'  => $stockDate,
+            'vendor_id'   => $vendorId,
+            'remarks'     => $historyRemark,
+            'created_at'  => date('Y-m-d H:i:s'),
+        ]);
+
+        $this->db->transComplete();
+
+        return $this->db->transStatus() !== false;
+    }
+
+    /**
+     * Distinct tyre brands for vendor exchange dropdown (admin/vendor_exchange).
+     *
+     * @return list<object>
+     */
+    public function getDistinctTyreBrands(): array
+    {
+        return $this->db->table('tyer_management')
+            ->select('brand_name')
+            ->distinct()
+            ->where('brand_name IS NOT NULL')
+            ->where('brand_name !=', '')
+            ->orderBy('brand_name', 'ASC')
+            ->get()
+            ->getResult();
+    }
+
+    /**
+     * Restore scrap-yard tyres to stock (admin/scrapTyreBackToStock, bulkScrapTyreBackToStock).
+     *
+     * @param list<int> $tyreIds
+     *
+     * @return list<int> Successfully restored tyre ids
+     */
+    public function restoreScrapTyresToStock(array $tyreIds): array
+    {
+        $restored = [];
+
+        if ($tyreIds === []) {
+            return $restored;
+        }
+
+        $this->db->transStart();
+
+        foreach ($tyreIds as $tyreId) {
+            $tyreId = (int) $tyreId;
+            if ($tyreId <= 0) {
+                continue;
+            }
+
+            $tyre = $this->db->table('tyer_management')->where('id', $tyreId)->get()->getRow();
+            if ($tyre === null || (int) ($tyre->status ?? 0) !== 3) {
+                continue;
+            }
+
+            $this->db->table('tyer_management')->where('id', $tyreId)->update([
+                'status' => 1,
+                'remark' => 'Back from scrap yard to stock',
+            ]);
+
+            $this->db->table('tyer_management_history')->insert([
+                'tyre_id'    => $tyreId,
+                'event_type' => 1,
+                'event_date' => date('Y-m-d'),
+                'remarks'    => 'Tyre restored from scrap yard to stock',
+                'created_at' => date('Y-m-d H:i:s'),
+            ]);
+
+            $restored[] = $tyreId;
+        }
+
+        $this->db->transComplete();
+
+        return $this->db->transStatus() !== false ? $restored : [];
+    }
+
+    /**
+     * Sell scrap-yard tyres (admin/process_tyre_sale).
+     *
+     * @param list<int> $tyreIds
+     *
+     * @return list<int> Successfully sold tyre ids
+     */
+    public function sellScrapTyres(array $tyreIds, int $vendorId, string $sellingDate, string $remark = ''): array
+    {
+        $sold = [];
+        $remark = trim($remark);
+
+        if ($tyreIds === [] || $vendorId <= 0) {
+            return $sold;
+        }
+
+        $this->db->transStart();
+
+        foreach ($tyreIds as $tyreId) {
+            $tyreId = (int) $tyreId;
+            if ($tyreId <= 0) {
+                continue;
+            }
+
+            $tyre = $this->db->table('tyer_management')->where('id', $tyreId)->get()->getRow();
+            if ($tyre === null || (int) ($tyre->status ?? 0) !== 3) {
+                continue;
+            }
+
+            $this->db->table('tyer_management')->where('id', $tyreId)->update([
+                'status'       => 7,
+                'vendor_id'    => $vendorId,
+                'selling_date' => $sellingDate,
+                'remark'       => $remark !== '' ? "SOLD: {$remark}" : 'SOLD',
+            ]);
+
+            $this->db->table('tyer_management_history')->insert([
+                'tyre_id'    => $tyreId,
+                'event_type' => 7,
+                'event_date' => $sellingDate,
+                'vendor_id'  => $vendorId,
+                'remarks'    => "TYRE SOLD to Buyer ID {$vendorId}. {$remark}",
+                'created_at' => date('Y-m-d H:i:s'),
+            ]);
+
+            $sold[] = $tyreId;
+        }
+
+        $this->db->transComplete();
+
+        return $this->db->transStatus() !== false ? $sold : [];
+    }
+
+    /**
+     * Update tyre status (admin/tyer_exchange → update_tyer_report).
+     * Clears vehicle assignment and logs tyer_management_history.
+     */
+    public function updateTyreLifecycleStatus(int $tyreId, int $status, ?int $vendorId = null, string $remark = ''): bool
+    {
+        $tyre = $this->db->table('tyer_management')->where('id', $tyreId)->get()->getRow();
+        if ($tyre === null) {
+            return false;
+        }
+
+        $update = [
+            'status'        => $status,
+            'ex_ven_id'     => $vendorId > 0 ? $vendorId : null,
+            'remark'        => $remark,
+            'vehicle_id'    => null,
+            'tyer_position' => null,
+        ];
+
+        $eventType = match ($status) {
+            1       => 6,
+            3       => 9,
+            4       => 5,
+            7       => 7,
+            default => 8,
+        };
+
+        $this->db->transStart();
+
+        $this->db->table('tyer_management')->where('id', $tyreId)->update($update);
+
+        $this->db->table('tyer_management_history')->insert([
+            'tyre_id'    => $tyreId,
+            'event_type' => $eventType,
+            'event_date' => date('Y-m-d'),
+            'vendor_id'  => $vendorId > 0 ? $vendorId : null,
+            'remarks'    => $remark,
+            'created_at' => date('Y-m-d H:i:s'),
+        ]);
+
+        $this->db->transComplete();
+
+        return $this->db->transStatus() !== false;
+    }
+
+    /**
+     * Request vendor exchange (admin/StockTyer_management → sent_to_vendor).
+     */
+    public function requestTyreExchange(int $tyreId, string $remark = ''): bool
+    {
+        if ($tyreId <= 0) {
+            return false;
+        }
+
+        $tyre = $this->db->table('tyer_management')->where('id', $tyreId)->get()->getRow();
+        if ($tyre === null) {
+            return false;
+        }
+
+        $remarkText = trim($remark);
+
+        $this->db->transStart();
+
+        $this->db->table('tyer_management')->where('id', $tyreId)->update([
+            'status' => 10,
+            'remark' => $remarkText !== '' ? "EXCHANGE REQUESTED: {$remarkText}" : 'EXCHANGE REQUESTED',
+        ]);
+
+        $this->db->table('tyer_management_history')->insert([
+            'tyre_id'    => $tyreId,
+            'event_type' => 10,
+            'event_date' => date('Y-m-d'),
+            'remarks'    => $remarkText !== '' ? "EXCHANGE INITIATED: {$remarkText}" : 'EXCHANGE INITIATED',
+            'created_at' => date('Y-m-d H:i:s'),
+        ]);
+
+        $this->db->transComplete();
+
+        return $this->db->transStatus() !== false;
+    }
+
+    /**
+     * Complete vendor warranty exchange (admin/process_vendor_exchange).
+     *
+     * @return array{old_tyre_id: int, new_tyre_id: int}|null
+     */
+    public function storeVendorTyreExchange(
+        int $oldTyreId,
+        string $newSerial,
+        string $brandName,
+        string $newModel = '',
+        string $exchangeDate = '',
+        string $remark = ''
+    ): ?array {
+        if ($oldTyreId <= 0 || trim($newSerial) === '' || trim($brandName) === '') {
+            return null;
+        }
+
+        $newSerial = trim($newSerial);
+        $brandName = trim($brandName);
+        $newModel  = trim($newModel);
+        $remark    = trim($remark);
+        $exchangeDate = trim($exchangeDate) !== '' ? trim($exchangeDate) : date('Y-m-d');
+
+        if (! preg_match('/^\d{4}-\d{2}-\d{2}$/', $exchangeDate)) {
+            return null;
+        }
+
+        $serialExists = $this->db->table('tyer_management')
+            ->where('tyer_sl_no', $newSerial)
+            ->countAllResults();
+
+        if ($serialExists > 0) {
+            return null;
+        }
+
+        $oldTyre = $this->db->table('tyer_management')->where('id', $oldTyreId)->get()->getRow();
+        if ($oldTyre === null) {
+            return null;
+        }
+
+        $newStatus = $oldTyre->vehicle_id !== null ? 2 : 1;
+
+        $this->db->transStart();
+
+        $newData = [
+            'brand_name'       => $brandName,
+            'model'            => $newModel,
+            'tyer_sl_no'       => $newSerial,
+            'tyer_type'        => $oldTyre->tyer_type,
+            'vendor_id'        => $oldTyre->vendor_id,
+            'date'             => date('Y-m-d'),
+            'bill_no'          => $oldTyre->bill_no,
+            'price'            => $oldTyre->price,
+            'status'           => $newStatus,
+            'location_id'      => $oldTyre->location_id,
+            'vehicle_id'       => $oldTyre->vehicle_id,
+            'tyer_position'    => $oldTyre->tyer_position,
+            'asign_date'       => $oldTyre->vehicle_id !== null ? $exchangeDate : null,
+            'remark'           => "Received as warranty replacement for {$oldTyre->tyer_sl_no}. {$remark}",
+            'replaced_from_id' => $oldTyreId,
+            'created_at'       => date('Y-m-d H:i:s'),
+        ];
+
+        $this->db->table('tyer_management')->insert($newData);
+        $newTyreId = (int) $this->db->insertID();
+
+        if ($newTyreId <= 0) {
+            $this->db->transRollback();
+
+            return null;
+        }
+
+        $this->db->table('tyer_management')->where('id', $oldTyreId)->update([
+            'status'          => 11,
+            'vehicle_id'      => null,
+            'tyer_position'   => null,
+            'replaced_to_id'  => $newTyreId,
+            'remark'          => "Exchange completed. Replaced by {$newSerial}. {$remark}",
+        ]);
+
+        $this->db->table('tyer_management_history')->insert([
+            'tyre_id' => $newTyreId,
+            'event_type' => 11,
+            'event_date' => $exchangeDate,
+            'remarks'    => "Exchange completed. Received from vendor as replacement for {$oldTyre->tyer_sl_no}. {$remark}",
+            'created_at' => date('Y-m-d H:i:s'),
+        ]);
+
+        $this->recordTyreExchange(
+            $oldTyre->vehicle_id !== null ? (int) $oldTyre->vehicle_id : null,
+            $oldTyreId,
+            $newTyreId,
+            $oldTyre->tyer_position ?? null,
+            $exchangeDate,
+            $remark !== '' ? "Vendor warranty exchange. {$remark}" : 'Vendor warranty exchange'
+        );
+
+        $this->db->transComplete();
+
+        if ($this->db->transStatus() === false) {
+            return null;
+        }
+
+        return [
+            'old_tyre_id' => $oldTyreId,
+            'new_tyre_id' => $newTyreId,
+        ];
+    }
+
+    /**
+     * Create staff/driver/mechanic (admin/Add_staf).
+     *
+     * @param array<string, mixed> $data
+     *
+     * @return array{staff_id: int, staff_code: string}|null
+     */
+    public function storeStaffMember(array $data, float $openingBalance = 0.0): ?array
+    {
+        $this->db->transStart();
+
+        $this->db->table('staff')->insert($data);
+        $staffId = (int) $this->db->insertID();
+
+        if ($staffId <= 0) {
+            $this->db->transRollback();
+
+            return null;
+        }
+
+        $cleanName       = preg_replace('/[^a-zA-Z]/', '', (string) ($data['name'] ?? ''));
+        $firstThreeChars = strtoupper(substr($cleanName, 0, 3));
+        $aadhaarClean    = preg_replace('/[^0-9]/', '', (string) ($data['aadhaar_no'] ?? ''));
+        $aadhaarLast4    = $aadhaarClean !== '' ? substr($aadhaarClean, -4) : '0000';
+        $staffCode       = $firstThreeChars . $aadhaarLast4 . '-' . $staffId;
+
+        $this->db->table('staff')->where('id', $staffId)->update(['staff_code' => $staffCode]);
+
+        if ($openingBalance != 0.0) {
+            $this->db->table('opening_closing')->insert([
+                'staff_id'  => $staffId,
+                'oamout'    => $openingBalance,
+                'oc_type'   => 1,
+                'yearmonth' => date('Y-m-d'),
+            ]);
+        }
+
+        $this->db->transComplete();
+
+        if ($this->db->transStatus() === false) {
+            return null;
+        }
+
+        return [
+            'staff_id'   => $staffId,
+            'staff_code' => $staffCode,
+        ];
+    }
+
+    /**
+     * @return object|null
+     */
+    public function getStaffById(int $staffId)
+    {
+        if ($staffId <= 0) {
+            return null;
+        }
+
+        return $this->db->table('staff s')
+            ->select('s.*, l.location_name')
+            ->join('location l', 'l.location_id = s.location_id', 'left')
+            ->where('s.id', $staffId)
+            ->get()
+            ->getRow();
+    }
+
+    /**
+     * Driver master list (admin/staf filtered by user_type = DRIVER).
+     *
+     * @param array<string, mixed> $filters
+     *
+     * @return list<object>
+     */
+    public function getDriverList(array $filters = []): array
+    {
+        $builder = $this->db->table('staff s')
+            ->select('s.*, l.location_name')
+            ->join('location l', 'l.location_id = s.location_id', 'left')
+            ->where('s.user_type', 'DRIVER');
+
+        $locationId = (int) ($filters['location_id'] ?? 0);
+        if ($locationId > 0) {
+            $builder->where('s.location_id', $locationId);
+        }
+
+        $search = trim((string) ($filters['search'] ?? ''));
+        if ($search !== '') {
+            $builder->groupStart()
+                ->like('s.name', $search)
+                ->orLike('s.staff_code', $search)
+                ->orLike('s.tel', $search)
+                ->orLike('s.dl_number', $search)
+                ->orLike('s.aadhaar_no', $search)
+            ->groupEnd();
+        }
+
+        $status  = strtolower(trim((string) ($filters['status'] ?? '')));
+        $asOnDate = trim((string) ($filters['as_on_date'] ?? date('Y-m-d')));
+        if ($status === 'active' && preg_match('/^\d{4}-\d{2}-\d{2}$/', $asOnDate)) {
+            $builder->groupStart()
+                ->where('s.doj <=', $asOnDate)
+                ->orWhere('s.doj', '0000-00-00')
+                ->orWhere('s.doj', null)
+            ->groupEnd();
+
+            $builder->groupStart()
+                ->where('s.resign_date IS NULL')
+                ->orWhere('s.resign_date', '0000-00-00')
+                ->orWhere('s.resign_date >=', $asOnDate)
+            ->groupEnd();
+        } elseif ($status === 'resigned' && preg_match('/^\d{4}-\d{2}-\d{2}$/', $asOnDate)) {
+            $builder->where('s.resign_date IS NOT NULL')
+                ->where('s.resign_date !=', '0000-00-00')
+                ->where('s.resign_date <', $asOnDate);
+        }
+
+        return $builder->orderBy('s.id', 'DESC')->get()->getResult();
     }
 }

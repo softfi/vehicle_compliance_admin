@@ -301,7 +301,7 @@ class AttendanceModel extends Model
     {
         return $this->db->table('staff')
             ->select('id, name, staff_code, location_id')
-            ->where('user_type', 'STAFF')
+            ->where('user_type !=', 'DRIVER')
             ->orderBy('name', 'ASC')
             ->get()->getResult();
     }

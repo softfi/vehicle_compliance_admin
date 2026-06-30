@@ -28,6 +28,37 @@ class Session extends BaseConfig
         if (isset($aliases[$driver])) {
             $this->driver = $aliases[$driver];
         }
+
+        $this->normalizeSavePath();
+    }
+
+    private function normalizeSavePath(): void
+    {
+        if ($this->driver !== FileHandler::class) {
+            return;
+        }
+
+        $path = trim(str_replace(['/', '\\'], DIRECTORY_SEPARATOR, $this->savePath));
+        if ($path === '') {
+            $path = WRITEPATH . 'session';
+        }
+
+        $isAbsolute = str_starts_with($path, DIRECTORY_SEPARATOR)
+            || (bool) preg_match('/^[A-Za-z]:[\\\\\\/]/', $path);
+
+        if (! $isAbsolute) {
+            if (str_starts_with($path, 'writable' . DIRECTORY_SEPARATOR)) {
+                $path = WRITEPATH . substr($path, strlen('writable' . DIRECTORY_SEPARATOR));
+            } else {
+                $path = ROOTPATH . ltrim($path, DIRECTORY_SEPARATOR);
+            }
+        }
+
+        $this->savePath = rtrim($path, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR;
+
+        if (! is_dir($this->savePath) && ! @mkdir($this->savePath, 0777, true) && ! is_dir($this->savePath)) {
+            throw new \RuntimeException('Session save path is not writable: ' . $this->savePath);
+        }
     }
 
     /**

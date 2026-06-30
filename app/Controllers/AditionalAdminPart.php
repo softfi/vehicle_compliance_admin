@@ -276,6 +276,8 @@ class AditionalAdminPart extends BaseController
             'Location Short Name',
             'Opening Balance',
             'Radius',
+            'Latitude',
+            'Longitude',
         ];
         $sheet->fromArray($headers, NULL, 'A1');
 
@@ -287,6 +289,8 @@ class AditionalAdminPart extends BaseController
             $sheet->setCellValue('C' . $row, $record->location_shordname);
             $sheet->setCellValue('D' . $row, $record->opening_balance);
             $sheet->setCellValue('E' . $row, $record->radius);
+            $sheet->setCellValue('F' . $row, $record->latitude ?? '');
+            $sheet->setCellValue('G' . $row, $record->longitude ?? '');
             $row++;
         }
 

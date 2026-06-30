@@ -405,11 +405,9 @@
                                     <select class="form-control" name="driver" id="single1" required>
                                         <option value="">Select Driver</option>
                                         <?php foreach ($drivers as $driver): ?>
-                                            <?php if ($driver->user_type === 'DRIVER'): ?>
-                                                <option value="<?= $driver->id; ?>">
-                                                    <?= esc($driver->name); ?> (<?= esc($driver->staff_code); ?>)
-                                                </option>
-                                            <?php endif; ?>
+                                            <option value="<?= $driver->id; ?>">
+                                                <?= esc($driver->name); ?> (<?= esc($driver->staff_code); ?>)
+                                            </option>
                                         <?php endforeach; ?>
                                     </select>
                                 </div>

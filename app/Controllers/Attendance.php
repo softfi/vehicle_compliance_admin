@@ -83,7 +83,7 @@ class Attendance extends BaseController
         $staffQuery = $this->db->table('staff')
             ->select('staff.*, location.location_name')
             ->join('location', 'location.location_id = staff.location_id', 'left')
-            ->where('staff.user_type', 'STAFF');
+            ->where('staff.user_type !=', 'DRIVER');
         
         // Filter active staff (not resigned)
         $staffQuery->groupStart()
@@ -421,7 +421,7 @@ class Attendance extends BaseController
 
                 // Validate staff code exists and get ID
                 if (!isset($staffMap[$staffCode])) {
-                    $errors[] = "Row " . ($key + 1) . ": Staff Code '$staffCode' does not exist or is not a STAFF member.";
+                    $errors[] = "Row " . ($key + 1) . ": Staff Code '$staffCode' does not exist or is not a valid employee.";
                     continue;
                 }
 
@@ -601,7 +601,7 @@ class Attendance extends BaseController
         $staffQuery = $this->db->table('staff')
             ->select('staff.*, location.location_name')
             ->join('location', 'location.location_id = staff.location_id', 'left')
-            ->where('staff.user_type', 'STAFF');
+            ->where('staff.user_type !=', 'DRIVER');
         
         if ($location_id) $staffQuery->where('staff.location_id', $location_id);
         if ($staff_id) $staffQuery->where('staff.id', $staff_id);
@@ -850,7 +850,7 @@ class Attendance extends BaseController
         $search = $this->request->getGet('q');
         $staff = $this->db->table('staff')
             ->select('id, name, staff_code')
-            ->where('user_type', 'STAFF')
+            ->where('user_type !=', 'DRIVER')
             ->groupStart()
                 ->where('resign_date IS NULL')
                 ->orWhere('resign_date', '0000-00-00')
@@ -880,7 +880,7 @@ class Attendance extends BaseController
         $builder = $this->db->table('staff')
             ->select('staff.id, staff.name, staff.staff_code, staff.location_id, staff.doj, staff.resign_date, location.location_name')
             ->join('location', 'location.location_id = staff.location_id', 'left')
-            ->where('staff.user_type', 'STAFF');
+            ->where('staff.user_type !=', 'DRIVER');
 
         // Only show staff who were active on the selected date
         $builder->groupStart()

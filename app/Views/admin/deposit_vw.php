@@ -101,11 +101,22 @@ if ($records_per_page === 'all') { $total_pages = 1; $current_page = 1; } else {
                         </thead>
                         <tbody>
                             <?php $i = 1; foreach ($vouchers as $v): ?>
-                            <tr data-id="<?= $v->id; ?>">
-                                <td><input type="checkbox" class="voucher-checkbox" value="<?= $v->id; ?>"></td>
+                            <?php $inPayment = ! empty($v->in_payment); ?>
+                            <tr data-id="<?= $v->id; ?>" class="<?= $inPayment ? 'voucher-in-payment' : '' ?>">
+                                <td>
+                                    <input type="checkbox"
+                                           class="voucher-checkbox"
+                                           value="<?= $v->id; ?>"
+                                           <?= $inPayment ? 'disabled title="Already added to payment"' : '' ?>>
+                                </td>
                                 <td><?= $i++; ?></td>
                                 <td><?= $v->party_name ?? 'N/A'; ?></td>
-                                <td><?= $v->group_code; ?></td>
+                                <td>
+                                    <?= $v->group_code; ?>
+                                    <?php if ($inPayment): ?>
+                                        <span class="badge bg-secondary ms-1">In Payment</span>
+                                    <?php endif; ?>
+                                </td>
                                 <td><?= $v->challan_count; ?></td>
                                 <td><?= number_format($v->total_net_amount, 2); ?></td>
                                 <td>
@@ -352,43 +363,57 @@ if ($records_per_page === 'all') { $total_pages = 1; $current_page = 1; } else {
         });
     }
 
-    // Select All functionality
+    // Select All functionality (skip vouchers already in payment)
     document.getElementById('selectAll').addEventListener('change', function() {
-        const checkboxes = document.querySelectorAll('.voucher-checkbox');
+        const checkboxes = document.querySelectorAll('.voucher-checkbox:not(:disabled)');
         checkboxes.forEach(cb => cb.checked = this.checked);
     });
 
     // Add to Payment Function
     function addToPayment() {
         const selected = [];
-        document.querySelectorAll('.voucher-checkbox:checked').forEach(cb => {
+        document.querySelectorAll('.voucher-checkbox:checked:not(:disabled)').forEach(cb => {
             selected.push(cb.value);
         });
 
         if (selected.length === 0) {
-            alert('Please select at least one voucher.');
+            alert('Please select at least one voucher that is not already in payment.');
             return;
         }
 
         if (!confirm('Are you sure you want to add selected vouchers to payment?')) return;
 
+        const btn = document.querySelector('button[onclick="addToPayment()"]');
+        if (btn) btn.disabled = true;
+
         $.ajax({
             url: "<?= base_url('Admin/addToPayment') ?>",
             type: "POST",
+            dataType: 'json',
             data: {
                 voucher_ids: selected,
                 '<?= csrf_token() ?>': '<?= csrf_hash() ?>'
             },
             success: function(r) {
+                if (btn) btn.disabled = false;
                 if (r.status === 'success') {
-                    alert('Successfully added to payment! PO Number: ' + r.po_number); // assuming API returns it, or just generic success
+                    alert('Successfully added to payment! PO Number: ' + (r.po_number || 'N/A'));
                     location.reload();
-                } else {
-                    alert('Error: ' + r.message);
+                    return;
+                }
+
+                alert('Error: ' + (r.message || 'Failed to add vouchers to payment.'));
+                if (r.duplicate_voucher_ids && r.duplicate_voucher_ids.length) {
+                    location.reload();
                 }
             },
-            error: function() {
-                alert('Error processing request.');
+            error: function(xhr) {
+                if (btn) btn.disabled = false;
+                let message = 'Error processing request.';
+                if (xhr.responseJSON && xhr.responseJSON.message) {
+                    message = xhr.responseJSON.message;
+                }
+                alert(message);
             }
         });
     }
@@ -509,5 +534,7 @@ if ($records_per_page === 'all') { $total_pages = 1; $current_page = 1; } else {
     .modal-lg { max-width: 80% !important; }
     #challanGallery img { cursor: pointer; transition: transform 0.2s; }
     #challanGallery img:hover { transform: scale(1.05); }
+    tr.voucher-in-payment { background-color: #f8f9fa; }
+    tr.voucher-in-payment .voucher-checkbox:disabled { cursor: not-allowed; }
 </style>
 <?php include("footer.php"); ?>

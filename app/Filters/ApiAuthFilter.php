@@ -39,7 +39,7 @@ class ApiAuthFilter implements FilterInterface
             FROM user u
             LEFT JOIN location l ON l.location_id = u.location_id
             WHERE u.id = ?
-              AND u.user_type = 2
+              AND u.user_type IN (1, 2)
               AND u.deleted_by IS NULL
             LIMIT 1
         ", [$tokenRow->user_id])->getRow();

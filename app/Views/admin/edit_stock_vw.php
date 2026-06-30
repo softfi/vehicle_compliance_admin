@@ -91,6 +91,23 @@
           </div>
         </div>
 
+        <?php
+        $billPhoto = trim((string) ($stock->bill_photo ?? ''));
+        $billPhotoUrl = $billPhoto !== '' ? base_url('public/uploads/purchase_bills/' . $billPhoto) : '';
+        ?>
+
+        <div class="uk-card uk-card-body uk-card-small uk-margin-top" style="border:solid 1px #ccc;">
+          <h5 class="uk-margin-remove-bottom"><strong>Purchase Bill Photo</strong></h5>
+          <?php if ($billPhotoUrl !== ''): ?>
+            <div class="uk-margin-small-top">
+              <a href="<?= esc($billPhotoUrl); ?>" target="_blank" class="btn btn-sm btn-outline-primary uk-margin-small-right">View Bill</a>
+              <a href="<?= esc($billPhotoUrl); ?>" download="<?= esc($billPhoto); ?>" class="btn btn-sm btn-outline-secondary">Download Bill</a>
+            </div>
+          <?php else: ?>
+            <p class="uk-text-muted uk-margin-small-top">No bill image uploaded for this purchase batch.</p>
+          <?php endif; ?>
+        </div>
+
         <p></p>
 
         <div class="table table-responsive uk-margin-top">
@@ -180,10 +197,15 @@
         </div>
 
         <div class="text-end uk-margin-top">
-            <form action="<?= base_url('Admin/finalize_edit_stock') ?>" method="post">
+            <form action="<?= base_url('Admin/finalize_edit_stock') ?>" method="post" enctype="multipart/form-data">
                 <input type="hidden" name="stock_code" value="<?= (!empty($stock)) ? $stock->stock_code : ''; ?>">
                 <input type="hidden" name="invoicedate" id="final_date">
                 <input type="hidden" name="invoiceno" id="final_invoice">
+                <div class="uk-text-left uk-margin-bottom" style="max-width:420px; margin-left:auto;">
+                    <label class="form-label"><strong>Replace Bill Photo</strong> (optional)</label>
+                    <input type="file" name="bill_photo" class="form-control" accept="image/*">
+                    <small class="text-muted">Leave empty to keep the current bill image.</small>
+                </div>
                 <button type="submit" class="btn btn-lg btn-success">Update Entire Batch</button>
             </form>
         </div>

@@ -45,7 +45,7 @@ class MaterialIssueController extends BaseApiController
 
     /**
      * GET /api/material-issue/drivers
-     * Same driver dropdown as web material_issue (Getallstaf).
+     * Same driver dropdown as web material_issue (GetallDrivers).
      * Optional: ?search=name_or_code
      */
     public function drivers()
@@ -55,6 +55,7 @@ class MaterialIssueController extends BaseApiController
         $builder = $this->db->table('staff s');
         $builder->select('s.id, s.name, s.staff_code, s.user_type, s.location_id, s.tel, l.location_name');
         $builder->join('location l', 'l.location_id = s.location_id', 'left');
+        $builder->where('s.user_type', 'DRIVER');
 
         if ($search !== '') {
             $builder->groupStart()
